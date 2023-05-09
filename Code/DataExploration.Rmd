@@ -1,0 +1,508 @@
+---
+title: "Data Exploration"
+author: "Gauri Phatak"
+date: "2023-04-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse) 
+library(readxl)
+library(ggplot2) 
+library(reshape2) 
+library(grid) 
+library(chron) 
+library(stringr) 
+library(plyr) 
+library(dplyr) 
+library(schoolmath) 
+library(boxr) 
+library(openxlsx) 
+library(lubridate)
+library(logr)
+library(utils)
+library(zoo)
+library(janitor)
+library(sf)
+library(foreach)
+library(igraph)
+library(geosphere)
+```
+
+# Exploring Different datasets used for this project:
+
+We will mainly look at county level or city level data depending on the grnularity of the avaiable datasets.
+
+## Wastewater data:
+
+## Traffic Data
+
+Reading traffic data:
+
+```{r}
+trf20 <- read_excel("../Data/TVT_2020.xlsx", sheet = "2020")
+trf21 <- read_excel("../Data/TVT_2021.xlsx", sheet = "2021")
+
+```
+Reading the TCDS data : Permanent Automatic Traffic Recorder Volume.
+ 
+combining the volume data for volume per week for year 2020, 2021 and 2022.
+
+
+
+```{r, warning=FALSE}
+## Listing all the files in the data folder
+allFiles <- list.files("../Data/TCDS/")
+
+df <- data.frame(matrix(ncol = 31, nrow = 0))
+colnames(df) <- c("location","start_date","end_date","interval",
+                  "h01","h02","h03","h04","h05","h06","h07","h08",
+                  "h09","h10","h11","h12","h13","h14","h15","h16",
+                  "h17","h18","h19","h20","h21","h22","h23","h24",
+                  "type","total")
+
+for(f in allFiles){
+  if(grepl("VolumeCount", f)){
+    print(f)
+    trf <- read_excel(paste0("../Data/TCDS/", f), skip = 6) %>%
+      clean_names()
+    print(colnames(trf))
+    trf$start_date <- as.Date(trf$start_date, origin = "1899-12-30")
+    trf$end_date <- as.Date(trf$end_date , origin = "1899-12-30")
+    trf$location <- na.locf(trf$location)
+    trf$WY <-  format(trf$start_date, "%W/%Y")
+    
+    df <- rbind(df, trf)
+  }
+}
+
+df <- df %>%
+  group_by(location, WY) %>%
+  dplyr::summarise(across(where(is.numeric), sum))
+
+trfLoc <- readxl::read_xlsx("../Data/TCDS/tcds_list.xlsx",sheet = "tcds_list",  skip = 13)
+
+trfShp <- trfLoc %>% 
+  dplyr::select(Longitude,Latitude) %>%
+  st_as_sf(coords = c('Longitude', 'Latitude'), 
+           na.fail = FALSE) %>%
+  st_set_crs(4326) %>%
+  st_transform(crs= 32736)
+
+##Loading city data
+hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
+#rgdal::ogrListLayers(hwpath)
+ct <- st_read(hwpath, layer = "City_Limits__2016_")
+
+
+## Loading highway data
+hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/HighwayDat/data.gdb"
+hwd <- st_read(hwpath, layer="Highway_Network__2015_")
+hwd <- st_zm(hwd)
+id <- unique(hwd$st_hwy_idx)
+fin <- c(1,1)
+for (i in id) {
+  val <- hwd[hwd$st_hwy_idx == i,]
+  val <- st_cast(st_union(st_combine(val), by_feature = FALSE), "MULTILINESTRING")
+  fin <- rbind(fin, cbind(i,val))
+}
+
+
+fin <- as.data.frame(fin[-1,])
+colnames(fin) <- c("hwy_id","geometry")
+fin <- st_as_sf(fin)
+st_crs(fin) <- st_crs(ct)
+
+##Loading city data
+hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
+#rgdal::ogrListLayers(hwpath)
+ct <- st_read(hwpath, layer = "City_Limits__2016_")
+
+trfShp <- st_transform(trfShp, st_crs(hwd))
+trfShp$LocID <-  trfLoc$`Loc ID`
+#st_crs(trfShp) <- st_crs(hwd)
+
+# ggplot() +
+#   geom_sf(data = fin, aes(geometry = geometry), color = "black")+
+#       geom_sf(data = ct, aes(geometry = shape), color = "green")+
+#   geom_sf(data = trfShp, aes(geometry = geometry), color = "red")
+
+
+```
+
+Which sections of the highway do the ATR intersect.
+
+Map the highway traffic volume by Health regions, county etc. compare that with the waste water data for that region over time. 
+
+```{r}
+
+#intr <- st_intersects(st_buffer(trfShp, 500), fin)
+intr <- st_nearest_feature(trfShp, fin)
+intrPts <- foreach(i = intr, .combine='rbind') %do% {if(!is.na(i)){fin[i,]}}
+trfShp <- trfShp[-223,]
+#Find the nearest points on the highways where the traffic monitors can be placed.# 
+intrPts <- st_nearest_points(trfShp, intrPts, pairwise = TRUE) %>% 
+  st_cast("POINT")
+
+intrPts <-  intrPts[seq(2, length(intrPts), 2)] %>%
+  st_as_sf()
+
+```
+```{r}
+
+ggplot() +
+  geom_sf(data = fin, aes(geometry = geometry), color = "black")+
+      geom_sf(data = ct, aes(geometry = shape), color = "green")+
+  geom_sf(data = intrPts, aes(geometry = x), color = "red")
+
+
+
+```
+
+
+Remove the cities that have AT in approach.
+
+```{r, warning=FALSE}
+
+## remove the AT from Approach
+trfLoc_sbst <- trfLoc[!(trfLoc$Approach == "AT"),]
+
+## Remove the points that intersect with cities
+trfCts <- trfShp[-unlist(st_intersects(ct, trfShp)),]
+
+
+#gbg <- hwd[hwd$st_hwy_idx == "001",]
+#int <- st_difference(gbg,st_union(st_geometry(st_intersection(ct, gbg))))
+
+#int <- st_union(int, by_feature = TRUE)
+
+# sortedV <- int %>% 
+#      group_by(city_name) %>%
+#      dplyr::summarise(m = median(beg_mp_no)) %>%
+#      arrange(m)
+## Get coordinates for the centroid of the cities.
+
+city_cntr <- ct %>% 
+  st_as_sf() %>% 
+  st_centroid() %>% 
+  st_cast("POINT") %>% 
+  st_transform(4326) %>% 
+  st_coordinates()
+
+distMat <- distm(city_cntr)
+colnames(distMat) <- ct$city_name
+rownames(distMat) <- ct$city_name
+
+edges <- data.frame(matrix(ncol = 6, nrow=0))
+colnames(edges) <- c("from","to","hwy_id", "NumStations", "Stations","dist")
+
+
+for(hwy_id in id) {
+  sbst <- hwd[hwd$st_hwy_idx == hwy_id,]
+  if(length(st_union(st_geometry(st_intersection(ct, sbst)))) != 0 ) {
+  #print(paste0("1",hwy_id))
+  
+  int1 <- st_intersection(sbst, ct)
+  sortedV <- int1 %>% 
+    group_by(city_name) %>%
+    dplyr::summarise(m = median(beg_mp_no)) %>%
+    arrange(m)
+  #  print(paste0("2",hwy_id))
+  ## in this we are getting rid of all the stations that are contained isnide the city. What happens if we remove those 
+  int <- st_difference(sbst,st_union(st_geometry(st_intersection(ct, sbst))))
+  int <- st_union(int, by_feature = TRUE)
+  nearestHwy <- st_is_within_distance(trfShp, int, 60)#st_intersects(st_buffer(trfShp, 40), int)
+  
+  ### Code for when we dont remove the stations that are inside the city.
+  #sbst <- st_union(sbst, by_feature = TRUE)
+  #nearestHwy <- st_is_within_distance(trfShp, sbst, 60)
+  
+  sbstOverlap <- as.data.frame(nearestHwy)
+  
+  if(nrow(sbstOverlap) == 0){
+    
+    sortedV$city_nameConn <- c(sortedV$city_name[-1], 0)
+    sortedCT <- as.matrix(cbind(sortedV$city_name, sortedV$city_nameConn), ncol =2 )#[1: length(sortedV$city_name)-1,]
+    #print(hwy_id)
+    #print(sortedCT)
+    dist <- c()
+  for (j in 1:(dim(sortedV)[1])) {
+    #print(paste0(sortedCT[j,1], sortedCT[j,2], " size", j))
+    if(sortedCT[j,2] != 0){
+            dist <- c(dist, distMat[sortedCT[j,1], sortedCT[j,2]] )
+    }
+  }
+    dist <- c(dist, 0)
+    #sortedV <- sortedV[-length(sortedV$city_name), ]
+    
+    tmpdf <- as.data.frame(cbind(sortedV$city_name,
+                         sortedV$city_nameConn,
+                         rep(hwy_id,length(sortedV$city_name)),
+                         0,0,dist))[1:length(sortedV$city_name)-1,]
+    colnames(tmpdf) <- c("from","to","hwy_id", "NumStations", "Stations", "dist")
+    
+    edges <- rbind(edges,tmpdf)
+    #print(length(edges$from))
+    next
+  }
+  
+  ## Area where the hwy data intersects with the buffered station data
+  
+  ## Below is when we remove the stations inside cities
+  hwyInt <- int[sbstOverlap$col.id, ]
+  
+  ## For when we include stations inside the citites we use the code below.
+  #hwyInt <- sbst[sbstOverlap$col.id, ]
+  
+  hwyInt <- cbind(sbstOverlap$row.id, hwyInt$beg_mp_no,  "Station" )
+  sortedV <- cbind(sortedV$city_name, sortedV$m, "City")
+  
+  tot <- as.data.frame(rbind(sortedV, hwyInt))
+  tot$V2 <- as.numeric(tot$V2)
+  tot <- tot[order(tot$V2),]
+   # print(paste0("4",hwy_id))
+
+  
+  stations <- list()
+  to <- "NULLCITY"
+  #  print(paste0("5",hwy_id))
+
+  for (i in 1:length(tot$V1)) {
+    if(tot[i, 3] == "City"){
+      from <- to 
+      to <- tot[i,1]
+      #print(list(from, to,hwy_id,length(unique(unlist(stations))),list(unique(unlist(stations)))))
+      #sortedCT <- as.matrix(cbind(sortedV$city_name, sortedV$city_nameConn), ncol =2 )#[1: length(sortedV$city_name)-1,]
+    #print(hwy_id)
+    #print(sortedCT)
+      dist = 0 
+      if(from  != "NULLCITY"){
+              dist <- distMat[to, from]
+      }
+      
+      edges[nrow(edges)+1, ] <- list(from, to, 
+                                     hwy_id,
+                                     length(unique(unlist(stations))),
+                                     list(unique(unlist(stations))),
+                                     dist)
+      numStations <- 0
+      stations <- list()
+    } else{
+      stations <- append(stations, tot[i,1])
+    }
+  }
+  #print(paste0("completed hwy id", hwy_id))
+  }
+  #sortedV$city_nameConn <- c(sortedV$city_name[-1], 0)
+  
+  #edges <- rbind(edges,cbind(sortedV$city_name, sortedV$city_nameConn, #rep(hwy_id,length(sortedV$city_name)))[1:length(sortedV$city_name)-1,])
+}
+
+edges <- edges[edges$from != "NULLCITY",]
+
+## Maping the detected stations
+
+det <- trfShp[c(unique(unlist(edges$Stations))),]
+det <- det[!is.na(det$LocID), ]
+
+## find the nearest feature between the non-overlapping part and the stations.
+#nearestHwy <- st_is_within_distance(trfShp, int, 50)#st_intersects(st_buffer(trfShp, 40), int)
+#sbstOverlap <- as.data.frame(nearestHwy)
+
+ggplot() +
+  geom_sf(data = hwd, aes(geometry = shape), color = "black")+
+  geom_sf(data = ct, aes(geometry = shape), color = "blue")+
+#    geom_sf(data = gbg, aes(geometry = shape), color = "blue") +
+#  geom_sf(data = int, aes(geometry = shape), color = "red") +
+  geom_sf(data = trfShp, aes(geometry = geometry), color = "purple")+
+  geom_sf(data = det, aes(geometry= geometry), color = "green")+
+  theme_minimal()
+
+
+```
+
+## Creating a histogram of howmany cities have stations between them. 
+
+```{r, fig.width=10, fig.height=10}
+
+## Get coordinates for the centroid of the cities.
+#city_cntr <- st_coordinates(st_centroid(ct))
+
+hwy_grph <- graph_from_data_frame(d = edges,vertices = ct$city_name, directed = FALSE)
+edges$NumStations <- as.numeric(edges$NumStations)
+#coords <- layout_(hwy_grph, city_cntr)
+plot.igraph(hwy_grph, vertex.label = NA, 
+            vertex.size = 1, 
+            vertex.color = "black",
+            edge.color = edges$NumStations+1, 
+            edge.width = 2, 
+            layout = city_cntr)
+plot.igraph(hwy_grph, vertex.label = NA, 
+            vertex.size = 1, 
+            vertex.color = "black",
+            edge.color = edges$NumStations, 
+            edge.width = 2, 
+            layout = city_cntr)
+
+hist(edges$NumStations, xlab = "Number of stations between cities.")
+table(edges$NumStations)
+```
+
+
+
+
+## Reducing the cities to just wastewater cities
+
+```{r, fig.width=10, fig.height=10, warning=FALSE}
+WD <- "C:\\Users\\gauph\\Box\\Preliminary Results Coronavirus Sewer Surveillance\\Data files\\covid data files\\TestingSandbox\\RScripts"
+dat <- readRDS(paste(WD, "\\..\\COVID_Data_ROutput\\ProcessedCOVIDDataInfo.rds", sep= ""))
+df <- do.call(rbind.data.frame, sapply(dat, '[', 3))
+df$Date <- as.Date(as.integer(df$Date), origin = "1970-01-01")
+## cities present in ct and wastewater data
+ct_sbst <- ct$city_name[ct$city_name %in% unique(df$Location)]
+
+df_sbst <- df[df$Location %in% ct_sbst, ]
+
+## keeping all the edges from above. Checking if this would add more edges to the data
+saveDirEdges <-  data.frame(matrix(ncol = 2, nrow = 0))
+colnames(saveDirEdges) <- c("to","from")
+
+dirEdges <-  data.frame(matrix(ncol = 5, nrow = 0))
+colnames(dirEdges) <- c("to","from","stsn","wchStn", "distance")
+
+
+for (i in 1:length(ct_sbst)) {
+  
+  trav <- list()
+  path <- shortest_paths(hwy_grph, ct_sbst[i], 
+                         ct_sbst, output = "both" , 
+                         weights = round(as.numeric(E(hwy_grph)$dist)))
+  
+  for(j in 1:length(ct_sbst)){
+    curPath <- names(unlist(path$vpath[[j]]))
+    totStations <- c(E(subgraph.edges(hwy_grph, as.integer(path$epath[[j]])))$NumStations,0)
+    wchStations <- c(E(subgraph.edges(hwy_grph, as.integer(path$epath[[j]])))$Stations,0)
+    dist <- c(E(subgraph.edges(hwy_grph, as.integer(path$epath[[j]])))$dist,0)
+    subPath <- curPath[curPath %in% ct_sbst]
+    
+    l = 1
+    if(length(curPath) > 1){
+    for(k in 1:(length(subPath)-1)){
+      start = subPath[k]
+      end = subPath[k+1]
+      numStn = 0
+      wchStn <- list()
+      subdist <- 0
+      while(curPath[l] != end){
+        numStn <- numStn + as.numeric(totStations[l])
+        wchStn <- c(wchStn, wchStations[l])
+        subdist <- subdist+as.numeric(dist[l])
+         l = l+1
+        # print(l)
+      }
+      dirEdges <- rbind(dirEdges, cbind(start, end, numStn, list(unlist(wchStn)), round(subdist, 2)))
+    }
+    }
+    
+    #if(length(subPath) > 1){
+    #  saveDirEdges <- rbind(saveDirEdges, cbind(subPath[1:length(subPath)-1], subPath[2:length(subPath)]))
+    #}
+  }
+}
+```
+
+```{r, fig.width=10, fig.height=10}
+## Creating edges from the paths that we generate using shortest path algorithm. 
+## Coloring based on the weight of the edge i.e. the number of nodes between the two nodes of interest.
+hist(as.numeric(dirEdges$numStn))
+DirectGrph <- graph_from_data_frame(d = dirEdges, vertices = ct$city_name, directed = FALSE)
+incl <- V(DirectGrph)$name %in% ct_sbst
+V(DirectGrph)$included <- ifelse(incl == TRUE, "orangered3", "grey37")
+DirectGrph <- simplify(DirectGrph)
+plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
+            vertex.color = V(DirectGrph)$included,
+            vertex.frame.color = V(DirectGrph)$included,
+            edge.color = as.numeric(edges$NumStations)+1,
+            edge.width = 1, layout = city_cntr)
+
+plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
+            vertex.color = V(DirectGrph)$included,
+            vertex.frame.color = V(DirectGrph)$included,
+            edge.color = edges$NumStations,
+            edge.width = 1, layout = city_cntr)
+
+
+```
+
+## Looking at the non-permanent data
+
+```{r}
+getwd()
+trfLocNP <- readxl::read_xlsx("../Data/TCDS/tcds_list_Nonperm.xlsx",sheet = "tcds_list_Nonperm",  skip = 13)
+
+length(unique(trfLoc$`Loc ID`))
+
+trfShpNP <- trfLocNP %>% 
+  dplyr::select(Longitude,Latitude) %>%
+  st_as_sf(coords = c('Longitude', 'Latitude'), 
+           na.fail = FALSE) %>%
+  st_set_crs(4326) %>%
+  st_transform(crs= 32736)
+
+trfShpNP <- st_transform(trfShpNP, st_crs(hwd))
+trfShpNP$LocID <-  trfLocNP$`Loc ID`
+
+#intrNP<- st_intersects(st_buffer(trfShpNP, 100), fin)
+intrNP <- st_nearest_feature(trfShpNP, fin)
+intrPtsNP <- foreach(i = intrNP, .combine='rbind') %do% {if(!is.na(i)){fin[i,]}}
+
+#Find the nearest points on the highways where the traffic monitors can be placed.# 
+intrPtsNP <- st_nearest_points(trfShpNP, intrPtsNP, pairwise = TRUE) %>% 
+  st_cast("POINT")
+
+intrPtsNP <-  intrPtsNP[seq(2, length(intrPtsNP), 2)] %>%
+  st_as_sf()
+
+ggplot() +
+  geom_sf(data = fin, aes(geometry = geometry), color = "black")+
+      geom_sf(data = ct, aes(geometry = shape), color = "green")+
+  geom_sf(data = intrPts, aes(geometry = x), color = "red")
+
+ggplot() +
+  geom_sf(data = hwd, aes(geometry = shape), color = "black")+
+  geom_sf(data = ct, aes(geometry = shape), color = "blue")+
+#    geom_sf(data = gbg, aes(geometry = shape), color = "blue") +
+#  geom_sf(data = int, aes(geometry = shape), color = "red") +
+  geom_sf(data = trfShpNP, aes(geometry = geometry), color = "purple")
+
+
+```
+
+
+## Highway Spatial network data
+
+*Need to bring the spatial networks code into this RMD*
+
+##Public health data:
+
+### Cases
+
+```{r}
+cases <- read.csv("../Data/United_States_COVID-19_Community_Levels_by_County.csv")
+cases <- cases[cases$state == "Oregon",]
+
+
+vaccine <- read.csv("../Data/COVID-19_Vaccinations_in_the_United_States_County.csv")
+
+
+```
+
+
+### Deaths
+
+### Vaccines
+
+## Public Policy data
+
+## Demographic data

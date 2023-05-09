@@ -1,0 +1,819 @@
+---
+title: "MapNetworkCode"
+author: "Gauri Phatak"
+date: "2023-01-22"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+
+knitr::opts_chunk$set(echo = TRUE, fig.width=8, fig.height=8, warning=FALSE)
+library(tidyverse)
+library(dplyr)
+library(sf)
+library(mapview)
+library(sp)
+library(usmap)
+require(rgdal)
+require(ggplot2)
+library(raster)
+library(igraph)
+library(GGally)
+library(ggnet)
+#library(network)
+#library(sna)
+#library(ggplot2)
+library(geosphere)
+library(lubridate)
+library(gganimate)
+library(gifski)
+library(png)
+```
+
+## Downloading the relevant data for city network and highway network.
+
+```{r, warning=FALSE}
+##Loading city data
+hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
+#rgdal::ogrListLayers(hwpath)
+ct <- st_read(hwpath, layer = "City_Limits__2016_")
+
+## Loading highway data
+hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/HighwayDat/data.gdb"
+hwd <- st_read(hwpath, layer="Highway_Network__2015_")
+hwd <- st_zm(hwd)
+id <- unique(hwd$st_hwy_idx)
+```
+
+
+## Creating the city network using highway and city limits data
+
+```{r, warning=FALSE}
+
+edges <- data.frame(matrix(ncol = 3, nrow=0))
+colnames(edges) <- c("to","from","hwy_id")
+
+
+for(hwy_id in id) {
+  sbst <- hwd[hwd$st_hwy_idx == hwy_id,]
+  int <- st_intersection(sbst, ct)
+  sortedV <- int %>% 
+    group_by(city_name) %>%
+    dplyr::summarise(m = median(beg_mp_no)) %>%
+    arrange(m)
+  
+  sortedV$city_nameConn <- c(sortedV$city_name[-1], 0)
+  edges <- rbind(edges,cbind(sortedV$city_name, sortedV$city_nameConn, rep(hwy_id,length(sortedV$city_name)))[1:length(sortedV$city_name)-1,])
+}
+
+
+```
+creating a network with whole highways as one geometry. This will be used in the highway intersections network as well.
+
+```{r, warning=FALSE}
+
+fin <- c(1,1)
+for (i in id) {
+  val <- hwd[hwd$st_hwy_idx == i,]
+  val <- st_cast(st_union(st_combine(val), by_feature = FALSE), "MULTILINESTRING")
+  fin <- rbind(fin, cbind(i,val))
+}
+
+
+fin <- as.data.frame(fin[-1,])
+colnames(fin) <- c("hwy_id","geometry")
+fin <- st_as_sf(fin)
+st_crs(fin) <- st_crs(ct)
+
+```
+
+Creating bipartite network of nearest cities to highways . 
+
+```{r, fig.width=20, fig.height=20}
+
+int <- st_intersection(hwd, ct)
+int <- int[, c("st_hwy_idx","beg_mp_no","city_name")]
+int <- int[order(unlist(int$st_hwy_idx)),]
+sortedV <- int %>% 
+    group_by(city_name, st_hwy_idx) %>%
+    dplyr::summarize(across(matches("beg_mp_no"), mean),
+                     across(matches("shape"), st_combine)) %>%
+    ungroup()%>%
+    arrange(st_hwy_idx, beg_mp_no)
+
+sortedV <- st_centroid(sortedV)
+
+
+nearest <- st_nearest_feature(ct, hwd)
+## find the nodes with no connecting highways
+cntdCts <- ct$city_name[!(ct$city_name %in% unique(sortedV$city_name))]
+
+#find the highways closest to the cities
+nearest <- data.frame(nearest)
+nearest$city_names <- ct$city_name
+prsnt <- nearest$city_names %in% cntdCts
+nearest <- nearest[prsnt,]
+ct_unCntd <- ct[prsnt,]
+ct_unCntd$hwy_id <- nearest$nearest
+
+## Creating a bipartite network using the data
+# names <- c(ct_unCntd$city_name, unique(ct_unCntd$hwy_id))
+# types <- c(rep(0, length(ct_unCntd$city_name)), rep(1, length(unique(ct_unCntd$hwy_id))))
+# names(types) <- names
+# biEdges <- pivot_longer(data.frame(cbind(ct_unCntd$city_name, 
+#                                          ct_unCntd$hwy_id)), 
+#                         cols = everything())
+# g <- make_bipartite_graph(types, c(biEdges$value))
+# 
+# LO = layout_as_bipartite(g)
+# LO = LO[,c(2,1)]
+# 
+# g %>%
+#   plot(vertex.size = 1,layout = LO)
+#create data frame with 0 rows and 5 columns
+df <- data.frame(matrix(ncol = 3, nrow = 0))
+
+for(i in 1:length(nearest$nearest)){
+  df <- rbind(df, cbind(hwd[nearest$nearest[i],], nearest$city_names[i]))
+}
+
+df <- df[,c("nearest.city_names.i.","st_hwy_idx","beg_mp_no","shape")]
+df <- st_centroid(df)
+
+colnames(df) <- c("city_name","st_hwy_idx","beg_mp_no","shape")
+
+finalGrph <- rbind(df, sortedV)
+
+edges <- data.frame(matrix(ncol = 3, nrow=0))
+
+for (hwy_id in id) {
+  sbst <- finalGrph[finalGrph$st_hwy_idx == hwy_id,]
+  sbst <- sbst[order(sbst$beg_mp_no),]
+  city_nameConn <- c(sbst$city_name[-1], 0)
+  edges <- rbind(edges,cbind(sbst$city_name, 
+                                        city_nameConn, 
+                                        rep(hwy_id, 
+                                            length(sbst$city_name)))[1: length(sbst$city_name)-1,])
+}
+colnames(edges) <- c("to","from","hwy_id")
+
+finalGrph <- finalGrph %>% 
+    group_by(city_name) %>%
+    dplyr::summarize(across(matches("shape"), st_combine)) %>%
+    ungroup()
+
+finalGrph <- st_coordinates(st_centroid(finalGrph))
+
+# 
+# ## find the nearest points between the cities and the highways
+# nearestPts <- st_nearest_points(ct_unCntd, df, pairwise = TRUE)
+# 
+# nearestPts <- st_as_sf(nearestPts)
+# st_crs(nearestPts) <- st_crs(fin)
+# nearestLine <- nearestPts
+# 
+# nearestPts <- st_cast(nearestPts,"POINT")
+# 
+# nearestPts <- nearestPts[seq(2,104, 2),]
+# 
+# nearestPts$city <- df$nearest.city_names.i.
+# nearestPts$hwy <- df$hwy_id
+# ggplot()+
+#   geom_sf(data = fin, aes(geometry = geometry) )+
+#   geom_sf(data = ct, aes(geometry = shape), color = "green") +
+#   geom_sf(data = nearestPts, aes(geometry = x), color = "purple", size = 1.5)+
+#   geom_sf(data=nearestLine, aes(geometry = x), color = "red")
+
+## Get coordinates for the centroid of the cities.
+city_cntr <- st_coordinates(st_centroid(ct))
+
+hwy_grph <- graph_from_data_frame(d = edges,vertices = ct$city_name, directed = FALSE)
+#coords <- layout_(hwy_grph, city_cntr)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, edge.color = edges$hwy_id, edge.width = 3, layout = city_cntr)
+
+```
+
+
+Adding the points to the network of cities.
+
+
+```{r}
+
+
+## Get coordinates for the centroid of the cities.
+city_cntr <- st_coordinates(st_centroid(ct))
+
+hwy_grph <- graph_from_data_frame(d = edges,vertices = ct$city_name, directed = FALSE)
+#coords <- layout_(hwy_grph, city_cntr)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 3, edge.color = edges$V3, edge.width = 3, layout = city_cntr)
+
+```
+
+
+## Creating highway intersections data.
+
+Using tmp$cnt variable that counts the number of points where the highways intersect. 
+The depth value for the clustering tree d set to 16000 gives the best possible clustering based on cuts. 
+
+```{r, warning=FALSE, fig.width=8, fig.height=8}
+
+
+# Plotting the final combined data.
+int <- st_intersection(fin)
+
+mulpt <- st_collection_extract(int, "POINT")
+#cent_pt <- st_centroid(mulpt)
+pt <- st_cast(mulpt, "POINT")
+st_crs(mulpt) <- st_crs(fin)
+
+crsVal <- st_crs(fin)
+## FIND THE CENTROID OF EACH ENTRY IN MULPT
+#cent <- st_centroid(mulpt)
+## Use the clustering function on points where there are multiple intersections in the same highways
+gbg <- pt %>% group_by(origins) %>% 
+  dplyr::summarise(cnt = n()) %>% 
+  as.data.frame() %>% 
+  arrange(desc(cnt))
+cent <- c(1,1)
+
+gbg <- st_as_sf(gbg)
+
+for (i in 1:length(gbg$origins)) {
+  tmp  <- gbg[i,]
+  pt_coords <- tmp %>%
+      st_cast("POINT") %>%
+      st_transform(4326) %>%
+      st_coordinates() %>%
+    as.data.frame()
+  
+  if(tmp$cnt >= 11){
+    
+    mdist <- distm(pt_coords)
+    
+    # cluster all points using a hierarchical clustering approach
+    hc <- hclust(as.dist(mdist), method="complete")
+    
+    # define the distance threshold, in this case 40 m
+    d=16000
+    k = 2
+    
+    # define clusters based on a tree "height" cutoff "d" and add them to the SpDataFrame
+    pt_coords <- tmp %>%
+      st_cast("POINT")
+    st_crs(pt_coords) <- st_crs(hwd)
+    pt_coords$clust <- cutree(hc, h=d)
+    #print(paste0(tmp$origins, "  ", max(pt_coords$clust)))
+    for (j in 1:max(pt_coords$clust)) {
+      val <- pt_coords[pt_coords$clust == j , ]
+      #val <- st_as_sf(val, coords = c("X","Y"), crs = 4326)
+      val <- st_combine(val)
+      val <- st_centroid(val)
+      cent <- rbind(cent, cbind(i,val))
+    }
+  }
+  else {
+      #val <- st_as_sf(pt_coords, coords = c("X","Y"), crs = 4326)
+      #val <- st_combine(val)
+      #val <- st_centroid(val)
+      #cent <- rbind(cent, cbind(i,val))
+    val <- tmp %>%
+      st_cast("POINT") %>%
+      st_combine() %>%
+      st_centroid()
+    #st_crs(tmp) <- st_crs(cent)
+    cent <- rbind(cent, cbind(i, val))
+   # print(paste0(tmp$origins, "  ", "< 11"))
+
+  }
+}
+
+cent <- as.data.frame(cent[-1,])
+colnames(cent) <- c("id","geometry")
+cent <- st_as_sf(cent, crs = crsVal)
+#cent %>% st_set_crs(4326)
+#fin %>% st_set_crs(4326)
+#st_crs(fin) <- st_set_crs(hwd)
+
+ggplot()+
+#  geom_sf(data = mulpt, aes(geometry = geometry), color = "blue", size =3)+
+  geom_sf(data = cent, aes(geometry = geometry), color = "red", size =1)+
+  #geom_sf(data = centOld, aes(geometry = geometry), color = "green", size =1)+
+  geom_sf(data = hwd, aes(geometry = shape), color = "black")
+
+#centOld <- cent
+```
+
+Need to figure out what that lone red point is in the corner. 
+
+
+Converting the points derived in cent variable above to create the highway network. 
+
+
+## Creating network using st_buffer and using centroid
+
+
+```{r}
+
+library(mapview)
+library(units)
+
+ct_cent <- st_centroid(ct)
+
+ct_buf10 <- st_buffer(ct_cent, dist = 10000)
+ct_buf20 <- st_buffer(ct_cent, dist = 20000)
+ct_buf30 <- st_buffer(ct_cent, dist = 30000)
+
+
+
+## find which highways intersect with the buffers
+#int10 <- st_intersects(ct_buf10, fin)
+#int20 <- st_intersects(ct_buf20, fin)
+#int30 <- st_intersects(ct_buf30, fin)
+
+```
+
+```{r}
+## Creating a network that has multiple layers of connectivity.
+## Get coordinates for the centroid of the cities.
+
+city_cntr <- ct %>% 
+  st_as_sf() %>% 
+  st_centroid() %>% 
+  st_cast("POINT") %>% 
+  st_transform(4326) %>% 
+  st_coordinates()
+
+distMat <- distm(city_cntr)
+colnames(distMat) <- ct$city_name
+rownames(distMat) <- ct$city_name
+
+#city_cntr <- cbind(city_cntr, ct$city_name)
+
+findEdges <- function(geom, hwd, id, type){
+  edges <- data.frame(matrix(ncol = 4, nrow=0))
+  
+  for(hwy_id in id) {
+    dist<- c()
+    sbst <- hwd[hwd$st_hwy_idx == hwy_id,]
+    int <- st_intersection(sbst, geom)
+    sortedV <- int %>% 
+      group_by(city_name) %>%
+      dplyr::summarise(m = median(beg_mp_no)) %>%
+      arrange(m)
+    #Subset of cities in the data
+    #ct$city_name[ct$city_name %in% unique(int$city_name)]
+    sortedV$city_nameConn <- c(sortedV$city_name[-1], 0)
+    
+    sortedCT <- as.matrix(cbind(sortedV$city_name, sortedV$city_nameConn), ncol =2 )#[1: length(sortedV$city_name)-1,]
+    #print(hwy_id)
+    #print(sortedCT)
+    
+    for (i in 1:dim(sortedV)[1]-1) {
+      dist <- c(dist, distMat[sortedCT[i,1], sortedCT[i,2]])
+    }
+    ##Cannot use the milepost numbers as distance metric... it's different for different highways
+    #dist <- c(sortedV$m[-1],0) - sortedV$m
+    edges <- rbind(edges,cbind(sortedV$city_name, sortedV$city_nameConn,
+                               rep(hwy_id,length(sortedV$city_name)),
+                               dist)[1:length(sortedV$city_name)-1,])
+  }
+  edges <- cbind(edges, type)
+  colnames(edges) <- c("to","from","hwy_id","distance","type")
+  return(edges)
+}
+
+edges10 <- findEdges(ct_buf10, hwd, id, "10")
+edges20 <- findEdges(ct_buf20, hwd, id,"20")
+edges30 <- findEdges(ct_buf30, hwd, id,"30")
+
+
+```
+
+```{r, fig.width=6, fig.height=6}
+ggplot()+
+  geom_sf(data = hwd, aes(geometry = shape))+
+  geom_sf(data = ct, aes(geometry = shape))+
+    geom_sf(data = ct_buf30, aes(geometry = shape), color = "green")+
+  geom_sf(data = ct_buf20, aes(geometry = shape), color = "blue")+
+  geom_sf(data = ct_buf10, aes(geometry = shape), color = "red")
+
+## Highway graph for circle around data of 10 kms
+hwy_grph <- graph_from_data_frame(d = edges10,vertices = ct$city_name, directed = FALSE)
+#coords <- layout_(hwy_grph, city_cntr)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.color  = NULL,edge.color = edges10$hwy_id, edge.width = 1, layout = city_cntr)
+
+
+## Highway graph for circle around data of 20 kms
+hwy_grph <- graph_from_data_frame(d = edges20,vertices = ct$city_name, directed = FALSE)
+#coords <- layout_(hwy_grph, city_cntr)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,vertex.frame.color  = NULL, edge.color = edges20$hwy_id, edge.width = 1, layout = city_cntr)
+
+
+## Highway graph for circle around data of 30 kms
+hwy_grph <- graph_from_data_frame(d = edges30,vertices = ct$city_name, directed = FALSE)
+#coords <- layout_(hwy_grph, city_cntr)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.color  = NULL,edge.color = edges30$hwy_id, edge.width = 1, layout = city_cntr)
+
+
+```
+
+
+
+## Creating network using st_buffer but using convex hull of the cities.
+
+```{r}
+
+
+ct_hull <- st_convex_hull(ct)
+ct_hull_buff10 <- st_buffer(ct_hull, dist  = 10000)
+ct_hull_buff20 <- st_buffer(ct_hull, dist  = 20000)
+ct_hull_buff30 <- st_buffer(ct_hull, dist  = 30000)
+
+
+## find which highways intersect with the convex hull buffers
+#int_hull10 <- st_intersects(ct_hull_buff10, fin)
+#int_hull20 <- st_intersects(ct_hull_buff20, fin)
+#int_hull30 <- st_intersects(ct_hull_buff30, fin)
+```
+
+```{r, warning=FALSE}
+
+#Using the find edges function to find the edges between the different convex hulls
+edges_hull10 <- findEdges(ct_hull_buff10, hwd, id, "10")
+edges_hull20 <- findEdges(ct_hull_buff20, hwd, id, "20")
+edges_hull30 <- findEdges(ct_hull_buff30, hwd, id, "30")
+
+```
+
+```{r, fig.width=6, fig.height=6}
+##Visualizaing the data
+
+ggplot()+
+  geom_sf(data = hwd, aes(geometry = shape))+
+  geom_sf(data = ct_hull_buff30, aes(geometry = shape), color = "green")+
+  geom_sf(data = ct_hull_buff20, aes(geometry = shape), color = "blue")+
+  geom_sf(data = ct_hull_buff10, aes(geometry = shape), color = "red")+
+    geom_sf(data = ct_hull, aes(geometry = shape), color = "purple")
+
+
+## Highway graph for circle around data of 10 kms
+hwy_grph <- graph_from_data_frame(d = edges_hull10,vertices = ct$city_name, directed = FALSE)
+#coords <- layout_(hwy_grph, city_cntr)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.width  = 0, vertex.color = "black",edge.color = edges_hull10$hwy_id, edge.width = 1, layout = city_cntr)
+
+
+## Highway graph for circle around data of 20 kms
+hwy_grph <- graph_from_data_frame(d = edges_hull20,vertices = ct$city_name, directed = FALSE)
+#coords <- layout_(hwy_grph, city_cntr)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.width  = 0, vertex.color = "black",edge.color = edges_hull20$hwy_id, edge.width = 1, layout = city_cntr)
+
+
+## Highway graph for circle around data of 30 kms
+hwy_grph <- graph_from_data_frame(d = edges_hull30,vertices = ct$city_name, directed = FALSE)
+#coords <- layout_(hwy_grph, city_cntr)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.width  = 0, vertex.color = "black",edge.color = edges_hull30$hwy_id, edge.width = 1, layout = city_cntr)
+
+
+```
+
+
+## finding edges for convex hulls that intersect with each other
+
+```{r, fig.width = 6, fig.height=6}
+ggplot()+
+  geom_sf(data = hwd, aes(geometry = shape))+
+  geom_sf(data = ct_hull_buff30, aes(geometry = shape), color = "green")+
+  geom_sf(data = ct_hull_buff20, aes(geometry = shape), color = "blue")+
+  geom_sf(data = ct_hull_buff10, aes(geometry = shape), color = "red")+
+    geom_sf(data = ct_hull, aes(geometry = shape), color = "purple")
+
+hull_edges <- st_intersects(ct_hull, sparse = FALSE)
+hwy_grph <- graph_from_adjacency_matrix(hull_edges, mode = "undirected")
+hwy_grph <- simplify(hwy_grph)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, edge.width = 1,vertex.frame.width  = 0, edge.color = "black", layout = city_cntr)
+
+hull_edges <- st_intersects(ct_hull_buff10, sparse = FALSE)
+hwy_grph <- graph_from_adjacency_matrix(hull_edges, mode = "undirected")
+hwy_grph <- simplify(hwy_grph)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, edge.width = 1,vertex.frame.width  = 0,edge.color = "black", layout = city_cntr)
+
+hull_edges <- st_intersects(ct_hull_buff20, sparse = FALSE)
+hwy_grph <- graph_from_adjacency_matrix(hull_edges, mode = "undirected")
+hwy_grph <- simplify(hwy_grph)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, edge.width = 1, vertex.frame.width  = 0,edge.color = "black",layout = city_cntr)
+
+hull_edges <- st_intersects(ct_hull_buff30, sparse = FALSE)
+hwy_grph <- graph_from_adjacency_matrix(hull_edges, mode = "undirected")
+hwy_grph <- simplify(hwy_grph)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, edge.width = 1, vertex.frame.width  = 0 ,edge.color = "black",layout = city_cntr)
+
+
+```
+
+
+# Combining the three networks and color code them.
+
+
+```{r, fig.width=8, fig.height=8}
+
+options(dplyr.summarise.inform = FALSE)
+edgesfull <- rbind(edges_hull10, edges_hull20, edges_hull30)
+hwy_grph <- graph_from_data_frame(d = edgesfull ,vertices = ct$city_name, directed = FALSE)
+
+plot.igraph(hwy_grph,vertex.label = NA, vertex.size = 1, edge.color = edgesfull$type,
+            edge.width = 1, layout = city_cntr)
+
+
+common3 <- edgesfull %>% group_by(to,from, hwy_id) %>% dplyr::summarise( n = n(), .group = "keep") %>% ungroup()
+common3$n <- as.factor(common3$n)
+ecols <- c("red", "blue","green")[common3$n]
+common3$ecols <- ecols
+hwy_grph <- graph_from_data_frame(d = common3 ,vertices = ct$city_name, directed = FALSE)
+
+plot.igraph(hwy_grph,vertex.label = NA, vertex.size = 1, edge.color = ecols,
+            edge.width = 1, layout = city_cntr)
+mults <- simplify_and_colorize(hwy_grph)#which_multiple(hwy_grph)
+plot.igraph(mults, vertex.label = NA, vertex.size = 1, 
+            edge.width = 1, layout = city_cntr)
+#legend("bottomright", legend = levels(common3$n),pch =16, col = ecols)
+
+```
+
+
+```{r, fig.width=8, fig.height=8}
+
+hwy_grph <- graph_from_data_frame(d = edgesfull ,vertices = ct$city_name, directed = FALSE)
+
+mults <- simplify_and_colorize(hwy_grph)#which_multiple(hwy_grph)
+plot.igraph(mults, vertex.label = NA, vertex.size = 1, 
+            edge.width = 1, layout = city_cntr)
+
+```
+
+
+## COVID publically avaiable data.
+
+## COVID waste water data.
+
+```{r}
+
+WD <- "C:\\Users\\gauph\\Box\\Preliminary Results Coronavirus Sewer Surveillance\\Data files\\covid data files\\TestingSandbox\\RScripts"
+dat <- readRDS(paste(WD, "\\..\\COVID_Data_ROutput\\ProcessedCOVIDDataInfo.rds", sep= ""))
+df <- do.call(rbind.data.frame, sapply(dat, '[', 3))
+df$Date <- as.Date(as.integer(df$Date), origin = "1970-01-01")
+## cities present in ct and wastewater data
+ct_sbst <- ct$city_name[ct$city_name %in% unique(df$Location)]
+
+df_sbst <- df[df$Location %in% ct_sbst, ]
+
+```
+
+
+## Using the subset data for descriptive analysis
+
+```{r, fig.width=7, fig.height =7}
+#Coloring based on the cities considered for measurement. 
+## Using the 30 km hull - roadway intersection network to create the visualizations.
+
+## Highway graph for circle around data of 30 kms
+hwy_grph <- graph_from_data_frame(d = edges_hull30,vertices = ct$city_name, directed = FALSE)
+#coords <- layout_(hwy_grph, city_cntr)
+#plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,vertex.color = "black", edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
+
+incl <- V(hwy_grph)$name %in% ct_sbst
+V(hwy_grph)$included <- ifelse(incl == TRUE, "orangered3", "grey37")
+E(hwy_grph)$weight <- edges_hull30$distance
+#hwy_grph<- simplify(hwy_grph)
+
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,vertex.color = V(hwy_grph)$included, vertex.frame.color = V(hwy_grph)$included, edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
+
+```
+original city from the 
+start at some arbitrary city. find all the paths to red cities.
+
+for each path check if the path goes through a red city.
+  if it does, save the list and path to the closest red city.
+
+
+```{r, fig.height=6, fig.height=6}
+#hwy_grph <- simplify(hwy_grph)
+savePath = list()
+saveDirEdges <-  data.frame(matrix(ncol = 3, nrow = 0))
+colnames(saveDirEdges) <- c("to","from", "length")
+
+# for (i in 1:length(ct_sbst)) {
+#   trav <- list()
+#   path <- shortest_paths(hwy_grph, ct_sbst[i], 
+#                          ct_sbst, output = "both" , 
+#                          weights = round(as.numeric(E(hwy_grph)$distance)))
+#   for( j in 1:48){
+#     if(sum(names(unlist(path$vpath[[j]])) %in% ct_sbst) == 2){
+#       curPath <- names(path$vpath[[j]])
+#       savePath <- append(savePath, list(curPath))
+#       saveDirEdges[nrow(saveDirEdges)+1, ] <- list(curPath[1] ,curPath[length(curPath)], length(curPath))
+#     }
+#   }
+# }
+
+## Creating edges from the paths that we generate using shortest path algorithm. 
+## Coloring based on the weight of the edge i.e. the number of nodes between the two nodes of interest.
+
+# DirectGrph <- graph_from_data_frame(d = saveDirEdges, vertices = ct$city_name, directed = FALSE)
+# V(DirectGrph)$included <- ifelse(incl == TRUE, "orangered3", "grey37")
+# DirectGrph <- simplify(DirectGrph)
+# plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
+#             vertex.color = V(DirectGrph)$included,
+#             vertex.frame.color = V(DirectGrph)$included,
+#             edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
+
+## keeping all the edges from above. Checking if this would add more edges to the data
+saveDirEdges <-  data.frame(matrix(ncol = 2, nrow = 0))
+colnames(saveDirEdges) <- c("to","from")
+
+for (i in 1:length(ct_sbst)) {
+  
+  trav <- list()
+  path <- shortest_paths(hwy_grph, ct_sbst[i], 
+                         ct_sbst, output = "both" , 
+                         weights = round(as.numeric(E(hwy_grph)$distance)))
+  
+  for(j in 1:length(ct_sbst)){
+    curPath <- names(unlist(path$vpath[[j]]))
+    subPath <- curPath[curPath %in% ct_sbst]
+    if(length(subPath) > 1){
+      saveDirEdges <- rbind(saveDirEdges, cbind(subPath[1:length(subPath)-1], subPath[2:length(subPath)]))
+    }
+  }
+}
+
+## Creating edges from the paths that we generate using shortest path algorithm. 
+## Coloring based on the weight of the edge i.e. the number of nodes between the two nodes of interest.
+
+DirectGrph <- graph_from_data_frame(d = saveDirEdges, vertices = ct$city_name, directed = FALSE)
+V(DirectGrph)$included <- ifelse(incl == TRUE, "orangered3", "grey37")
+DirectGrph <- simplify(DirectGrph)
+plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
+            vertex.color = V(DirectGrph)$included,
+            vertex.frame.color = V(DirectGrph)$included,
+            edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
+
+```
+
+
+```{r, fig.height=10, fig.width=14}
+library(lubridate)
+library(RColorBrewer)
+library(ggiraph)
+library(plotly)
+
+df_OHA <- df[df$Study == "OHA",]
+#df_OHA <- df_OHA[df_OHA$QualCall == "Negative",]
+
+df_OHA <- df_OHA[!(is.na(df_OHA$Location)),]
+
+df_OHA <- df_OHA[df_OHA$Location %in% ct_sbst,]
+
+df_OHA <- df_OHA[df_OHA$CopiesPerul > 0 , ]
+
+df_OHA <- df_OHA[!is.na(df_OHA$SampleType),]
+
+df_OHA <- df_OHA[!(is.na(df_OHA$County)),]
+
+gbg <- data.frame(table(df_OHA$Location, df_OHA$County))
+gbg <- gbg[gbg$Freq > 0,]
+
+## Removing gilliam county
+
+df_OHA <- df_OHA[!(df_OHA$County == "Gilliam County"),]
+
+#gbg <- df_OHA[df_OHA$Location == "Corvallis",]
+
+# df_OHA <- df_OHA %>%
+#   dplyr::mutate(year = lubridate::year(Date), 
+#                 month = lubridate::month(Date), 
+#                 day = lubridate::day(Date))
+
+df_OHA <- df_OHA %>%
+  dplyr::mutate(Month_Yr = format(as.Date(Date),"%Y-%m")) %>% 
+  mutate(weekno = as.numeric(Date - min(Date, na.rm = TRUE)),
+         weekno = (weekno %/% 7) +1) %>%
+  group_by(weekno) %>% 
+  arrange(desc(CopiesPerul)) %>%
+    mutate(
+        maxByVal = if_else(row_number() == 1, "1", "0")
+    ) %>%
+  arrange(weekno)%>%
+  ungroup()
+
+# aggr <- df_OHA %>% 
+#   group_by(weekno, Location) %>%
+#   arrange(weekno, desc(CopiesPerul)) %>%
+#   summarise_at(vars("CopiesPerul"), max) %>%
+#   mutate(maxByVal = if_else(CopiesPerul == max(CopiesPerul), Location, "0")) %>%
+#   ungroup() 
+
+aggr <- df_OHA %>%
+  group_by(weekno, Location) %>%
+  filter(CopiesPerul == max(CopiesPerul, na.rm = TRUE))
+
+
+colors <-  c("cornflowerblue", "coral2","chocolate3", "chartreuse4","brown4",
+                             "blue4","darkorchid", "orangered","gold1","cyan2",
+                             "slateblue3","salmon4","darkolivegreen1", "aquamarine",
+                             "firebrick2", "maroon2","dodgerblue","sienna3")
+
+# p<- ggplot()+
+#   geom_point(data =subset(aggr, CopiesPerul < 300) , aes(x = Date, y= CopiesPerul, group = Location), alpha =0.5)+
+#   theme_minimal() +
+#   theme(axis.line = element_line(colour = "black"),
+#     panel.grid.major = element_blank(),
+#     panel.grid.minor = element_blank(),
+#     panel.border = element_blank(),
+#     panel.background = element_blank(),
+#     legend.position = "none") +
+#   geom_point(data = subset(aggr, maxByVal == "1" & CopiesPerul < 300), aes(x = Date, y = CopiesPerul,color = County))+
+#   scale_color_manual(values = colors)
+# 
+# ggplotly(p)
+
+p<- ggplot()+
+  geom_point(data =subset(aggr, CopiesPerul < 300) , aes(x = weekno, y= CopiesPerul, group = Location), color = "grey37",alpha =0.2)+
+  theme_minimal() +
+  theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    legend.position = "none") + labs(x = "Week number stating from September 2nd 2020", y = "SARS-COV2 concentration in Copies per uL")+
+  geom_point(data = subset(aggr, maxByVal == "1" & CopiesPerul < 300), aes(x = weekno, y = CopiesPerul,color = County))+
+  scale_color_manual(values = colors)
+
+ggplotly(p)
+
+#   p <- ggplot()+
+#   geom_point(data =aggr , aes(x = Date, y= CopiesPerul, color = factor(maxByVal), group = Location), alpha =0.5)+
+#   theme_minimal() +
+#   theme(axis.line = element_line(colour = "black"),
+#     panel.grid.major = element_blank(),
+#     panel.grid.minor = element_blank(),
+#     panel.border = element_blank(),
+#     panel.background = element_blank(),
+#     legend.position = "none") +
+#   geom_point_interactive(data = subset(aggr, maxByVal == "1"), aes(x = Date, y = CopiesPerul,color = County,  tooltip = Location))+
+#   scale_color_manual(values = c("0"="orange",
+#                                 "1"="steelblue"))
+#   
+#   
+# print(girafe(ggobj = p))
+#   
+# 
+# aggr %>% ungroup() %>%#subset(Location == "Albany")%>%
+#   ggplot()+
+#   geom_point(aes(x = Month_Yr, y = CopiesPerul))+
+#     geom_line(aes(x = Month_Yr, y = CopiesPerul, group = Location))+
+#   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(),strip.text = element_text(size=4, margin = margin()))+# element_text(angle = 90, vjust = 0.5, hjust=1))+
+#   facet_wrap(~Location, scales = "free_y")
+
+```
+
+Creating visualization for counties/cities that never has the highest concentration or had highest concentration only a few times. Exploring correlation between demographic information and policy enactment with the observed concentration levels. Observing decline in cases or wastewater concentrations after a wave or post vaccination drives. 
+
+
+Creating the visualization 
+```{r}
+
+
+
+```
+
+Need to find the shortest paths between the must visit nodes using Dijkstras or Floyd or Bellman-Ford. Using the distances between the two cities as edge weights. 
+
+Possibly:: https://stackoverflow.com/questions/74003506/good-algorithm-for-finding-shortest-path-for-specific-vertices
+https://stackoverflow.com/questions/222413/find-the-shortest-path-in-a-graph-which-visits-certain-nodes
+
+## Statistical questions to ask using this data.
+
+Data:
+
+* COVID waste water data.
+
+* Highway Networks data. General roadways data is available, but not currently used.
+
+* Census Demographics data.
+
+* Publicly available COVID hospitalization and cases data.
+
+* Possible County/City level COVID restrictions.
+
+Possible questions:
+
+* Are there communities in Oregon based on prevalence of COVID. Can the temporal nature of the data be used to determine communities using the flow of variants and traffic.
+
+* Data imputation. 
+  For e.g. 
+      Salem stopped taking part in the waste water detection program mid 2021. 
+
+      Can we predict the prevalence in the towns/cities nearby the ones participating in the waste water detection program.
+
+
