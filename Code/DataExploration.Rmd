@@ -45,11 +45,10 @@ trf20 <- read_excel("../Data/TVT_2020.xlsx", sheet = "2020")
 trf21 <- read_excel("../Data/TVT_2021.xlsx", sheet = "2021")
 
 ```
+
 Reading the TCDS data : Permanent Automatic Traffic Recorder Volume.
- 
+
 combining the volume data for volume per week for year 2020, 2021 and 2022.
-
-
 
 ```{r, warning=FALSE}
 ## Listing all the files in the data folder
@@ -64,10 +63,10 @@ colnames(df) <- c("location","start_date","end_date","interval",
 
 for(f in allFiles){
   if(grepl("VolumeCount", f)){
-    print(f)
+   # print(f)
     trf <- read_excel(paste0("../Data/TCDS/", f), skip = 6) %>%
       clean_names()
-    print(colnames(trf))
+   # print(colnames(trf))
     trf$start_date <- as.Date(trf$start_date, origin = "1899-12-30")
     trf$end_date <- as.Date(trf$end_date , origin = "1899-12-30")
     trf$location <- na.locf(trf$location)
@@ -133,7 +132,7 @@ trfShp$LocID <-  trfLoc$`Loc ID`
 
 Which sections of the highway do the ATR intersect.
 
-Map the highway traffic volume by Health regions, county etc. compare that with the waste water data for that region over time. 
+Map the highway traffic volume by Health regions, county etc. compare that with the waste water data for that region over time.
 
 ```{r}
 
@@ -149,6 +148,7 @@ intrPts <-  intrPts[seq(2, length(intrPts), 2)] %>%
   st_as_sf()
 
 ```
+
 ```{r}
 
 ggplot() +
@@ -160,16 +160,15 @@ ggplot() +
 
 ```
 
-
 Remove the cities that have AT in approach.
 
 ```{r, warning=FALSE}
 
 ## remove the AT from Approach
-trfLoc_sbst <- trfLoc[!(trfLoc$Approach == "AT"),]
+##trfLoc_sbst <- trfLoc[!(trfLoc$Approach == "AT"),]
 
 ## Remove the points that intersect with cities
-trfCts <- trfShp[-unlist(st_intersects(ct, trfShp)),]
+##trfCts <- trfShp[-unlist(st_intersects(ct, trfShp)),]
 
 
 #gbg <- hwd[hwd$st_hwy_idx == "001",]
@@ -322,9 +321,9 @@ ggplot() +
 
 ```
 
-## Creating a histogram of howmany cities have stations between them. 
+## Creating a histogram of howmany cities have stations between them.
 
-```{r, fig.width=10, fig.height=10}
+```{r, fig.width=7, fig.height=7}
 
 ## Get coordinates for the centroid of the cities.
 #city_cntr <- st_coordinates(st_centroid(ct))
@@ -349,12 +348,9 @@ hist(edges$NumStations, xlab = "Number of stations between cities.")
 table(edges$NumStations)
 ```
 
-
-
-
 ## Reducing the cities to just wastewater cities
 
-```{r, fig.width=10, fig.height=10, warning=FALSE}
+```{r, fig.width=7, fig.height=7, warning=FALSE}
 WD <- "C:\\Users\\gauph\\Box\\Preliminary Results Coronavirus Sewer Surveillance\\Data files\\covid data files\\TestingSandbox\\RScripts"
 dat <- readRDS(paste(WD, "\\..\\COVID_Data_ROutput\\ProcessedCOVIDDataInfo.rds", sep= ""))
 df <- do.call(rbind.data.frame, sapply(dat, '[', 3))
@@ -410,16 +406,24 @@ for (i in 1:length(ct_sbst)) {
     #}
   }
 }
+
+colnames(dirEdges) <- c("to","from","stsn","wchStn", "distance")
+dirEdges$distance <- as.numeric(dirEdges$distance)
+
 ```
 
-```{r, fig.width=10, fig.height=10}
+```{r}
 ## Creating edges from the paths that we generate using shortest path algorithm. 
 ## Coloring based on the weight of the edge i.e. the number of nodes between the two nodes of interest.
-hist(as.numeric(dirEdges$numStn))
+hist(as.numeric(dirEdges$stsn))
 DirectGrph <- graph_from_data_frame(d = dirEdges, vertices = ct$city_name, directed = FALSE)
 incl <- V(DirectGrph)$name %in% ct_sbst
 V(DirectGrph)$included <- ifelse(incl == TRUE, "orangered3", "grey37")
-DirectGrph <- simplify(DirectGrph)
+DirectGrph <- igraph::simplify(DirectGrph,
+                       remove.multiple = TRUE,
+                       remove.loops = TRUE, 
+                       edge.attr.comb = list(distance = "min")
+                       )
 plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
             vertex.color = V(DirectGrph)$included,
             vertex.frame.color = V(DirectGrph)$included,
@@ -479,7 +483,6 @@ ggplot() +
 
 ```
 
-
 ## Highway Spatial network data
 
 *Need to bring the spatial networks code into this RMD*
@@ -495,9 +498,10 @@ cases <- cases[cases$state == "Oregon",]
 
 vaccine <- read.csv("../Data/COVID-19_Vaccinations_in_the_United_States_County.csv")
 
+cityDemo <- read_excel("../Data/City_data_2020")
+
 
 ```
-
 
 ### Deaths
 

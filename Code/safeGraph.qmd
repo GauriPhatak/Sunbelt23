@@ -1,0 +1,110 @@
+---
+title: "SafeGraph"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+library(reticulate)
+#miniconda_uninstall()
+#install_miniconda(path = miniconda_path() , update = T)
+#conda_list(conda = "e:/miniconda/_conda.exe")
+#use_condaenv(condaenv = "r-reticulate", conda = "e:/miniconda/_conda.exe")
+#py_install(packages = c("pandas", "scikit-learn"))
+
+```
+
+```{python}
+
+import pandas as pd
+import numpy as np
+
+n = 10000
+file  = "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/2020-01-06-weekly-patterns.csv.gz"
+
+df_chunks = []
+
+for df in pd.read_csv(file, chunksize = n, iterator = True, compression='gzip'):
+  df_f  = df.loc[df['region'] == "OR"]
+  df_chunks.append(df_f)
+  
+master_df = pd.concat(df_chunks)
+
+master_df.columns
+
+master_df = master_df[['city','region','postal_code','date_range_start', 'date_range_end','raw_visit_counts','raw_visitor_counts','visits_by_day', 'visits_by_each_hour', 'poi_cbg', 'visitor_home_cbgs', 'visitor_daytime_cbgs', 'visitor_country_of_origin', 'distance_from_home', 'median_dwell']]
+```
+
+``` {myenvs="conda_list()"}
+envname=myenvs$name[3]
+use_condaenv(envname, required = TRUE)
+py_install(packages = c("pandas", "scikit-learn", "numpy", "statsmodels"))
+```
+
+```{r}
+library(dplyr)
+library(knitr)
+
+lemurs <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-08-24/lemur_data.csv')
+
+lemur_data <- lemurs %>% 
+  filter(taxon == "ECOL",
+         sex == "M",
+         age_category == "adult") %>% 
+  select(c(age_at_wt_mo, weight_g)) %>% 
+  rename(Age = age_at_wt_mo, 
+         Weight = weight_g)
+kable(head(lemur_data))
+```
+
+```{python}
+
+lemur_data_py = r.lemur_data
+import statsmodels.api as sm
+y = lemur_data_py[["Weight"]]
+x = lemur_data_py[["Age"]]
+x = sm.add_constant(x)
+mod = sm.OLS(y, x).fit()
+lemur_data_py["Predicted"] = mod.predict(x)
+lemur_data_py["Residuals"] = mod.resid
+#library(reticulate)
+#reticulate::install_miniconda(force = TRUE)
+#Sys.getenv("RETICULATE_PYTHON")
+#use_virtualenv("WWproj2")
+#scipy <- import("scipy")
+
+```
+
+```{r}
+
+library(reticulate)
+library(ggplot2)
+lemur_residuals <- py$lemur_data_py
+ggplot(data = lemur_residuals,
+       mapping = aes(x = Predicted,
+                     y = Residuals)) +
+  geom_point(colour = "#2F4F4F") +
+  geom_hline(yintercept = 0,
+             colour = "red") +
+  theme(panel.background = element_rect(fill = "#eaf2f2",
+                                        colour = "#eaf2f2"),
+        plot.background = element_rect(fill = "#eaf2f2",
+                                       colour = "#eaf2f2"))
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
