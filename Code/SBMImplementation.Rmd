@@ -1,0 +1,1021 @@
+---
+title: "SBM Implementation"
+author: "Gauri Phatak"
+date: "5/19/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(igraph)
+library(tidyverse)
+library(ITNr)
+library(data.table)
+#library(ggnet2)
+library(GGally)
+library(gridExtra)
+library(ggpubr)
+library(gridGraphics)
+source("HelperFuncs.R")
+```
+
+1. Assign nodes to random communities
+
+2. Calculate log likelihood for simple SBM
+
+3. for each vertex. move the vertex to another community and calculate ll.
+
+4. save the ll in a list of lists.
+
+5. Do step 4 and 5 for each vertex.
+
+6. Check the matrix of vertices find the maximum increase in ll and make the move permanent.
+
+7. start with step 3 again. Continue till there no increase in ll.
+
+*ll function:(membership, graph)*
+
+sum_sr m_rs log(m_rs/n_r*n_s)
+
+```{r}
+# 
+# f <- function(x, n){
+#     sample(c(x,x,sample(x, n-2*length(x), replace=TRUE)))
+# }
+# 
+# ## Simple SBM log likelihood
+# llBasicsbm <- function(g){
+#   
+#   mm <- mixing_matrix_igraph(g,"group")
+#   ct <- as.matrix(table(data.frame(V(g)$group)))
+#   llval <- sum(colSums(mm *log(mm /(ct %*% t(ct)))))
+#   
+#   return(llval)
+# }
+# 
+# ## Degree corrected SBM log likelihood
+# llDCsbm <- function(g){
+#   
+#   d <- as.numeric(degree(g))
+#   d <- data.frame(cbind(deg = d,grp = as.numeric(V(g)$group)))
+#   d <- d %>% 
+#     group_by(grp) %>% 
+#     summarise(d = sum(deg),
+#            n = n())
+#   mm <- mixing_matrix_igraph(g,"group")
+#   deg <-  matrix(d$d)
+#   llval <- sum(colSums(mm *log(mm /(deg %*% t(deg)))))
+#   
+#   return(llval)
+# }
+# 
+# 
+# ##SBM function.
+# ## Add code to give the output for \omega matrix (m_rs/2*m)
+# lazySBM <- function(g,n,type, thresh,maxIter){
+#   grps <-  1:n
+#   l <-  length(V(g))
+#   prevll <- NA
+#   k <- 0
+# 
+#   if(2*n > l){
+#     return(print("There cannot be less than two nodes per group."))
+#   }
+# 
+#   while( is.na(prevll) || is.infinite(prevll)){
+#     randMem <- f(grps, l)
+#     V(g)$group <- randMem
+#     if(type == "simple"){
+#     prevll <- llBasicsbm(g)
+#     }
+#     else{
+#       prevll <- llDCsbm(g)
+#     }
+#   }
+#   origV <- V(g)$group
+#   
+#   iter  = 0
+#   gtmp <-  g
+#   ## Dataframe to save data for each iteration
+#   columns <- c("iterNum", "MaxVal", "VertChanged", "PrevGrp", "Newgrp","LTprev")
+#   opdf <-  data.frame(matrix(nrow = 0, ncol = length(columns))) 
+#   colnames(opdf) <- columns
+#   verts <- V(g)
+#   repeat{
+#     Mat <- matrix(rep(-Inf, n*l), nrow = l )
+#     
+#     for(i in verts){
+#       for(j in grps[V(g)$group[i] != grps]){
+#         
+#         gtmp <- g
+#         V(gtmp)$group[i] <-  j
+#         
+#         if(type == "simple"){
+#           Mat[i,j] <- llBasicsbm(gtmp)
+#         }
+#         else{
+#           Mat[i,j] <- llDCsbm(gtmp)
+#         }
+#         
+#       }
+#     }
+#     
+#     maxVal <- max(Mat, na.rm = TRUE)
+#     ind <- which(Mat == maxVal, arr.ind = TRUE)
+#     pg <- which(Mat[ind[1,1],] == -Inf, arr.ind = TRUE)
+#     iter  <-  iter +1
+#     k <- (prevll - maxVal)
+#     opdf <- opdf %>% 
+#       add_row(iterNum = iter, 
+#               MaxVal= maxVal, 
+#               VertChanged = ind[1,1], 
+#               PrevGrp = pg, 
+#               Newgrp = ind[1,2],
+#               LTprev = k)
+#     if( iter < maxIter){
+#       if((maxVal > prevll)) {
+#         V(g)$group[ind[1,1]] <- ind[1,2]
+#         prevll <-  maxVal
+#       }
+#       else if(maxVal < prevll ){
+#         
+#         #if( (prevll - maxVal) < thresh){
+#         if( (prevll - maxVal) < (prevll*thresh)){
+#           
+#           V(g)$group[ind[1,1]] <- ind[1,2]
+#           prevll <-  maxVal
+#           
+#         }
+#         else{
+#           
+#           return(list(g , Mat, opdf, origV))
+#         }
+#       }
+#     }
+#     else{
+# 
+#       return(list(g , Mat, opdf, origV))
+#     }
+#    
+#   }
+#   
+#   return(list(g , Mat, opdf, origV))
+# }
+# 
+# ## calculate the ARI?
+# 
+# DataSetup <- function(v,n,pm, bs, type, thresh, maxIter){
+#   
+#   g <- sample_sbm(v, 
+#                   pref.matrix=pm, 
+#                   block.sizes=bs, 
+#                   directed = FALSE)
+#   
+#   
+#   ## Using edge betweenness to compare the log likelihood.
+#   clu <- cluster_edge_betweenness(g)
+#   #grp <-  rep(c(1,2,3), times = bs)
+#   g$group <- clu$membership
+#   
+#   relations <- data.frame(get.edgelist(g))
+#   g <- graph_from_data_frame(relations, 
+#                              directed=FALSE, 
+#                              vertices=as.character(1:v))
+#   if(type == "simple"){
+#   op <- lazySBM(g, n, type, thresh, maxIter)
+#   }
+#   else if(type == "DC"){
+#   op <- lazySBM(g, n, type, thresh, maxIter)
+#   }
+#   else if(type == "both"){
+#   op1 <- lazySBM(g, n, "simple", thresh, maxIter)
+#   op2 <- lazySBM(g, n, "DC", thresh, maxIter)
+#   op <- list(op1,op2)
+#   }
+#   else {
+#     print("Incorrect type entered.")
+#   }
+#   #V(g)$group <- clu$membership
+#   
+#   return(list(op, clu$membership))
+#   
+# }
+
+
+
+```
+
+## Experimentation
+
+There are 3 parameters that can be changed.
+
+n : Number of groups
+
+S : size of the network
+
+S_g : size of each group
+
+\omega : Proportion of edges between and within each group.
+
+```{r}
+
+nodes <- as.character(1:10)
+#member <- as.character(c(1,1,1,2,2,2,3,3,3,3))
+relations <- data.frame(from=c("1","1","2","3","3","4","4","6","9","8", "8"),
+                        to=  c("2","3","3","4","8","5","6","7","8","10","7"))
+g <- graph_from_data_frame(relations, directed=FALSE, vertices=nodes)
+#V(g)$group <- member
+#plot(g, vertex.color = V(g)$group)
+
+## Try out the degree corrected SBM log likelihood function
+
+#llsbm <-llDCsbm(g)
+
+## Try out the simple SBM log likelihood function
+
+#llsbm <-llsbm(g)
+
+## Run the lazy SBM function for basic SBM
+
+
+basic = 1
+thresh = 0.05
+op <- lazySBM(g, 3, basic, thresh)
+finalGrph <- op[[1]]
+finalMat <- op[[2]]
+opDF <- op[[3]]
+
+llBasicsbm(g)
+plot(finalGrph, vertex.color = V(finalGrph)$group)
+
+## Run the lazy SBM function for DC SBM
+DCsbm = 2
+op <- lazySBM(g, 3, DCsbm, thresh)
+finalGrphDC <- op[[1]]
+finalMatDC <- op[[2]]
+opDFDC <- op[[3]]
+plot(finalGrphDC, vertex.color = V(finalGrphDC)$group)
+
+
+```
+
+## Code for creating sample sbm 
+
+```{r}
+set.seed(42)
+pm <- cbind( c(0.5, 0.01, 0.01), c(0.01, 0.5, 0.01), c(0.01,0.01,0.5) )
+g <- sample_sbm(70, pref.matrix=pm, block.sizes=c(30,25,15))
+
+attributes(V(g))
+
+grp <-  rep(c(1,2,3), times = c(30,25,15))
+
+#clu <- components(g)
+clu <- cluster_edge_betweenness(g)
+plot(g, vertex.color = grp, vertex.size = 8, vertex.label = NA)
+
+```
+
+
+## Create testing matrix
+
+```{r}
+
+v <- c(90,120,240,540,1200)
+n <- c(3,5,7)
+#pm <- data.table(n = rep(3,4),
+pm <- list(c(0.8,0.01,0.02,0.01,0.7,0.01,0.02,0.01,0.8),
+           c(0.4,0.01,0.02,0.01,0.5,0.01,0.02,0.01,0.4),
+           c(0.8,0.2,0.2,0.2,0.7,0.2,0.2,0.2,0.8),
+           c(0.4,0.2,0.2,0.2,0.5,0.2,0.2,0.2,0.4))
+
+#thresh <- c(0.02,0.05,0.07)
+
+## Divide the nodes in different ratios
+p <- list(c(2/5,2/5,1/5),c(1/3,1/3,1/3),c(1/5,3/5,1/5))
+g <- expand.grid(p,v)
+#gbg <-expand.grid(v, pm)
+g <- map2(g$Var1, g$Var2, function(x,y) x*y)
+test_3 <- cbind(expand.grid(pm,g), 
+                rep(v,each = 12))
+
+colnames(test_3) <- c("pm","bs","v")
+
+rm(g,p,pm,n,v)
+
+```
+
+### Testing the testing matrix (WITH OLD CODE)
+
+```{r}
+n <- 3
+thresh = 0.02
+maxIter = 500
+#matrix(test_3$pm[[1]],n)
+
+#DataSetup <- function(v,n,pm, bs, type, thresh, maxIter)
+gbg <- DataSetup(test_3$v[1], n,matrix(test_3$pm[[1]],nrow = n), test_3$bs[[1]], "both", thresh, maxIter )
+
+saveRDS(gbg, paste("Test3_",as.character(test_3$v[1]),"_1a.rds", sep = ""))
+
+q <- readRDS("Test3_90_1a.rds")
+```
+
+
+## Small network of 70 nodes with 3 groups:
+
+### Erdos-Renyi model
+
+```{r}
+set.seed(42)
+k <- 0.1
+v <- 70
+n  <- 3
+pm <- matrix(rep(k,9), nrow =3 )
+g <- sample_sbm(70, pref.matrix=pm, block.sizes=c(30,25,15), directed = FALSE)
+#clu <- components(g)
+
+clu <- cluster_edge_betweenness(g)
+grps <- clu$membership
+#plot(g, vertex.color = clu$membership, vertex.size = 8, vertex.label = NA)
+
+nodes <- as.character(1:v)
+relations <- data.frame(get.edgelist(g))
+g <- graph_from_data_frame(relations, directed=FALSE, vertices=nodes)
+V(g)$group <- grps
+basic = 1
+thresh = 0.05
+llBasicsbm(g)
+
+op <- lazySBM(g, 3, basic, thresh)
+finalGrph <- op[[1]]
+finalMat <- op[[2]]
+opDF <- op[[3]]
+plot(finalGrph, vertex.color = V(finalGrph)$group, vertex.size = 8, vertex.label = NA)
+#plot(g, vertex.color = clu$membership, vertex.size = 8, vertex.label = NA)
+
+DCsbm = 2
+op <- lazySBM(g, 3, DCsbm, thresh)
+finalGrphDC <- op[[1]]
+finalMatDC <- op[[2]]
+opDFDC <- op[[3]]
+plot(finalGrphDC, vertex.color = V(finalGrphDC)$group)
+
+
+```
+
+Since Erdos Renyi Model has equal probability for a given edge, the ground truth LL cannot be calculated. Some of the groups generated by edge betweeness have less than 2 nodes. 
+
+
+### model with 0 off diagonal and around 0.8 within group prob
+
+```{r}
+## Type=1 or basic SBM or type=2 for DC SBM 
+
+#set.seed(42)
+
+v <- 80 #readline(prompt = "Enter the number of vertices: ")
+n  <- 3 #readline(prompt = "Enter the number of groups: ")
+pm <- matrix(c(0.8, 0.01, 0.01,0.01, 0.7, 0.01,0.01,0.01,0.8), nrow = n)
+bs <- c(35,25,20)
+thresh = 0.02
+maxIter  = 100
+
+## Basic SBM
+op <- DataSetup(v,n,pm, bs, 1, thresh, maxIter)
+opDF <- op[[1]][[3]]
+plot(op[[1]][[1]], vertex.color = op[[1]][[4]], vertex.size = 8, vertex.label = NA)
+plot(op[[1]][[1]], vertex.color = V(op[[1]][[1]])$group, vertex.size = 8, vertex.label = NA)
+plot(op[[1]][[1]], vertex.color = op[[2]], vertex.size = 8, vertex.label = NA)
+llBasicsbm(op[[1]][[1]])
+V(op[[1]][[1]])$group <- op[[2]]
+llBasicsbm(op[[1]][[1]])
+
+## DC SBM
+op <- DataSetup(v,n,pm, bs, 2, thresh, maxIter)
+opDFDC <- op[[1]][[3]]
+plot(op[[1]][[1]], vertex.color = op[[1]][[4]], vertex.size = 8, vertex.label = NA)
+plot(op[[1]][[1]], vertex.color = V(op[[1]][[1]])$group, vertex.size = 8, vertex.label = NA)
+plot(op[[1]][[1]], vertex.color = op[[2]], vertex.size = 8, vertex.label = NA)
+V(op[[1]][[1]])$group <- op[[2]]
+llDCsbm(op[[1]][[1]])
+
+```
+
+
+### network with low off diagonal and aropund 0.5-0.7 within group prob.
+
+```{r}
+## Type=1 or basic SBM or type=2 for DC SBM 
+
+#set.seed(42)
+
+v <- 70
+n  <- 3
+pm <- cbind( c(0.5, 0.001, 0.001), c(0.001, 0.3, 0.001), c(0.001,0.001,0.4) )
+bs <- c(30,25,15)
+thresh = 0.02
+maxIter = 100
+
+## Basic SBM
+op <- DataSetup(v,n,pm, bs, 1, thresh, maxIter)
+opDF <- op[[1]][[3]]
+plot(op[[1]][[1]], vertex.color = op[[1]][[4]], vertex.size = 8, vertex.label = NA)
+plot(op[[1]][[1]], vertex.color = V(op[[1]][[1]])$group, vertex.size = 8, vertex.label = NA)
+plot(op[[2]], vertex.color = V(op[[2]])$group, vertex.size = 8, vertex.label = NA)
+cbind(V(op[[1]][[1]])$group,op[[2]])
+
+llBasicsbm(op[[1]][[1]])
+llBasicsbm(op[[2]])
+
+## DC SBM
+op <- DataSetup(v,n,pm, bs, 2, thresh, maxIter)
+opDFDC <- op[[1]][[3]]
+plot(op[[1]][[1]], vertex.color = op[[1]][[4]], vertex.size = 8, vertex.label = NA)
+plot(op[[1]][[1]], vertex.color = V(op[[1]][[1]])$group, vertex.size = 8, vertex.label = NA)
+plot(op[[2]], vertex.color = V(op[[2]])$group, vertex.size = 8, vertex.label = NA)
+cbind(V(op[[1]][[1]])$group,op[[2]])
+
+llDCsbm(op[[1]][[1]])
+llDCsbm(op[[2]])
+
+```
+
+
+The threshold value makes a difference in the ability to recognize group. DCsbm seemed to be doing worse with 0.03 vs 0.02. Need to look into this further. 
+I started with a hard coded integer value.
+
+## Medium network of 200 nodes with 3 groups
+
+### Erdos-Renyi model
+
+```{r}
+## Not sure if doing this is useful
+```
+
+
+### model with 0 off diagonal and around 0.8 within group prob
+
+```{r}
+## Type=1 or basic SBM or type=2 for DC SBM 
+
+#set.seed(42)
+# 
+v <- 200
+n  <- 3
+pm <- cbind( c(0.8, 0.01, 0.01), c(0.01, 0.7, 0.01), c(0.01,0.01,0.6) )
+bs <- c(55,50,95)
+thresh = 0.05
+maxIter =1000
+
+## Basic SBM
+op <- DataSetup(v,n,pm, bs, 1, thresh, maxIter)
+#op <-  readRDS("Test3_90_11a,rds")
+opDF <- op[[1]][[3]]
+plot(op[[1]][[1]], vertex.color = op[[1]][[4]], vertex.size = 8, vertex.label = NA)
+plot(op[[1]][[1]], vertex.color = V(op[[1]][[1]])$group, vertex.size = 8, vertex.label = NA)
+plot(op[[1]][[1]], vertex.color = op[[2]], vertex.size = 8, vertex.label = NA)
+p <- cbind(V(op[[1]][[1]])$group,op[[2]])
+
+llBasicsbm(op[[1]][[1]])
+#llBasicsbm(op[[2]])
+
+## DC SBM
+op <- DataSetup(v,n,pm, bs, 2, thresh,maxIter)
+opDFDC <- op[[1]][[3]]
+plot(op[[1]][[1]], vertex.color = op[[1]][[4]], vertex.size = 8, vertex.label = NA)
+plot(op[[1]][[1]], vertex.color = V(op[[1]][[1]])$group, vertex.size = 8, vertex.label = NA)
+plot(op[[1]][[1]], vertex.color = op[[2]], vertex.size = 8, vertex.label = NA)
+p <- cbind(V(op[[1]][[1]])$group,op[[2]])
+
+llDCsbm(op[[1]][[1]])
+#llDCsbm(op[[2]])
+
+```
+
+# Plots from cluster tests
+
+This test run is for 3 groups with threshold value 3% and max iterations of 500.
+
+Network sizes of c(90,120,240,540,1200) # There are 12 combinations for each network size. 
+
+The preference matrix for edge connections between and within groups
+
+pm <- list(c(0.8,0.01,0.02,0.01,0.7,0.01,0.02,0.01,0.8), # densely connected groups with sparse connections between groups
+c(0.4,0.01,0.02,0.01,0.5,0.01,0.02,0.01,0.4), # Moderately connected groups and sparse connections between groups
+c(0.8,0.2,0.2,0.2,0.7,0.2,0.2,0.2,0.8), # Densely connected groups with closer to moderate connections between groups
+c(0.4,0.2,0.2,0.2,0.5,0.2,0.2,0.2,0.4)) # Moderately connected groups with closer to moderate connections between groups
+
+p <- list(c(2/5,2/5,1/5), # Two larger groups one smaller group
+c(1/3,1/3,1/3), # Groups of the same size
+c(1/5,3/5,1/5)) # One large group two smaller groups
+
+
+```{r}
+
+#grp <-  rep(c(1,2,3), times = c(40,40,40))
+
+t1 <- readRDS("SBMtestsFromCluster/GroupSize3/Test3_90_1a.rds")
+grp <-  rep(c(1,2,3), times = test_3[1,]$bs[[1]])
+s<- t1[[1]][[1]]
+opDF <- s[[3]]
+plot(s[[1]], vertex.color = s[[4]], vertex.size = 8, vertex.label = NA, main = "Random assignment for SSBM")
+plot(s[[1]], vertex.color = V(s[[1]])$group, vertex.size = 8, vertex.label = NA, main = "Detected Groups for SSBM")
+#plot(s[[1]], vertex.color = t1[[2]], vertex.size = 8, vertex.label = NA)
+p <- cbind(V(s[[1]])$group,t1[[2]])
+ARIs <-  compare(V(s[[1]])$group,t1[[2]], 'adjusted.rand')
+
+#llBasicsbm(op[[1]][[1]])
+#llBasicsbm(op[[2]])
+
+## DC SBM
+dc <- t1[[1]][[2]]
+opDFDC <- dc[[3]]
+plot(dc[[1]], vertex.color = dc[[4]], vertex.size = 8, vertex.label = NA, main = "Random assignment for DCSBM")
+plot(dc[[1]], vertex.color = V(dc[[1]])$group, vertex.size = 8, vertex.label = NA, main = "Detected Groups for DCSBM")
+plot(dc[[1]], vertex.color = grp, vertex.size = 8, vertex.label = NA, main = "SBM assignment results ")
+p <- cbind(V(dc[[1]])$group,t1[[2]])
+ARIdc <-  compare(V(dc[[1]])$group,t1[[2]], 'adjusted.rand')
+```
+1. Both seem to have not detected the third group.
+Simple SBM can detect the third group to be part of the larger group while DC SBM detected the third group to be part of the smaller group.
+
+2. Similar to results from 1
+
+10. For tests with two smaller groups and one larger group, the ARI seems to be higher, but that is because the larger group is detected well. the smaller groups not so much. 
+
+```{r}
+test_3$ARIs <- rep(0,60)
+test_3$ARIdc <- rep(0,60)
+i <- 1
+for(j in rep(c(90,120), times= c(12,12))){
+  
+  path <- paste("SBMtestsFromCluster/GroupSize3/Test3_",
+                as.character(j),"_",as.character(i),
+                "a.rds", sep = "")
+  t1 <- readRDS(path)
+  s<- t1[[1]][[1]]
+  test_3$ARIs[i] <-  compare(V(s[[1]])$group,t1[[2]], 'adjusted.rand')
+  dc <- t1[[1]][[2]]
+  test_3$ARIdc[i] <-  compare(V(dc[[1]])$group,t1[[2]], 'adjusted.rand')
+  i <- i+1
+}
+
+
+```
+
+## Testing the sourced functions from HelperFuncs script.
+
+
+```{r}
+source("HelperFuncs.R")
+
+#To test number 21 and 
+t1 <- test_3[1,]
+n = 3
+thresh = 0.002
+maxIter = 400
+nRandStrt = 3
+
+#DataSetup(test_3$v[1], n,matrix(test_3$pm[[1]],nrow = n), test_3$bs[[1]], "both", thresh, maxIter )
+op <- DataSetup(t1$v,
+                n,
+                matrix(t1$pm[[1]],nrow =n),
+                t1$bs[[1]],
+                "DC",
+                thresh,
+                maxIter,
+                nRandStrt)
+
+saveRDS(test_3, "test3Matrix.rds")
+
+test <- readRDS("test3Matrix.rds")
+
+
+```
+
+What is the property that connects the nodes that are moved. 
+```{r}
+## Exploring the output of the data setup function
+
+## original plot 
+plot(op$genGraph, vertex.color = op$FrmSampleSBM, 
+     vertex.size = 8, vertex.label = NA, main = "Original plot created by SBM")
+
+## output from iteration 1
+plot(op$genGraph, vertex.color = op$FrmLazySBM[[1]]$FinAsgn, 
+     vertex.size = 8, vertex.label = NA, main = "From DC SBM")
+plot(op$genGraph, vertex.color = op$FrmLazySBM[[2]], 
+     vertex.size = 8, vertex.label = NA, main = "Rand assgn1")
+
+
+## output from iteration 1
+plot(op$genGraph, vertex.color = op$FrmLazySBM[[3]]$FinAsgn, 
+     vertex.size = 8, vertex.label = NA, main = "From DC SBM")
+plot(op$genGraph, vertex.color = op$FrmLazySBM[[4]], 
+     vertex.size = 8, vertex.label = NA, main = "Rand assgn 2")
+
+view(op$FrmLazySBM[[1]]$Sequence)
+view(op$FrmLazySBM[[3]]$Sequence)
+view(op$FrmLazySBM[[5]]$Sequence)
+
+```
+
+# Does random start make a difference?
+
+Yes :(
+
+# How does the algo behave when we adjust the threshold?
+
+If it finds a node that decreases the ll, it just oscillates. 
+
+*Need to add degree for the changed vertex.*
+
+## Reading RDS data from the #1 test DC
+
+```{r}
+source("HelperFuncs.R")
+g <-  t1$genGraph
+V(g)$group <- t1$FrmSampleSBM
+llGT <-  llDCsbm(g)
+
+min_max_norm <- function(x) {
+    (x - min(x)) / (max(x) - min(x))
+  }
+
+## Testing number 1
+#getwd()
+t1 <- readRDS("SBMtestsFromCluster/Test4_DC.rds")
+# view(t1$FrmLazySBM[[1]]$Sequence)
+# view(t1$FrmLazySBM[[3]]$Sequence)
+# view(t1$FrmLazySBM[[5]]$Sequence)
+# view(t1$FrmLazySBM[[7]]$Sequence)
+# view(t1$FrmLazySBM[[9]]$Sequence)
+# view(t1$FrmLazySBM[[11]]$Sequence)
+
+
+ll <-  rep(0,120)
+llold <- rep(0,120)
+j <- 0
+for(i  in seq(1,240,2)){
+  j <- j+1
+  l <- length(t1$FrmLazySBM[[i]]$Sequence$MaxVal)
+  ll[j] <- t1$FrmLazySBM[[i]]$Sequence$MaxVal[l-1]
+  llold[j] <- t1$FrmLazySBM[[i]]$Sequence$MaxVal[1]
+  
+}
+
+pctChng <-  100*(llold- ll)/llold
+
+ARIfinal <- rep(0,120)
+
+for(i in seq(1,240,2)){
+  ARIfinal[ceiling(i/2)] <- compare(t1$FrmLazySBM[[i]]$FinAsgn, t1$FrmSampleSBM, method = "adjusted.rand")
+  
+}
+
+ARIpctChng <- 100*(ARIrand -ARIfinal)/ARIrand
+#plot(ll, ARIfinal)
+
+## interesting extreme results
+d <- which(ARIfinal < 0.1)
+d <-  c(d, which(ARIfinal > 0.9))
+
+comp <- t1$FrmSampleSBM
+ARIrand <- rep(0,120)
+j <- 1
+for(i  in seq(2,240,2)){
+  ARIrand[j] <- compare(comp, t1$FrmLazySBM[[i]], method = "adjusted.rand")
+  j <- j+1
+}
+
+op <-  as.data.frame(cbind(ll,ARIfinal, ARIrand))
+opChng <-  as.data.frame(cbind(ll,pctChng, ARIpctChng, ARIfinal))
+
+opChng$ARIpctChngnorm <- min_max_norm(opChng$ARIpctChng)
+opChng$pctChngnorm <- min_max_norm(opChng$pctChng)
+
+opChng  %>% 
+  ggplot()+
+  geom_point(aes(y = pctChng, x = ARIfinal), alpha =0.2)
+
+
+opChng  %>% 
+  ggplot()+
+  geom_point(aes(y = pctChng, x = ll), alpha =0.2)
+
+opChng  %>% 
+  gather(key = "type", value = "value", -ll, -ARIpctChng) %>%
+  ggplot()+
+  geom_point(aes(y = value, x = ll, color = type), alpha =0.2)
+
+opChng  %>% 
+  gather(key = "type", value = "value", -ll, -ARIpctChng, -pctChng, -ARIfinal ) %>%
+  ggplot()+
+  geom_point(aes(y = value, x = ll, color = type), alpha =0.2)
+
+
+op  %>% 
+  gather(key = "type", value = "value", -ll) %>%
+  ggplot()+
+  geom_point(aes(y = value, x = ll, color = type), alpha =0.2)
+
+
+
+#ggplot(data = as.data.frame(op))+
+#  geom_point(aes(y = ARIfinal, x = ARIrand))
+
+for(i in seq(1,20,2)){
+  #for(i in (c(5)*2-1)){
+  plot(t1$genGraph, vertex.color = t1$FrmLazySBM[[i]]$FinAsgn,
+       vertex.size = 8,vertex.label = NA,
+       main = paste0("Final assignments for ",
+                     as.character(i),
+                     " with ARI ",
+                     as.character(round(ARIfinal[ceiling(i/2)], 3))))
+}
+
+plot(t1$genGraph, vertex.color = t1$FrmSampleSBM,
+     vertex.size = 8, vertex.label = NA,
+     main = "SBM assignment")
+
+
+```
+
+
+## Why do nodes within the same group move consecutively? (This will reduce the number of iterations in the while loop, but will still get stuck in local maxima.)
+
+### What different attributes does nodes have?
+https://igraph.org/r/html/latest/
+
+https://igraph.org/r/html/latest/count_triangles.html
+https://igraph.org/r/html/latest/edge_connectivity.html
+https://igraph.org/r/html/latest/adjacent_vertices.html
+https://igraph.org/r/html/latest/alpha_centrality.html
+https://igraph.org/r/html/latest/cliques.html
+https://igraph.org/r/html/latest/components.html
+https://igraph.org/r/html/latest/betweenness.html
+https://igraph.org/r/html/latest/assortativity.html
+
+### Properties of the subgraph i.e. relationship between the node that moved and the nodes that move after it (with same orevious group.)
+
+### Relationship between the node that moved and the group it moved to. 
+
+```{r}
+## sample SBM created by using the code above
+
+attr <- vertex_attr(g)
+
+
+```
+
+
+## Explore Monte Carlo simulation for getting g_i i.e. the kappa value for each predefined group. 
+
+
+
+
+## Testing Karate club data
+
+```{r}
+
+kc <- read_graph("Data/karate/karate.gml", format ="gml" )
+
+
+relations <- data.frame(get.edgelist(kc))
+g <- graph_from_data_frame(relations, 
+                           directed=FALSE, 
+                           vertices=as.character(1:length(V(kc))))
+
+op <- lazySBM(g, 2, "simple", 0.02, 200)
+op <- lazySBM(g, 2, "DC", 0.02, 200)
+
+
+```
+## Comparison between DC SBM and Regularized Spectral method.
+
+```{r}
+#gbg <- readRDS("SBMtestsFromCluster/SCcomp/SCsingletest.rds")
+
+tm <- readRDS("test3Matrix.rds")
+SC <- readRDS("SBMtestsFromCluster/SCcomp/SCsingle.rds")
+p <- 24
+t <- p*4
+
+ll <-  rep(0,p)
+llold <- rep(0,p)
+SCcomp <- rep(0,p)
+DCcomp <- rep(0,p)
+SCll <- rep(0,p)
+llSBM <- rep(0,p)
+j <- 0
+for(i  in seq(2,t,4)){
+  j <- j+1
+  l <- length(SC[[i]]$FromSBMRep$Sequence$MaxVal)
+  ll[j] <- SC[[i]]$FromSBMRep$Sequence$MaxVal[l-1]
+  llold[j] <- SC[[i]]$FromSBMRep$Sequence$MaxVal[1]
+  SCcomp[j] <- compare(SC[[i+1]], SC[[i+2]], method = "adjusted.rand")
+  DCcomp[j] <- compare(SC[[i]]$FromSBMRep$FinAsgn, SC[[i+1]], method = "adjusted.rand")
+
+  ## calculating the log likelihood for spectral clustering
+  g <-  SC[[i-1]]
+  V(g)$group <-  SC[[i+2]]
+  SCll[j] <- llDCsbm(g)
+  V(g)$group <- SC[[i+1]]
+  llSBM[j] <- llDCsbm(g)
+}
+
+
+j <- 1
+for(i in seq(1,t, 4)){
+  A <- ggnet2(SC[[i]], node.color = SC[[i+2]], node.size = 1, 
+              edge.size = 0.02, edge.color = "grey", edge.alpha =0.5)
+  B <- ggnet2(SC[[i]], node.color = SC[[i+1]]$FromSBMRep$FinAsgn, node.size = 1, 
+              edge.size = 0.02, edge.color = "grey", edge.alpha =0.5)
+  C <- ggnet2(SC[[i]], node.color = SC[[i+3]], node.size = 1, 
+              edge.size = 0.02, edge.color = "grey", edge.alpha =0.5)
+  tab1 <- ggtexttable(
+    matrix(tm[j,1][[1]], nrow=3)
+  )
+  tab2 <- ggtexttable(
+    as.data.frame(
+         c(Size = tm[j,3])
+       )
+  )
+  tab3 <- ggtexttable(
+    matrix(tm[j,2][[1]], nrow =1)
+  )
+  tab <- ggarrange(tab1,tab3, nrow = 2,
+                   labels = c("Preference matrix", "Group size"),
+                   font.label = list(size = 6))
+  print(ggarrange(A,B,C,tab,
+                  ncol = 2, nrow=2, 
+                  labels = c(paste("GT ll: ",as.character(floor(llSBM[j]))), 
+                             paste("DC-SBM ll:",as.character(floor(ll[j])),
+                                   " ARI: ", as.character(round(DCcomp[j],2))),
+                             paste("SC ll:", as.character(floor(SCll[j])),
+                                   " ARI: ", as.character(round(SCcomp[j],2)))
+                             ),
+                  font.label = list(size = 8)
+                  )
+        )
+  j<- j+1
+}
+
+
+## Test 1, 5, 7, 11
+
+## Test 13, 15, 19, 21
+
+```
+
+
+```{r, fig.width=15,fig.height= 9}
+
+
+tm <- readRDS("test3Matrix.rds")
+SC <- readRDS("SBMtestsFromCluster/SCcomp/SCsingle.rds")
+p <- 24
+t <- p*4
+
+ll <-  rep(0,p)
+llold <- rep(0,p)
+SCcomp <- rep(0,p)
+DCcomp <- rep(0,p)
+SCll <- rep(0,p)
+llSBM <- rep(0,p)
+j <- 0
+for(i  in seq(2,t,4)){
+  j <- j+1
+  
+  l <- length(SC[[i]]$FromSBMRep$Sequence$MaxVal)
+  ll[j] <- SC[[i]]$FromSBMRep$Sequence$MaxVal[l-1]
+  llold[j] <- SC[[i]]$FromSBMRep$Sequence$MaxVal[1]
+  SCcomp[j] <- compare(SC[[i+1]], SC[[i+2]], method = "adjusted.rand")
+  DCcomp[j] <- compare(SC[[i]]$FromSBMRep$FinAsgn, SC[[i+1]], method = "adjusted.rand")
+
+  ## calculating the log likelihood for spectral clustering
+  g <-  SC[[i-1]]
+  V(g)$group <-  SC[[i+2]]
+  SCll[j] <- llDCsbm(g)
+  V(g)$group <- SC[[i+1]]
+  llSBM[j] <- llDCsbm(g)
+}
+
+edgecol <- function(x,c1,c2){
+    if(x[c1] == 1 & x[c2] == 1){
+      x[c2+1] = "#00AFBB"
+    }
+    else if(x[c1] ==2 & x[c2] == 2){
+      x[c2+1] = "#E7B800"#
+    }
+    else if(x[c1] ==3 & x[c2] ==3){
+      x[c2+1] = "#FC4E07"#
+    }
+    else{
+      x[c2+1] = "grey"
+    }
+}
+
+pal = c("#00AFBB", "#E7B800", "#FC4E07")
+
+
+j <- 1
+for(i in seq(1,t,4)){
+  
+  ## get edge list
+  G <- apply(as_edgelist(SC[[i]]),2,as.numeric)
+  colnames(G) <- c("X","Y")
+  assgn <- as.data.frame(cbind(1:length(SC[[i+3]]), SC[[i+2]] ,SC[[i+1]]$FromSBMRep$FinAsgn, SC[[i+3]]))
+  colnames(assgn) <- c("node","GT","DC","SC")
+  
+  G <- left_join(as.data.frame(G), assgn[,c(1,2)], by = c("X" = "node"))
+  G <- left_join(as.data.frame(G), assgn[,c(1,2)], by = c("Y" = "node"))
+  G$diffGT <- NA
+  G$diffGT <-  apply(G, 1, edgecol, c1 = 3, c2 = 4)
+  #G$diff <- G$V2.x - G$V2.y
+  
+  G <- left_join(as.data.frame(G), assgn[,c(1,3)], by = c("X" = "node"))
+  G <- left_join(as.data.frame(G), assgn[,c(1,3)], by = c("Y" = "node"))
+  G$diffDC <- NA
+  G$diffDC <-  apply(G, 1, edgecol, c1 = 6, c2 = 7)
+  
+  G <- left_join(as.data.frame(G), assgn[,c(1,4)], by = c("X" = "node"))
+  G <- left_join(as.data.frame(G), assgn[,c(1,4)], by = c("Y" = "node"))
+  G$diffSC <- NA
+  G$diffSC <-  apply(G, 1, edgecol, c1 = 9, c2 = 10)
+  
+  
+  
+  A <- ggnet2(SC[[i]], node.color = SC[[i+2]], node.size = 1, 
+              edge.size = 0.02, edge.color = G$diffGT, edge.alpha =0.3,
+              color.palette = pal)
+  B <- ggnet2(SC[[i]], node.color = SC[[i+1]]$FromSBMRep$FinAsgn, node.size = 1, 
+              edge.size = 0.02, edge.color = G$diffDC, edge.alpha =0.3,
+              color.palette = pal)
+  C <- ggnet2(SC[[i]], node.color = SC[[i+3]], node.size = 1, 
+              edge.size = 0.02, edge.color = G$diffSC, edge.alpha =0.3,
+              color.palette = pal)
+  tab1 <- ggtexttable(
+    matrix(tm[j,1][[1]], nrow=3)
+  )
+  tab2 <- ggtexttable(
+    as.data.frame(
+         c(Size = tm[j,3])
+       )
+  )
+  tab3 <- ggtexttable(
+    matrix(tm[j,2][[1]], nrow =1)
+  )
+  tab <- ggarrange(tab1,tab3, nrow = 2,
+                   labels = c("Preference matrix", "Group size"),
+                   font.label = list(size = 6))
+  print(ggarrange(A,B,C,tab,
+                  ncol = 2, nrow=2, 
+                  labels = c(paste("GT ll: ",as.character(floor(llSBM[j]))), 
+                             paste("DC-SBM ll:",as.character(floor(ll[j])),
+                                   " ARI: ", as.character(round(DCcomp[j],2))),
+                             paste("SC ll:", as.character(floor(SCll[j])),
+                                   " ARI: ", as.character(round(SCcomp[j],2)))
+                             ),
+                  font.label = list(size = 8)
+                  )
+        )
+  j<- j+1
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
