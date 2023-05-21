@@ -510,3 +510,22 @@ cityDemo <- read_excel("../Data/City_data_2020")
 ## Public Policy data
 
 ## Demographic data
+
+## Using the direct graph data and performing community detection 
+
+```{r}
+source("HelperFuncs.R")
+
+SimpleDirEdges <- get.edgelist(DirectGrph)
+
+
+```
+
+
+
+
+
+
+
+
+
