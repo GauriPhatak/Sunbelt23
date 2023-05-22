@@ -424,11 +424,15 @@ DirectGrph <- igraph::simplify(DirectGrph,
                        remove.loops = TRUE, 
                        edge.attr.comb = list(distance = "min")
                        )
+
+V(DirectGrph)$lat <- city_cntr[,1]
+V(DirectGrph)$lon <- city_cntr[,2]
+
 plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
             vertex.color = V(DirectGrph)$included,
             vertex.frame.color = V(DirectGrph)$included,
             edge.color = as.numeric(edges$NumStations)+1,
-            edge.width = 1, layout = city_cntr)
+            edge.width = 1, layout = cbind(V(DirectGrph)$lat, V(DirectGrph)$lon))
 
 plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
             vertex.color = V(DirectGrph)$included,
@@ -513,12 +517,63 @@ cityDemo <- read_excel("../Data/City_data_2020")
 
 ## Using the direct graph data and performing community detection 
 
-```{r}
+```{r, warning=FALSE}
 source("HelperFuncs.R")
 
-SimpleDirEdges <- get.edgelist(DirectGrph)
+plot_graph <- function(g, m, title){
+  plot.igraph(g, vertex.size = 4, vertex.label = NA,
+            vertex.color = m,
+            edge.width = 1, layout = cbind(V(g)$lat, V(g)$lon), 
+            main = title)
+}
 
-## Testing if force push worked. 
+WWgrph <- igraph::delete.vertices(DirectGrph, degree(DirectGrph) == 0)
+plot(WWgrph,layout = cbind(V(WWgrph)$lat, V(WWgrph)$lon), vertex.size = 8, vertex.label = NA, main = "Original graph")
+
+## community detection methods in  igraph:
+mem_edge <- cluster_edge_betweenness(WWgrph, weights = 1/(E(WWgrph)$distance),directed = FALSE)
+plot_graph(WWgrph, membership(mem_edge), "Edge betweeness")
+
+mem_fg <- cluster_fast_greedy(WWgrph, weights =  1/(E(WWgrph)$distance))
+plot_graph(WWgrph, membership(mem_fg), "Fast greedy")
+
+mem_im <- cluster_infomap(WWgrph, e.weights =  1/(E(WWgrph)$distance))
+plot_graph(WWgrph, membership(mem_im), "Info Map")
+
+mem_lp <- cluster_label_prop(WWgrph, weights =  1/(E(WWgrph)$distance))
+plot_graph(WWgrph, membership(mem_lp), "Label propogation")
+
+mem_le <- cluster_leading_eigen(WWgrph, weights =  1/(E(WWgrph)$distance))
+plot_graph(WWgrph, membership(mem_le), "Leading Eigen")
+
+mem_l <- cluster_leiden(WWgrph, weights =  1/(E(WWgrph)$distance))
+plot_graph(WWgrph, membership(mem_l), "Leiden")
+
+mem_o <- cluster_optimal(WWgrph, weights =  1/(E(WWgrph)$distance))
+plot_graph(WWgrph, membership(mem_o), "Optimal")
+
+mem_wt <- cluster_walktrap(WWgrph, weights =  1/(E(WWgrph)$distance))
+plot_graph(WWgrph, membership(mem_wt), "Walktrap")
+
+## SBM method
+n = 7
+thresh = 0.005
+maxIter = 50
+g <- WWgrph
+V(g)$name <- as.character(1:length(V(g)))
+
+op <- lazySBM(g, as.numeric(n), "simple", thresh, maxIter)
+plot_graph(g, op[[1]][[1]], "SBM")
+
+## DCSBM
+op <- lazySBM(g, as.numeric(n), "DC", thresh, maxIter)
+plot_graph(g, op[[1]][[1]], "DCSBM")
+
+## Regularized Spectral  clustering 
+op <- RegSpectralClust(g, n)
+plot_graph(g, op, "Spec")
+
+## Reguarized spectral clustering with covariates.
 
 ```
 

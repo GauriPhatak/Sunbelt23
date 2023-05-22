@@ -29,8 +29,8 @@ llDCsbm <- function(g){
   d <- data.frame(cbind(deg = d,grp = as.numeric(V(g)$group)))
   d <- d %>% 
     group_by(grp) %>% 
-    summarise(d = sum(deg),
-              n = n())
+    dplyr::summarise(d = sum(deg),
+                     n = n())
   mm <- mixing_matrix_igraph(g,"group")
   deg <-  matrix(d$d)
   llval <- sum(colSums(mm *log(mm /(deg %*% t(deg)))))
@@ -54,6 +54,8 @@ SBMrepeat <-  function(g,l,n,prevll,maxIter, thresh,FUN){
   colnames(opdf) <- columns
   verts <- V(g)
   repeat{
+    
+    #print("Inside the repeat loop")
     Mat <- matrix(rep(-Inf, n*l), nrow = l )
     
     for(i in verts){
@@ -66,12 +68,13 @@ SBMrepeat <-  function(g,l,n,prevll,maxIter, thresh,FUN){
        
       }
     }
-    
+    #print("test1")
     maxVal <- max(Mat, na.rm = TRUE)
     ind <- which(Mat == maxVal, arr.ind = TRUE)
     pg <- which(Mat[ind[1,1],] == -Inf, arr.ind = TRUE)
     iter  <-  iter +1
     k <- (prevll - maxVal)
+    #print("test2")
     opdf <- opdf %>% 
       add_row(iterNum = iter, 
               MaxVal= maxVal, 
@@ -81,11 +84,15 @@ SBMrepeat <-  function(g,l,n,prevll,maxIter, thresh,FUN){
               LTprev = k)
     a <- as.data.frame(cbind(degree(gtmp,as.numeric(as_ids(neighbors(gtmp,ind[1,1])))),
                              V(gtmp)$group[as.numeric(as_ids(neighbors(gtmp,ind[1,1])))]))
+    #print("test3")
+    
     a <- subset(a,a[,2] == as.numeric(pg))
     b <- as.list(a$V1)
     names(b) <-  rownames(a)
+    #print("test4")
     degrees <- c(degrees, list(b))
     if( iter < maxIter){
+      #print(iter)
       if((maxVal > prevll)) {
         V(g)$group[ind[1,1]] <- ind[1,2]
         prevll <-  maxVal
@@ -124,11 +131,12 @@ lazySBM <- function(g,n,type, thresh,maxIter){
   
   ## setting vriables for the group sizes and total nodes
   l <-  length(V(g))
+  #print(l)
   prevll <- NA
   k <- 0
   
   #3 checking if the number of groups is larger then the algorithm can handle.
-  if(2*n > l){
+  if((2*n) > l){
     return(print("There cannot be less than two nodes per group."))
   }
   
