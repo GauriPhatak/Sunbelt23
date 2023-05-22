@@ -571,7 +571,7 @@ plot_graph(g, op[[1]][[1]], "DCSBM")
 
 ## Regularized Spectral  clustering 
 op <- RegSpectralClust(g, n)
-plot_graph(g, op, "Spec")
+plot_graph(g, op, "Spectral")
 
 ## Reguarized spectral clustering with covariates.
 
