@@ -28,8 +28,8 @@ library(sf)
 library(foreach)
 library(igraph)
 library(geosphere)
+library(CASCORE)
 ```
-
 # Exploring Different datasets used for this project:
 
 We will mainly look at county level or city level data depending on the grnularity of the avaiable datasets.
@@ -80,6 +80,10 @@ df <- df %>%
   group_by(location, WY) %>%
   dplyr::summarise(across(where(is.numeric), sum))
 
+```
+
+```{r}
+
 trfLoc <- readxl::read_xlsx("../Data/TCDS/tcds_list.xlsx",sheet = "tcds_list",  skip = 13)
 
 trfShp <- trfLoc %>% 
@@ -88,6 +92,10 @@ trfShp <- trfLoc %>%
            na.fail = FALSE) %>%
   st_set_crs(4326) %>%
   st_transform(crs= 32736)
+
+```
+
+```{r}
 
 ##Loading city data
 hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
@@ -117,6 +125,11 @@ st_crs(fin) <- st_crs(ct)
 hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
 #rgdal::ogrListLayers(hwpath)
 ct <- st_read(hwpath, layer = "City_Limits__2016_")
+
+```
+
+
+```{r}
 
 trfShp <- st_transform(trfShp, st_crs(hwd))
 trfShp$LocID <-  trfLoc$`Loc ID`
@@ -152,9 +165,9 @@ intrPts <-  intrPts[seq(2, length(intrPts), 2)] %>%
 ```{r}
 
 ggplot() +
-  geom_sf(data = fin, aes(geometry = geometry), color = "black")+
-      geom_sf(data = ct, aes(geometry = shape), color = "green")+
-  geom_sf(data = intrPts, aes(geometry = x), color = "red")
+  geom_sf(data = fin, aes(geometry = geometry), color = "darkgray")+
+      geom_sf(data = ct, aes(geometry = shape), color = "darkred")
+  #geom_sf(data = intrPts, aes(geometry = x), color = "red")
 
 
 
@@ -314,8 +327,8 @@ ggplot() +
   geom_sf(data = ct, aes(geometry = shape), color = "blue")+
 #    geom_sf(data = gbg, aes(geometry = shape), color = "blue") +
 #  geom_sf(data = int, aes(geometry = shape), color = "red") +
-  geom_sf(data = trfShp, aes(geometry = geometry), color = "purple")+
-  geom_sf(data = det, aes(geometry= geometry), color = "green")+
+  #geom_sf(data = trfShp, aes(geometry = geometry), color = "purple")+
+  #geom_sf(data = det, aes(geometry= geometry), color = "green")+
   theme_minimal()
 
 
@@ -334,7 +347,7 @@ edges$NumStations <- as.numeric(edges$NumStations)
 plot.igraph(hwy_grph, vertex.label = NA, 
             vertex.size = 1, 
             vertex.color = "black",
-            edge.color = edges$NumStations+1, 
+            #edge.color = edges$NumStations+1, 
             edge.width = 2, 
             layout = city_cntr)
 plot.igraph(hwy_grph, vertex.label = NA, 
@@ -418,7 +431,7 @@ dirEdges$distance <- as.numeric(dirEdges$distance)
 hist(as.numeric(dirEdges$stsn))
 DirectGrph <- graph_from_data_frame(d = dirEdges, vertices = ct$city_name, directed = FALSE)
 incl <- V(DirectGrph)$name %in% ct_sbst
-V(DirectGrph)$included <- ifelse(incl == TRUE, "orangered3", "grey37")
+V(DirectGrph)$included <- ifelse(incl == TRUE, "#009E73", "#E69F00")
 DirectGrph <- igraph::simplify(DirectGrph,
                        remove.multiple = TRUE,
                        remove.loops = TRUE, 
@@ -428,18 +441,41 @@ DirectGrph <- igraph::simplify(DirectGrph,
 V(DirectGrph)$lat <- city_cntr[,1]
 V(DirectGrph)$lon <- city_cntr[,2]
 
-plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
+png("DirectPlot.png", 600,500)
+plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1.5,
             vertex.color = V(DirectGrph)$included,
             vertex.frame.color = V(DirectGrph)$included,
-            edge.color = as.numeric(edges$NumStations)+1,
+            edge.color = "#999999",
             edge.width = 1, layout = cbind(V(DirectGrph)$lat, V(DirectGrph)$lon))
+dev.off()
 
-plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
+plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1.5,
             vertex.color = V(DirectGrph)$included,
             vertex.frame.color = V(DirectGrph)$included,
             edge.color = edges$NumStations,
             edge.width = 1, layout = city_cntr)
 
+
+ggplot() +
+  geom_sf(data = hwd, aes(geometry = shape), color = "#999999")+
+  geom_sf(data = ct, aes(geometry = shape), fill = "#E69F00", color = "#E69F00")+
+#    geom_sf(data = gbg, aes(geometry = shape), color = "blue") +
+  geom_sf(data = ct[V(DirectGrph)$name %in% ct_sbst,], aes(geometry = shape), fill = "#009E73", color = "#009E73") +
+  #geom_sf(data = trfShp, aes(geometry = geometry), color = "purple")+
+  #geom_sf(data = det, aes(geometry= geometry), color = "green")+
+  theme_minimal()
+
+ggsave("citiesplot.png")
+
+png("Highwayplot.png", 600,500)
+plot.igraph(hwy_grph, vertex.label = NA, 
+            vertex.size = 1.5, 
+            vertex.color = V(DirectGrph)$included,
+            vertex.frame.color = V(DirectGrph)$included,
+            edge.color = "#999999", 
+            edge.width = 1, 
+            layout = city_cntr)
+dev.off()
 
 ```
 
@@ -499,10 +535,11 @@ ggplot() +
 cases <- read.csv("../Data/United_States_COVID-19_Community_Levels_by_County.csv")
 cases <- cases[cases$state == "Oregon",]
 
-
+county_cases <- read.csv("../Data/us-counties.csv")
+county_cases <- county_cases[county_cases$state == "Oregon",]
 vaccine <- read.csv("../Data/COVID-19_Vaccinations_in_the_United_States_County.csv")
 
-cityDemo <- read_excel("../Data/City_data_2020")
+#cityDemo <- read_excel("../Data/City_data_2020")
 
 
 ```
@@ -518,14 +555,7 @@ cityDemo <- read_excel("../Data/City_data_2020")
 ## Using the direct graph data and performing community detection 
 
 ```{r, warning=FALSE}
-source("HelperFuncs.R")
 
-plot_graph <- function(g, m, title){
-  plot.igraph(g, vertex.size = 4, vertex.label = NA,
-            vertex.color = m,
-            edge.width = 1, layout = cbind(V(g)$lat, V(g)$lon), 
-            main = title)
-}
 
 WWgrph <- igraph::delete.vertices(DirectGrph, degree(DirectGrph) == 0)
 plot(WWgrph,layout = cbind(V(WWgrph)$lat, V(WWgrph)$lon), vertex.size = 8, vertex.label = NA, main = "Original graph")
@@ -573,15 +603,96 @@ plot_graph(g, op[[1]][[1]], "DCSBM")
 op <- RegSpectralClust(g, n)
 plot_graph(g, op, "Spectral")
 
-## Reguarized spectral clustering with covariates.
+## importing wastewater data/
+
+covid <- read_csv("C:/Users/gauph/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/5.19.23/Combined_all_sample_data_aggregated_byfilter_2023-05-19.csv")
+
+covid <- covid[covid$SampleType == "Influent",]
+covid$Date <- as.dates(covid$Date)
+
+covid$epiweek <- epiweek(covid$Date)
+covid$epiyear <- epiyear(covid$Date)
+covid$ym <- format(as.Date(covid$Date), "%Y-%m")
+## subsampling OHA data only.
+covid <- covid[covid$Study == "OHA",]
+
+covid_my <- covid %>%
+  dplyr::group_by(ym, Location) %>%
+  dplyr::summarize(meanLogCopies = mean(LogCopiesPerL, na.rm = TRUE))
+
+#### Read in the population estimates for the different cities. 
+boxPath <- "C:/Users/gauph/Box/"
+wwtp_pop <- read_excel(paste0(boxPath,"Coronavirus Sewer Surveillance/Samples/WWTP_population.xlsx"), sheet = "wwtp_population", col_names = T)
+colnames(wwtp_pop)[which(names(wwtp_pop) == "City")] <- "Location"
+
 
 ```
 
 
 
+```{r}
+
+df <- covid %>%
+    ungroup() %>%
+    mutate(RV = as.numeric(paste0(epiyear,".",epiweek)))%>%
+    mutate(Wave = case_when(
+           between(RV, 2020.36,2021.09 )~"Pre-Alpha",
+           between(RV,2021.09, 2021.26 )~ "Alpha",
+           between(RV,2021.26,2021.44 )~ "Delta",
+           between(RV,2021.48, 2022.13 )~ "Omicron",
+           between(RV,2022.14, 2022.31 )~ "OmicronBA.2"
+           ))
 
 
+## Aggregating based on wave
+covid_wv <- df %>%
+  dplyr::group_by(Location, Wave) %>%
+  dplyr::summarize(mlc = mean(LogCopiesPerL, na.rm = TRUE)) %>%
+  filter(!is.na(Wave))
 
+
+## merging data for waves into the graph object as attributes
+V(WWgrph)$prealpha <- unlist((covid_wv %>% filter(Wave == "Pre-Alpha"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Pre-Alpha"))$Location),3])
+
+V(WWgrph)$alpha <- unlist((covid_wv %>% filter(Wave == "Alpha"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Alpha"))$Location),3])
+ 
+V(WWgrph)$delta <- unlist((covid_wv %>% filter(Wave == "Delta"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Delta"))$Location),3])
+
+V(WWgrph)$Omicron <- unlist((covid_wv %>% filter(Wave == "Omicron"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Omicron"))$Location),3])
+
+V(WWgrph)$OmicronBA <- unlist((covid_wv %>% filter(Wave == "OmicronBA.2"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "OmicronBA.2"))$Location),3])
+
+cov <- as.data.frame(cbind(V(WWgrph)$name,V(WWgrph)$prealpha, V(WWgrph)$alpha,V(WWgrph)$delta,V(WWgrph)$Omicron, V(WWgrph)$OmicronBA))
+
+## Reguarized spectral clustering with covariates.
+
+## removeing nodes that have consistent NA values
+## I am not able to remove some fo the value because the stupid edge covariates are set to NULL.
+## setting the edge covariates to 0 instead for now.
+E(WWgrph)$stsn <- 0
+E(WWgrph)$wchStn <- 0
+todel <-  c("Springfield", "Yachats","Toledo","Boardman","Depoe Bay","Condon")
+
+## Using CASCORE package.
+adj_m <- as_adjacency_matrix(delete_vertices(WWgrph, todel),
+                             sparse = FALSE)
+
+## Using Spectral Covariate clustering for the different waves
+## Look into the alphan argument. 
+op <- CASC(adj_m, as.numeric(cov[-match(todel, cov$V1),4]),K = 5, alphan = 5)
+
+plot_graph(delete_vertices(WWgrph, todel), op, "Spectral with covariates")
+
+```
+
+## Saving the processed data as RDS
+
+```{r}
+
+saveRDS(list(cases = cases, vaccine = vaccine, HighwayGrph = hwy_grph, directEdges  = dirEdges, directGrph = DirectGrph, WWpop = wwtp_pop, WWgrph = WWgrph, cityCenter = city_cntr), "GraphData.rds")
+
+
+```
 
 
 

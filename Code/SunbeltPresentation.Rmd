@@ -1,0 +1,162 @@
+---
+title: "Assessing relationships between wastewater testing data and demographic factors within locations in Oregon using transportation data."
+author: 
+- Gauri Phatak 
+- Katherine McLaughlin
+- James Molyneux
+institute: "Oregon State University"
+date: "`r Sys.Date()`"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+---
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+```
+class: top 
+
+# Motivation
+
+--
+ 
+ - Data derived from Waste water is an important measure of the health of a community.
+ 
+--
+
+ - Corona virus Sewer Surveillance is a part of TRACE COVID-19 project. Samples were collected starting mid 2020 and the sampling has been ongoing. 
+
+--
+
+ - Select Sentinel locations from within the wastewater cities to provide early warning system for various pathogens. 
+
+ - Temporal data comparison between waste water data and publicly available cases, death count and vaccine data. 
+
+--
+
+.footnote[
+[1] News article about waste water data ()
+
+[2] Link to OHA website with Waste water statistics() 
+]
+
+---
+class: top, center
+
+# Plot of Highway data
+
+![Map of cities in Oregon and Wastewater cities (Green)](citiesplot.png)
+
+---
+class: top 
+
+# Social Networks and Community detection within networks. 
+
+--
+
+  - Networks created using Highway data 
+  
+--
+
+    * Two cities connected by a highway form a connected node pair.
+    
+    * Waste water cities are isolated and the shortest path between each of these cities is calculated. This forms the network for only wastewater cities.
+
+--
+
+  - Safe graph data movement network
+  
+--
+
+    * Track movement between cities to create edges.
+    
+    * If the movement to and from a city reach a particular threshold it is considered an edge. 
+  
+--
+
+  - Community Detection Algorithm.
+  
+--
+
+    * Find set of nodes within a network that are closely related to each other based on a certain metric.
+  
+--
+
+  - Goal for waste water surveillance is to find sentinel node within each community.
+  
+--
+
+
+---
+class:top , center
+
+# Plot of Highway network
+
+\# vertices:242  \# edges:
+
+![](Highwayplot.png)
+
+
+---
+class: top , center
+
+# Plot of Highway network with wastewater cities.
+
+\# vertices:242  \# edges:
+
+
+![](Directplot.png)
+
+---
+
+# Edgebetweenness Community detection
+
+Equation for edge betweenness and explaination 
+
+![](edgebet.png)
+
+---
+
+# Spectral community detection wihtout covariates
+
+Explain Spectral community detection algorithm.
+
+![](spectral.png)
+
+---
+
+# Spectral Community detection with Covariates
+
+Explain Spectral Clustering with Covariates.
+
+![](spectralCov.png)
+
+---
+
+# Comparison of Community detection algorithms
+
+Using Adjusted Rand Index to compare the Algorithms.
+
+---
+
+# Future Work
+
+- Temporal data
+
+- Missingness of node data
+
+- Add weighted nodes by using Safe Graph data. Currently using Highway data as proxy.
+
+# Acknowledgement
+
+- Thank you Tyler Radniecki and Christine Kelly, researchers in the OSU College of Engineering who lead the wastewater testing for TRACE.
+
+- OHA for sharing the data presented here.
+
+# References
+
+# Thank you

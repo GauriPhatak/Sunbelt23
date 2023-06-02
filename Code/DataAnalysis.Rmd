@@ -1,0 +1,385 @@
+---
+title: "Finding Communities and Correlations"
+output: html_document
+date: "2023-05-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+#library(spdep)
+library(igraph)
+library(sf)
+library(lubridate)
+library(chron)
+library(readxl)
+library(CASCORE)
+library(gridExtra)
+```
+
+## Reading the saved rds data and current covid data
+
+```{r}
+
+totalDat <- readRDS("GraphData.rds")
+
+cases <- totalDat$cases
+
+vaccine <- totalDat$vaccine
+
+hwyGrph <- totalDat$HighwayGrph
+
+dirEdges <- totalDat$directEdges
+
+dirGrph <- totalDat$directGrph
+
+WWpop <- totalDat$WWpop
+
+WWgrph <- totalDat$WWgrph
+
+ct_cntr <- totalDat$cityCenter
+
+rm(totalDat)
+
+
+```
+
+## Defined functions
+
+```{r}
+source("HelperFuncs.R")
+
+plot_graph <- function(g, m, title){
+  plot.igraph(g, vertex.size = 4, vertex.label = NA,
+            vertex.color = m,
+            edge.width = 1, layout = cbind(V(g)$lat, V(g)$lon), 
+            main = title)
+}
+```
+
+
+## Running various Community detection algorithms from the iGraph package
+
+```{r}
+## community detection methods in  igraph:
+mem_edge <- cluster_edge_betweenness(WWgrph, weights = 1/(E(WWgrph)$distance),directed = FALSE)
+png("edgebet.png", 600,500)
+plot_graph(WWgrph, membership(mem_edge), "Edge betweeness")
+dev.off()
+
+mem_fg <- cluster_fast_greedy(WWgrph, weights =  1/(E(WWgrph)$distance))
+plot_graph(WWgrph, membership(mem_fg), "Fast greedy")
+
+mem_im <- cluster_infomap(WWgrph, e.weights =  1/(E(WWgrph)$distance))
+plot_graph(WWgrph, membership(mem_im), "Info Map")
+
+mem_lp <- cluster_label_prop(WWgrph, weights =  1/(E(WWgrph)$distance))
+plot_graph(WWgrph, membership(mem_lp), "Label propogation")
+
+mem_le <- cluster_leading_eigen(WWgrph, weights =  1/(E(WWgrph)$distance))
+plot_graph(WWgrph, membership(mem_le), "Leading Eigen")
+
+mem_l <- cluster_leiden(WWgrph, weights =  1/(E(WWgrph)$distance))
+plot_graph(WWgrph, membership(mem_l), "Leiden")
+
+mem_o <- cluster_optimal(WWgrph, weights =  1/(E(WWgrph)$distance))
+plot_graph(WWgrph, membership(mem_o), "Optimal")
+
+mem_wt <- cluster_walktrap(WWgrph, weights =  1/(E(WWgrph)$distance))
+plot_graph(WWgrph, membership(mem_wt), "Walktrap")
+```
+
+```{r}
+
+## SBM method
+n = 5
+thresh = 0.005
+maxIter = 50
+g <- WWgrph
+V(g)$name <- as.character(1:length(V(g)))
+
+mem_sbm <- lazySBM(g, as.numeric(n), "simple", thresh, maxIter)
+plot_graph(g, mem_sbm[[1]][[1]], "SBM")
+
+## DCSBM
+mem_dc <- lazySBM(g, as.numeric(n), "DC", thresh, maxIter)
+plot_graph(g, mem_dc[[1]][[1]], "DCSBM")
+
+## Regularized Spectral  clustering 
+mem_spec <- RegSpectralClust(g, n)
+png("spectral.png", 600,500)
+plot_graph(g, mem_spec, "Spectral")
+dev.off()
+
+```
+
+```{r}
+## importing wastewater data/ this is the data from 5/19
+
+covid <- read_csv("C:/Users/gauph/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/5.19.23/Combined_all_sample_data_aggregated_byfilter_2023-05-19.csv")
+
+covid <- covid[covid$SampleType == "Influent",]
+covid$Date <- as.dates(covid$Date)
+
+covid$epiweek <- epiweek(covid$Date)
+covid$epiyear <- epiyear(covid$Date)
+covid$ym <- format(as.Date(covid$Date), "%Y-%m")
+## subsampling OHA data only.
+covid <- covid[covid$Study == "OHA",]
+
+covid_my <- covid %>%
+  dplyr::group_by(ym, Location) %>%
+  dplyr::summarize(meanLogCopies = mean(LogCopiesPerL, na.rm = TRUE), 
+                   county = first(na.omit(County)))
+
+df <- covid %>%
+    ungroup() %>%
+    mutate(RV = as.numeric(paste0(epiyear,".",epiweek)))%>%
+    mutate(Wave = case_when(
+           between(RV, 2020.36,2021.09 )~"Pre-Alpha",
+           between(RV,2021.09, 2021.26 )~ "Alpha",
+           between(RV,2021.26,2021.44 )~ "Delta",
+           between(RV,2021.48, 2022.13 )~ "Omicron",
+           between(RV,2022.14, 2022.31 )~ "OmicronBA.2"
+           ))
+
+
+## Aggregating based on wave
+covid_wv <- df %>%
+  dplyr::group_by(Location, Wave) %>%
+  dplyr::summarize(mlc = mean(LogCopiesPerL, na.rm = TRUE),
+                   county = first(na.omit(County))) %>%
+  filter(!is.na(Wave))
+
+
+## merging data for waves into the graph object as attributes
+V(WWgrph)$prealpha <- unlist((covid_wv %>% filter(Wave == "Pre-Alpha"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Pre-Alpha"))$Location),3])
+
+V(WWgrph)$alpha <- unlist((covid_wv %>% filter(Wave == "Alpha"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Alpha"))$Location),3])
+ 
+V(WWgrph)$delta <- unlist((covid_wv %>% filter(Wave == "Delta"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Delta"))$Location),3])
+
+V(WWgrph)$Omicron <- unlist((covid_wv %>% filter(Wave == "Omicron"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Omicron"))$Location),3])
+
+V(WWgrph)$OmicronBA <- unlist((covid_wv %>% filter(Wave == "OmicronBA.2"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "OmicronBA.2"))$Location),3])
+
+#V(WWgrph)$pop <- WWpop$Population[match(V(WWgrph)$name,  WWpop$Location)]
+
+#V(WWgrph)$county <- covid_wv$county[]
+
+
+cov <- as.data.frame(cbind(V(WWgrph)$name,V(WWgrph)$prealpha,
+                           V(WWgrph)$alpha,V(WWgrph)$delta,
+                           V(WWgrph)$Omicron,V(WWgrph)$OmicronBA,
+                           V(WWgrph)$pop))
+
+colnames(cov) <- c("name","prealpha","alpha","delta","Omicron","OmicronBA")#,"pop")
+## Reguarized spectral clustering with covariates.
+## removeing nodes that have consistent NA values
+## I am not able to remove some fo the value because the stupid edge covariates are set to NULL.
+## setting the edge covariates to 0 instead for now.
+E(WWgrph)$stsn <- 0
+E(WWgrph)$wchStn <- 0
+todel <-  c("Springfield", "Yachats","Toledo","Boardman","Depoe Bay","Condon")
+
+## Using CASCORE package.
+adj_m <- as_adjacency_matrix(delete_vertices(WWgrph, todel),
+                             sparse = FALSE)
+
+## Using Spectral Covariate clustering for the different waves
+## Look into the alphan argument. 
+for(a in seq(5, 40, by=5)){
+
+  mem_specCov <- CASC(adj_m, as.numeric(cov[-match(todel, cov$name),4]), 
+                      K = 5,  itermax  = 1000, startn = 50, alphan = a)
+  plot_graph(delete_vertices(WWgrph, todel), mem_specCov, "Spectral with covariates")
+
+}
+
+mem_specCov <- CASC(adj_m, as.numeric(cov[-match(todel, cov$name),4]), 
+                      K = 5,  itermax  = 1000, startn = 50, alphan = 5)
+png("spectralCov.png", 600,500)
+plot_graph(delete_vertices(WWgrph, todel), mem_specCov, "Spectral with covariates")
+dev.off()
+
+mem_specCov <- merge(as.data.frame(cbind(name = cov$name)), 
+      as.data.frame(cbind(membership = mem_specCov,
+                          name = cov[-match(todel, cov$name),1])), 
+      by ="name", all.x = TRUE)
+
+
+```
+
+
+## Plotting boxplots for covid levels in each group for each of the methods above. 
+
+```{r, fig.height=14, warning=FALSE}
+
+## combining the output
+
+op <- as.data.frame(cbind(Edge_betweenness = membership(mem_edge), 
+                          Fast_greedy = membership(mem_fg), 
+                          Info_map = membership(mem_im), 
+                          Leiden = membership(mem_l), 
+                          Leading_eigen = membership(mem_le), 
+                          label_propogation = membership(mem_lp), 
+                          Optimal = membership(mem_o), 
+                          SBM = mem_sbm[[1]][[1]], 
+                          DCSBM = mem_dc[[1]][[1]], 
+                          Spectral = mem_spec, 
+                          SpectralCov = mem_specCov$membership))
+BOXPLOTS <- function(o, covVal, g){
+  
+  o$val <- covVal #<- merge(x = o, y = covVal, by = "City", all.o = TRUE)
+  o  <- pivot_longer(o,!val, names_to = "Algorithm", values_to = "Membership" )
+  o$Membership <- as.factor(o$Membership)
+  o <- split(o, f = o$Algorithm)
+  p <- list()
+  aov_op <- list()
+  for(i in 1:11){ ## We have 10 algorithms 
+    print(i)
+    p[[o[[i]]$Algorithm[1]]] <- ggplot(data = o[[i]]) +
+      geom_boxplot(aes(group = Membership, y = val, fill = Membership)) + 
+      labs(title = as.character(o[[i]]$Algorithm[1])) +
+      #(aes( y = val, group = as.factor(Membership), fill = as.factor(Membership)))+
+      theme(legend.position = "none")
+    
+    aov_op[[o[[i]]$Algorithm[1]]] <- tryCatch(o[[i]] %>% anova_test(val ~ Membership), 
+                                              error=function(err) NA)#o[[i]] %>% anova_test(val ~ Membership)
+  }
+  #names(p) <- c()
+  return(list(p, aov_op))
+}
+
+## plotting delta values
+#delV <-  as.data.frame(cbind(V(WWgrph)$name, V(WWgrph)$delta))
+
+p  <- BOXPLOTS(op,V(WWgrph)$delta, g)
+aov <- p[[2]]
+p <- p[[1]]
+
+plt <- grid.arrange(p$Edge_betweenness, p$Fast_greedy,
+             p$Optimal, p$SBM,p$DCSBM, p$Spectral, 
+             p$SpectralCov, ncol = 2)
+
+p$SpectralCov
+
+#ggsave("delta.png", plt)
+```
+
+## Running Cov assisted spectral algorithm for county level data. 
+
+
+```{r}
+
+## Combining cases for different waves.
+county_cases <- read.csv("../Data/us-counties.csv")
+county_cases <- county_cases[county_cases$state == "Oregon",]
+county_cases$Date <- county_cases$date
+
+county_cases$epiweek <- epiweek(county_cases$Date)
+county_cases$epiyear <- epiyear(county_cases$Date)
+county_cases$ym <- format(as.Date(county_cases$Date), "%Y-%m")
+## subsampling OHA data only.
+#county_cases <- county_cases[county_cases$Study == "OHA",]
+
+county_cases_my <- county_cases %>%
+  dplyr::group_by(ym, county) %>%
+  dplyr::summarize(meanCases = mean(cases, na.rm = TRUE))
+
+df <- county_cases %>%
+    ungroup() %>%
+    mutate(RV = as.numeric(paste0(epiyear,".",epiweek)))%>%
+    mutate(Wave = case_when(
+           between(RV, 2020.36,2021.09 )~"Pre-Alpha",
+           between(RV,2021.09, 2021.26 )~ "Alpha",
+           between(RV,2021.26,2021.44 )~ "Delta",
+           between(RV,2021.48, 2022.13 )~ "Omicron",
+           between(RV,2022.14, 2022.31 )~ "OmicronBA.2"
+           ))
+
+
+## Aggregating based on wave
+county_cases_wv <- df %>%
+  dplyr::group_by(county, Wave) %>%
+  dplyr::summarize(mlc = mean(cases, na.rm = TRUE)) %>%
+  filter(!is.na(Wave))
+
+
+## merging data for waves into the graph object as attributes
+V(WWgrph)$Cases_prealpha <- unlist((county_cases_wv %>% filter(Wave == "Pre-Alpha"))[match(V(WWgrph)$name , (county_cases_wv %>% filter(Wave == "Pre-Alpha"))$county),3])
+
+V(WWgrph)$Cases_alpha <- unlist((county_cases_wv %>% filter(Wave == "Alpha"))[match(V(WWgrph)$name , (county_cases_wv %>% filter(Wave == "Alpha"))$county),3])
+ 
+V(WWgrph)$Cases_delta <- unlist((county_cases_wv %>% filter(Wave == "Delta"))[match(V(WWgrph)$name , (county_cases_wv %>% filter(Wave == "Delta"))$county),3])
+
+V(WWgrph)$Cases_Omicron <- unlist((county_cases_wv %>% filter(Wave == "Omicron"))[match(V(WWgrph)$name , (county_cases_wv %>% filter(Wave == "Omicron"))$county),3])
+
+V(WWgrph)$cases_OmicronBA <- unlist((county_cases_wv %>% filter(Wave == "OmicronBA.2"))[match(V(WWgrph)$name , (county_cases_wv %>% filter(Wave == "OmicronBA.2"))$county),3])
+
+#V(WWgrph)$pop <- WWpop$Population[match(V(WWgrph)$name, WWpop$county)]
+
+covCases <- as.data.frame(cbind(V(WWgrph)$Casesname,V(WWgrph)$Casesprealpha,
+                           V(WWgrph)$Casesalpha,V(WWgrph)$Casesdelta,
+                           V(WWgrph)$CasesOmicron,V(WWgrph)$CasesOmicronBA))
+
+
+
+```
+
+
+
+
+
+
+
+## Spatial data analsysis
+
+
+## Calculating Morans I at different lags (distances)
+```{r}
+library(geosphere)
+library(spdep)
+library(ape)
+
+distMat <- distm(cbind(V(WWgrph)$lat, V(WWgrph)$lon))/1000
+d <- seq(10, 500, by=10)
+op <- data.frame(matrix(nrow = length(d), ncol = 5))
+colnames(op) <- c("obs", "exp", "sd", "pVal","dist")
+j = 1
+
+for(i in d){
+  distMat.bin <- (distMat >0 & distMat <= i)
+  v <- Moran.I(V(WWgrph)$delta, distMat.bin, na.rm = TRUE)
+  op[j,1] = v$observed
+  op[j,2] = v$expected
+  op[j,3] = v$sd
+  op[j,4] = v$p.value
+  op[j,5] = i
+  j = j+1
+  
+}
+
+ggplot(op) + 
+  geom_point(aes(x = dist, y = obs, color = pVal<0.05))
+
+```
+## finding local morans I for each location
+
+```{r}
+
+grphnb <- nb2listw(knn2nb(knearneigh(ct_cntr, k = 5)))
+
+op <- as.data.frame(localmoran(V(WWgrph)$delta , 
+                               grphnb, 
+                               na.action = na.exclude, 
+                               zero.policy = TRUE))
+
+ggplot()+
+  geom_sf(data = fin, aes(geometry = geometry), color = "black", alpha =0.3)+
+  geom_sf(data = ct_sbst, aes(geometry = shape, fill = as.numeric(op$Ii), color = as.numeric(op$Ii)))
+
+
+
+```
+

@@ -1,0 +1,43 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(sqldf)
+
+```
+
+
+## Reading and exploring the safeggraph data
+
+```{r}
+file <- "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/2020-01-06-weekly-patterns.csv.gz"
+df <- read_csv(file = file, n_max  = 10000, skip_empty_rows = FALSE)
+df1 <- read_csv(file = file,skip = 100, n_max  = 200)
+
+#read.csv.sql(file, sep = ",", sql = "select count(*) from file")
+df_colNames <- colnames(df)
+f <- function(x, pos) {
+  dplyr::filter(x, .data[["region"]] == "NY")
+ #base::subset(x, city == "NY")
+  }#subset(x, city =="NY")
+df2 <- read_csv2_chunked(file = file,
+                         DataFrameCallback$new(f),
+                         chunk_size = 10000,
+                         col_names = df_colNames,
+                         col_types = "cccccccccDDddccccccddcccc",#str_flatten(rep("c",25)),
+                         guess_max = 2000,
+                         progress = show_progress())
+
+#df <- df %>%
+#  filter(region  == "OR")
+
+#df2 <- read.csv.sql("//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/2020-01-06-weekly-patterns.csv.gz",
+#sql ="select * from file where region ='OR' ", sep  = ",")
+
+```
+
