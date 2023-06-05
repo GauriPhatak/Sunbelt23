@@ -242,8 +242,8 @@ RegSpectralClust <-  function(G, k, regularize = TRUE ){
   X <-  eigen(Lt)
   
   ## print the difference between the eigen values 
-  print(X$values - lead(X$values))
-  flush.console()
+ # print(X$values - lead(X$values))
+ # flush.console()
 
 # Step 3:
   
@@ -253,7 +253,7 @@ RegSpectralClust <-  function(G, k, regularize = TRUE ){
 # Step 4 
   #Run kK- means algorithm on the subset of the eigen vector matrix of size nXk
   
-  op <- kmeans(Xt,k,iter.max = 30)
+  op <- kmeans(Xt,k,iter.max = 50)
   
   return(op$cluster)
   

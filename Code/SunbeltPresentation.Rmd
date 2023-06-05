@@ -1,5 +1,5 @@
 ---
-title: "Assessing relationships between wastewater testing data and demographic factors within locations in Oregon using transportation data."
+title: "Assessing relationships between waste water testing data and demographic factors within locations in Oregon using transportation data."
 author: 
 - Gauri Phatak 
 - Katherine McLaughlin
@@ -20,11 +20,11 @@ options(htmltools.dir.version = FALSE)
 ```
 class: top 
 
-# Motivation
+# <font size="7">Motivation</font>
 
 --
  
- - Data derived from Waste water is an important measure of the health of a community.
+ - Data derived from waste water is an important measure of the health of a community.
  
 --
 
@@ -32,29 +32,28 @@ class: top
 
 --
 
- - Select Sentinel locations from within the wastewater cities to provide early warning system for various pathogens. 
+ - Research directions:
 
- - Temporal data comparison between waste water data and publicly available cases, death count and vaccine data. 
+    - Select Sentinel locations from within the waste water cities to provide early warning system for various pathogens. 
+ 
+    - Generate a sphere of influence for the important cities.
 
---
+    - Temporal data comparison between waste water data and publicly available cases, death count and vaccine data. 
 
-.footnote[
-[1] News article about waste water data ()
-
-[2] Link to OHA website with Waste water statistics() 
-]
 
 ---
 class: top, center
 
-# Plot of Highway data
+# <font size="7">Plot of highway data</font>
 
-![Map of cities in Oregon and Wastewater cities (Green)](citiesplot.png)
+There are 242 cities in Oregon, 44 of which participated in the waste water surveillance program at least once over the last three years.
+ 
+![Map of cities in Oregon (orange) and waste water cities (Green)](citiesplot.png)
 
 ---
 class: top 
 
-# Social Networks and Community detection within networks. 
+# <font size="7">Social networks and community detection</font> 
 
 --
 
@@ -64,11 +63,11 @@ class: top
 
     * Two cities connected by a highway form a connected node pair.
     
-    * Waste water cities are isolated and the shortest path between each of these cities is calculated. This forms the network for only wastewater cities.
+    * Shortest path algorithm is used to find distance between each of the waste water cities.
 
 --
 
-  - Safe graph data movement network
+  - Movement based network using Safegraph data.
   
 --
 
@@ -86,77 +85,166 @@ class: top
   
 --
 
-  - Goal for waste water surveillance is to find sentinel node within each community.
-  
---
-
-
 ---
 class:top , center
 
-# Plot of Highway network
+# <font size="7">Plot of highway network</font>
+```{r, echo=FALSE, out.width="75%", fig.align = 'top', fig.cap="vertices:242  edges: 264"}
+knitr::include_graphics("Highwayplot.png")
+```
 
-\# vertices:242  \# edges:
-
-![](Highwayplot.png)
+<!-- \# vertices:242  \# edges: 264 -->
+<!-- ![](Highwayplot.png) -->
 
 
 ---
 class: top , center
 
-# Plot of Highway network with wastewater cities.
+# <font size="7">Plot of highway network with waste water cities</font>
+```{r, echo=FALSE, out.width="75%", fig.align = 'top', fig.cap="vertices:44  edges: 78"}
+knitr::include_graphics("Directplot.png")
+```
 
-\# vertices:242  \# edges:
-
-
-![](Directplot.png)
-
----
-
-# Edgebetweenness Community detection
-
-Equation for edge betweenness and explaination 
-
-![](edgebet.png)
+<!-- \# vertices:44  \# edges: 78 -->
+<!-- ![](Directplot.png) -->
 
 ---
 
-# Spectral community detection wihtout covariates
+# <font size="7">Edge betweenness community detection</font>
 
-Explain Spectral community detection algorithm.
 
-![](spectral.png)
+- Edge betweeneness of an edge is defined as the number of shortest paths between any two vertices that run through the edge. 
+
+- Edges connecting communities have higher betweenness. 
+
+- Algorithm for identifying communities based on edge betweenness measure:
+  
+  1) Calculate betweenness for all edges in network
+  
+  2) Remove edges with highest betweenness
+  
+  3) Recalculate betweenness for edges affected by removal
+  
+  4) Repeat from step 2 till no edges remain. 
+  
+- The above algorithm results in a dendogram with each node as a leaf. 
 
 ---
 
-# Spectral Community detection with Covariates
+# <font size="7">Edge betweenness results</font>
+```{r, echo=FALSE, out.width="75%", fig.cap="7 communities", fig.align = 'top'}
+knitr::include_graphics("edgebet.png")
+```
 
-Explain Spectral Clustering with Covariates.
-
-![](spectralCov.png)
-
----
-
-# Comparison of Community detection algorithms
-
-Using Adjusted Rand Index to compare the Algorithms.
+<!-- ![](edgebet.png) -->
 
 ---
 
-# Future Work
+# <font size="7">Spectral community detection without covariates</font>
+
+
+- Given adjacency matrix $A$, number of clusters K, we can calculate $L = D^{-1/2} A D^{-1/2} \in R^{NxN}$ where D is the diagonal matrix of the degree matrix.
+
+- Matrix $X_{nXk} = [X_1 ... X_k]$ can be find by combining eigen vectors corresponding to K largest eigen values of $L_T$. 
+
+- Matrix $X^*$ is formed by normalizing $X$ by row. 
+
+- Treating each row of $X^*$ as a point run K-means clustering algorithm.
+
+---
+
+# <font size="7">Spectral community detection without covariates</font>
+```{r, echo=FALSE, out.width="75%", fig.align = 'top', fig.cap="5 communities"}
+knitr::include_graphics("spectral.png")
+```
+
+<!-- ![](spectral.png) -->
+
+---
+
+#  <font size="7">Spectral community detection with covariates</font>
+
+- The CASC algorithm uses eigen vectors derived from the Matrix $Y = (A+D)X$  Where X is the covariate matrix. 
+
+- The largest $K$ eigen vectors are used to perform K-means clustering.
+
+
+---
+
+#  <font size="7">Spectral community detection with covariates</font>
+```{r, echo=FALSE, out.width="70%", fig.align = 'top', fig.cap=" 5 communities but only 38 nodes"}
+knitr::include_graphics("SpectralCov.png")
+```
+<!-- ![](spectralCov.png) -->
+
+---
+
+# <font size="7">Comparison of community detection algorithms</font>
+```{r, echo=FALSE, fig.align = 'top'}
+knitr::include_graphics("boxplt.png")
+```
+<!-- ![](boxplt.png) -->
+
+
+---
+
+## <font size="7">Comparison using Adjusted Rand Index</font>
+
+Adjusted Rand Index(ARI) is a common measure used to compare outcomes from community detection algorithms and ground truth.
+
+Here in place for ground truth we are using ARI to compare similarities between two algorithms. 
+
+Comparison between Edge betweenness and Spectral clustering algorithm: 0.54
+
+Comparison between Edge betweenness and Spectral clustering algorithm with Covariates: 0.045
+
+Comparison between Spectral clustering algorithm and Spectral clustering algorithm: 0.016
+
+---
+
+# <font size="7">Future Work</font>
 
 - Temporal data
+  * Some Community Detection Algorithms take into account the temporal nature of edges at different time points.
+  * The waste water data is temporal in nature. One of the direction of our research is including temporal nature of covariates.
+--
 
 - Missingness of node data
+  * Not all locations provided water samples every week. Hence, assessing communities using CASC is limited by weeks that have information for all or most of the nodes. It is likely the data is not missing at random making the problem a good candidate for further research in data imputation. 
+--
 
-- Add weighted nodes by using Safe Graph data. Currently using Highway data as proxy.
+- Add weighted edges by using Safe Graph data. Currently using Highway data as proxy.
+--
 
-# Acknowledgement
+- Add other demographic data, publicly available case, death count and political affiliations as covariates.
+--
 
-- Thank you Tyler Radniecki and Christine Kelly, researchers in the OSU College of Engineering who lead the wastewater testing for TRACE.
+- Reduce the number of location that we need to monitor to get usable information regarding pathogen spread within the state. 
 
-- OHA for sharing the data presented here.
+---
 
-# References
+# <font size="7">Acknowledgements</font>
 
-# Thank you
+- Thank you Dr. Tyler Radniecki and Dr. Christine Kelly and Molecular Engineering researchers in OSU College of Engineering who lead the waste water testing for TRACE.
+
+- Thank you OHA for sharing the data presented here.
+
+---
+
+# <font size="7">References</font>
+
+[1] https://www.cdc.gov/nwss/wastewater-surveillance.html
+
+[2] https://www.npr.org/sections/health-shots/2023/04/24/1171177281/wastewater-surveillance-covid-tracking
+
+[3] https://trace.oregonstate.edu/ 
+
+[4] https://www.oregon.gov/oha/ERD/Pages/OHA-releases-COVID-19-Wastewater-monitoring-data.aspx
+
+[5] https://www.pnas.org/doi/10.1073/pnas.122653799
+
+[6] https://proceedings.neurips.cc/paper/2001/file/801272ee79cfde7fa5960571fee36b9b-Paper.pdf
+
+---
+class: middle, center
+# <font size="20">Thank you!</font>

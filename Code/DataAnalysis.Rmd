@@ -64,7 +64,7 @@ plot_graph <- function(g, m, title){
 ## community detection methods in  igraph:
 mem_edge <- cluster_edge_betweenness(WWgrph, weights = 1/(E(WWgrph)$distance),directed = FALSE)
 png("edgebet.png", 600,500)
-plot_graph(WWgrph, membership(mem_edge), "Edge betweeness")
+plot_graph(WWgrph, membership(mem_edge), NA)
 dev.off()
 
 mem_fg <- cluster_fast_greedy(WWgrph, weights =  1/(E(WWgrph)$distance))
@@ -106,9 +106,9 @@ mem_dc <- lazySBM(g, as.numeric(n), "DC", thresh, maxIter)
 plot_graph(g, mem_dc[[1]][[1]], "DCSBM")
 
 ## Regularized Spectral  clustering 
-mem_spec <- RegSpectralClust(g, n)
+mem_spec <- RegSpectralClust(g, n, FALSE)
 png("spectral.png", 600,500)
-plot_graph(g, mem_spec, "Spectral")
+plot_graph(g, mem_spec, NA)
 dev.off()
 
 ```
@@ -197,18 +197,20 @@ for(a in seq(5, 40, by=5)){
 }
 
 mem_specCov <- CASC(adj_m, as.numeric(cov[-match(todel, cov$name),4]), 
-                      K = 5,  itermax  = 1000, startn = 50, alphan = 5)
+                      K = 5,  itermax  = 1000, startn = 50, alphan = 1)
 png("spectralCov.png", 600,500)
-plot_graph(delete_vertices(WWgrph, todel), mem_specCov, "Spectral with covariates")
+plot_graph(delete_vertices(WWgrph, todel), mem_specCov, NA)
 dev.off()
 
-mem_specCov <- merge(as.data.frame(cbind(name = cov$name)), 
-      as.data.frame(cbind(membership = mem_specCov,
-                          name = cov[-match(todel, cov$name),1])), 
-      by ="name", all.x = TRUE)
+mem_specCov <- merge(as.data.frame(cbind(name = cov$name)),
+                     as.data.frame(cbind(membership = mem_specCov,
+                                         name = cov[-match(todel, cov$name),1])),
+                     by ="name", all.x = TRUE)
 
 
 ```
+
+
 
 
 ## Plotting boxplots for covid levels in each group for each of the methods above. 
@@ -236,13 +238,18 @@ BOXPLOTS <- function(o, covVal, g){
   o <- split(o, f = o$Algorithm)
   p <- list()
   aov_op <- list()
+  # The palette with black:
+  cbPalette <- c( "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+  
   for(i in 1:11){ ## We have 10 algorithms 
-    print(i)
-    p[[o[[i]]$Algorithm[1]]] <- ggplot(data = o[[i]]) +
-      geom_boxplot(aes(group = Membership, y = val, fill = Membership)) + 
+    #print(i)
+    p[[o[[i]]$Algorithm[1]]] <- ggplot(data = o[[i]] %>% filter(!is.na(Membership))) +
+      geom_boxplot(aes(x = Membership, y = val, fill = Membership)) + 
       labs(title = as.character(o[[i]]$Algorithm[1])) +
+      theme_minimal()+
       #(aes( y = val, group = as.factor(Membership), fill = as.factor(Membership)))+
-      theme(legend.position = "none")
+      theme(legend.position = "none")+  scale_fill_manual(values=cbPalette)
     
     aov_op[[o[[i]]$Algorithm[1]]] <- tryCatch(o[[i]] %>% anova_test(val ~ Membership), 
                                               error=function(err) NA)#o[[i]] %>% anova_test(val ~ Membership)
@@ -258,14 +265,35 @@ p  <- BOXPLOTS(op,V(WWgrph)$delta, g)
 aov <- p[[2]]
 p <- p[[1]]
 
-plt <- grid.arrange(p$Edge_betweenness, p$Fast_greedy,
-             p$Optimal, p$SBM,p$DCSBM, p$Spectral, 
-             p$SpectralCov, ncol = 2)
+plt <- grid.arrange(p$Edge_betweenness,  p$Spectral, p$SpectralCov, ncol =1)
 
-p$SpectralCov
+#p$SpectralCov
 
-#ggsave("delta.png", plt)
+ggsave("boxplt.png", plt)
 ```
+
+## Comparing the outputs using adjusted rand index.
+
+```{r}
+## Comparing edge betweenness and spectral w/o covariates
+compare(op$Edge_betweenness[!is.na(op$SpectralCov)], 
+        op$Spectral[!is.na(op$SpectralCov)], 
+        method = "adjusted.rand")
+
+## Comparing edge betweenness and spectral w covariates
+compare(op$Edge_betweenness[!is.na(op$SpectralCov)], 
+        op$SpectralCov[!is.na(op$SpectralCov)], 
+        method = "adjusted.rand")
+
+## comparing between spectral w and w/o covariates
+
+compare(op$Spectral[!is.na(op$SpectralCov)], 
+        op$SpectralCov[!is.na(op$SpectralCov)], 
+        method = "adjusted.rand")
+
+
+```
+
 
 ## Running Cov assisted spectral algorithm for county level data. 
 
