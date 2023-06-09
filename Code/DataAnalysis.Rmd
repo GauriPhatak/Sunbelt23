@@ -411,3 +411,41 @@ ggplot()+
 
 ```
 
+
+
+## Looking at the nationwide wastewater surveilance data.
+
+```{r}
+cdc <- read.csv("../Data/NWSS_Public_SARS-CoV-2_Wastewater_Metric_Data.csv")
+
+cdc <- cdc %>% 
+  select(wwtp_jurisdiction, county_names, county_fips) %>%
+  distinct() %>%
+  separate_rows(county_fips, sep = ",")
+
+
+cnty_fips <- as.data.frame(cbind(unique(cdc$county_fips), 1))
+
+colnames(cnty_fips) <- c("fips", "values")
+library(usmap)
+
+plot_usmap(data = cnty_fips)
+
+centroids <- tigris::counties(resolution = "20m") %>%
+  st_centroid
+
+centroids <- centroids[centroids$GEOID %in% cnty_fips$fips,] 
+
+centroids <- as.data.frame(cbind(lat = as.numeric(centroids$INTPTLAT), lon = as.numeric(centroids$INTPTLON)))
+
+trndsfrmed <- usmap_transform(centroids)
+
+plot_usmap("states") +
+  geom_point(data = trndsfrmed[-222,],
+             aes(x=x,y=y),
+             color= "darkblue",
+             size = 1)
+
+ggsave("CDCmap.png")
+```
+

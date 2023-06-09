@@ -1,9 +1,9 @@
 ---
-title: "Assessing relationships between waste water testing data and demographic factors within locations in Oregon using transportation data."
+title: "Assessing relationships between wastewater testing data for COVID-19 within locations in Oregon using transportation network data."
 author: 
-- Gauri Phatak 
-- Katherine McLaughlin
-- James Molyneux
+- <font size="6">Gauri Phatak, Department of Statistics</font>
+- <font size="4">Katherine McLaughlin, James Molyneux, Department of Statistics</font>
+- <font size="4">Christine Kelly, Tyler Radniecki, Biomolecular Engineering</font>
 institute: "Oregon State University"
 date: "`r Sys.Date()`"
 output:
@@ -18,27 +18,32 @@ output:
 ```{r setup, include=FALSE}
 options(htmltools.dir.version = FALSE)
 ```
+
 class: top 
 
 # <font size="7">Motivation</font>
+.pull-left[
+- CDC launched National wastewater Surveillance System (NWSS) in Sept 2020 in order to monitor the COVID-19 pandemic.
 
---
+- Coronavirus Sewer Surveillance began as a part of TRACE COVID-19 project but it has evolved into a standalone project funded by Oregon Health Authority(OHA).
+
+- COVID spreads through airborne transmission
+ ]
  
- - Data derived from waste water is an important measure of the health of a community.
+.pull-right[
+![](CDCmap.png)
+]
+
+---
+class: top 
+
+# <font size="7"> Research directions</font>
+
+  - Select Sentinel locations from within the wastewater cities to provide early warning system for various pathogens. 
  
---
+  - Generate a sphere of influence for the important cities.
 
- - Corona virus Sewer Surveillance is a part of TRACE COVID-19 project. Samples were collected starting mid 2020 and the sampling has been ongoing. 
-
---
-
- - Research directions:
-
-    - Select Sentinel locations from within the waste water cities to provide early warning system for various pathogens. 
- 
-    - Generate a sphere of influence for the important cities.
-
-    - Temporal data comparison between waste water data and publicly available cases, death count and vaccine data. 
+  - Temporal data comparison between wastewater data and publicly available cases, death count and vaccine data.
 
 
 ---
@@ -46,9 +51,9 @@ class: top, center
 
 # <font size="7">Plot of highway data</font>
 
-There are 242 cities in Oregon, 44 of which participated in the waste water surveillance program at least once over the last three years.
+There are 242 cities in Oregon, 44 of which participated in the wastewater surveillance program at least once over the last three years.
  
-![Map of cities in Oregon (orange) and waste water cities (Green)](citiesplot.png)
+![Map of cities in Oregon (orange) and wastewater cities (Green)](citiesplot.png)
 
 ---
 class: top 
@@ -63,18 +68,10 @@ class: top
 
     * Two cities connected by a highway form a connected node pair.
     
-    * Shortest path algorithm is used to find distance between each of the waste water cities.
-
---
-
-  - Movement based network using Safegraph data.
-  
---
-
-    * Track movement between cities to create edges.
+    * The highway connection indicating movement between cities can relate to disease transmisssion.
     
-    * If the movement to and from a city reach a particular threshold it is considered an edge. 
-  
+    * Shortest path algorithm is used to find distance between each of the wastewater cities.
+
 --
 
   - Community Detection Algorithm.
@@ -82,6 +79,12 @@ class: top
 --
 
     * Find set of nodes within a network that are closely related to each other based on a certain metric.
+    
+    * Node covariates can be used in addition to structural network data. 
+    
+    * We use wastewater measurements taken at wastewater treatment plants averaged over the delta wave. 
+    
+    * Adding wastewater measurements can provide us with communities detected along different possible divisions.
   
 --
 
@@ -100,7 +103,7 @@ knitr::include_graphics("Highwayplot.png")
 ---
 class: top , center
 
-# <font size="7">Plot of highway network with waste water cities</font>
+# <font size="7">Plot of highway network with wastewater cities</font>
 ```{r, echo=FALSE, out.width="75%", fig.align = 'top', fig.cap="vertices:44  edges: 78"}
 knitr::include_graphics("Directplot.png")
 ```
@@ -206,7 +209,7 @@ Comparison between Spectral clustering algorithm and Spectral clustering algorit
 
 - Temporal data
   * Some Community Detection Algorithms take into account the temporal nature of edges at different time points.
-  * The waste water data is temporal in nature. One of the direction of our research is including temporal nature of covariates.
+  * The wastewater data is temporal in nature. One of the direction of our research is including temporal nature of covariates.
 --
 
 - Missingness of node data
@@ -225,7 +228,7 @@ Comparison between Spectral clustering algorithm and Spectral clustering algorit
 
 # <font size="7">Acknowledgements</font>
 
-- Thank you Dr. Tyler Radniecki and Dr. Christine Kelly and Molecular Engineering researchers in OSU College of Engineering who lead the waste water testing for TRACE.
+- Thank you Dr. Tyler Radniecki and Dr. Christine Kelly and Molecular Engineering researchers in OSU College of Engineering who lead the wastewater testing for TRACE.
 
 - Thank you OHA for sharing the data presented here.
 
@@ -244,6 +247,8 @@ Comparison between Spectral clustering algorithm and Spectral clustering algorit
 [5] https://www.pnas.org/doi/10.1073/pnas.122653799
 
 [6] https://proceedings.neurips.cc/paper/2001/file/801272ee79cfde7fa5960571fee36b9b-Paper.pdf
+
+[7] https://www.oregon.gov/geo/Pages/sdlibrary.aspx
 
 ---
 class: middle, center

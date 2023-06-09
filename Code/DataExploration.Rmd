@@ -455,16 +455,20 @@ plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1.5,
             edge.color = edges$NumStations,
             edge.width = 1, layout = city_cntr)
 
+ct_centroid <- st_centroid(ct)
+
+ct_centroid$label <- NA
+
+ct_centroid$label[which(ct_centroid$city_name == "Portland", arr.ind = TRUE)] <- "Portland"
 
 ggplot() +
   geom_sf(data = hwd, aes(geometry = shape), color = "#999999")+
-  geom_sf(data = ct, aes(geometry = shape), fill = "#E69F00", color = "#E69F00")+
-#    geom_sf(data = gbg, aes(geometry = shape), color = "blue") +
-  geom_sf(data = ct[V(DirectGrph)$name %in% ct_sbst,], aes(geometry = shape), fill = "#009E73", color = "#009E73") +
-  #geom_sf(data = trfShp, aes(geometry = geometry), color = "purple")+
-  #geom_sf(data = det, aes(geometry= geometry), color = "green")+
+  geom_sf(data = ct_centroid, aes(geometry = shape), 
+          fill = "#E69F00", color = "#E69F00")+
+  geom_sf(data = ct_centroid[V(DirectGrph)$name %in% ct_sbst,], 
+          aes(geometry = shape), fill = "#009E73", color = "#009E73") +
+  #geom_sf_text(data = ct_centroid, aes(label = label),size=4,family="sans")+
   theme_minimal()
-
 ggsave("citiesplot.png")
 
 png("Highwayplot.png", 600,500)
