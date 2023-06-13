@@ -440,9 +440,10 @@ DirectGrph <- igraph::simplify(DirectGrph,
 
 V(DirectGrph)$lat <- city_cntr[,1]
 V(DirectGrph)$lon <- city_cntr[,2]
+V(DirectGrph)$size <- ifelse(incl == TRUE, 3 , 1)
 
 png("DirectPlot.png", 600,500)
-plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1.5,
+plot.igraph(DirectGrph, vertex.label = NA, vertex.size = V(DirectGrph)$size,
             vertex.color = V(DirectGrph)$included,
             vertex.frame.color = V(DirectGrph)$included,
             edge.color = "#999999",
@@ -471,9 +472,10 @@ ggplot() +
   theme_minimal()
 ggsave("citiesplot.png")
 
+
 png("Highwayplot.png", 600,500)
 plot.igraph(hwy_grph, vertex.label = NA, 
-            vertex.size = 1.5, 
+            vertex.size = V(DirectGrph)$size, 
             vertex.color = V(DirectGrph)$included,
             vertex.frame.color = V(DirectGrph)$included,
             edge.color = "#999999", 
@@ -502,15 +504,15 @@ trfShpNP <- st_transform(trfShpNP, st_crs(hwd))
 trfShpNP$LocID <-  trfLocNP$`Loc ID`
 
 #intrNP<- st_intersects(st_buffer(trfShpNP, 100), fin)
-intrNP <- st_nearest_feature(trfShpNP, fin)
-intrPtsNP <- foreach(i = intrNP, .combine='rbind') %do% {if(!is.na(i)){fin[i,]}}
-
-#Find the nearest points on the highways where the traffic monitors can be placed.# 
-intrPtsNP <- st_nearest_points(trfShpNP, intrPtsNP, pairwise = TRUE) %>% 
-  st_cast("POINT")
-
-intrPtsNP <-  intrPtsNP[seq(2, length(intrPtsNP), 2)] %>%
-  st_as_sf()
+# intrNP <- st_nearest_feature(trfShpNP, fin)
+# intrPtsNP <- foreach(i = intrNP, .combine='rbind') %do% {if(!is.na(i)){fin[i,]}}
+# 
+# #Find the nearest points on the highways where the traffic monitors can be placed.# 
+# intrPtsNP <- st_nearest_points(trfShpNP, intrPtsNP, pairwise = TRUE) %>% 
+#   st_cast("POINT")
+# 
+# intrPtsNP <-  intrPtsNP[seq(2, length(intrPtsNP), 2)] %>%
+#   st_as_sf()
 
 ggplot() +
   geom_sf(data = fin, aes(geometry = geometry), color = "black")+
@@ -590,7 +592,7 @@ mem_wt <- cluster_walktrap(WWgrph, weights =  1/(E(WWgrph)$distance))
 plot_graph(WWgrph, membership(mem_wt), "Walktrap")
 
 ## SBM method
-n = 7
+n = 6
 thresh = 0.005
 maxIter = 50
 g <- WWgrph

@@ -8,6 +8,7 @@ institute: "Oregon State University"
 date: "`r Sys.Date()`"
 output:
   xaringan::moon_reader:
+    css: [default, "styles.css"]
     lib_dir: libs
     nature:
       highlightStyle: github
@@ -23,12 +24,15 @@ class: top
 
 # <font size="7">Motivation</font>
 .pull-left[
+.my-syle[
 - CDC launched National wastewater Surveillance System (NWSS) in Sept 2020 in order to monitor the COVID-19 pandemic.
 
 - Coronavirus Sewer Surveillance began as a part of TRACE COVID-19 project but it has evolved into a standalone project funded by Oregon Health Authority(OHA).
 
-- COVID spreads through airborne transmission
- ]
+- COVID spreads through airborne transmission and can be tracked using movement of people to and from various locations. 
+
+- We are using highway transportation network as a proxy to movement of population through the state of Oregon.
+ ]]
  
 .pull-right[
 ![](CDCmap.png)
@@ -84,7 +88,7 @@ class: top
     
     * We use wastewater measurements taken at wastewater treatment plants averaged over the delta wave. 
     
-    * Adding wastewater measurements can provide us with communities detected along different possible divisions.
+    * Adding wastewater measurements can provide us with communities detected along divisions such as rural/urban, population or another latent variable.
   
 --
 
@@ -92,7 +96,7 @@ class: top
 class:top , center
 
 # <font size="7">Plot of highway network</font>
-```{r, echo=FALSE, out.width="75%", fig.align = 'top', fig.cap="vertices:242  edges: 264"}
+```{r, echo=FALSE, out.width="90%", fig.align = 'top', fig.cap="vertices:242  edges: 264"}
 knitr::include_graphics("Highwayplot.png")
 ```
 
@@ -104,7 +108,7 @@ knitr::include_graphics("Highwayplot.png")
 class: top , center
 
 # <font size="7">Plot of highway network with wastewater cities</font>
-```{r, echo=FALSE, out.width="75%", fig.align = 'top', fig.cap="vertices:44  edges: 78"}
+```{r, echo=FALSE, out.width="90%", fig.align = 'top', fig.cap="vertices:44  edges: 78"}
 knitr::include_graphics("Directplot.png")
 ```
 
@@ -113,10 +117,20 @@ knitr::include_graphics("Directplot.png")
 
 ---
 
+# Community Detection Algorithms
+
+- Edge betweenness
+
+- Spectral clustering without covariates
+
+- Spectral clustering with covariates
+
+---
+
 # <font size="7">Edge betweenness community detection</font>
 
 
-- Edge betweeneness of an edge is defined as the number of shortest paths between any two vertices that run through the edge. 
+- Edge betweenness of an edge is defined as the number of shortest paths between any two vertices that run through the edge. 
 
 - Edges connecting communities have higher betweenness. 
 
@@ -135,7 +149,7 @@ knitr::include_graphics("Directplot.png")
 ---
 
 # <font size="7">Edge betweenness results</font>
-```{r, echo=FALSE, out.width="75%", fig.cap="7 communities", fig.align = 'top'}
+```{r, echo=FALSE, out.width="75%", fig.align = 'top'}
 knitr::include_graphics("edgebet.png")
 ```
 
@@ -146,9 +160,9 @@ knitr::include_graphics("edgebet.png")
 # <font size="7">Spectral community detection without covariates</font>
 
 
-- Given adjacency matrix $A$, number of clusters K, we can calculate $L = D^{-1/2} A D^{-1/2} \in R^{NxN}$ where D is the diagonal matrix of the degree matrix.
+- Given adjacency matrix $A$, number of clusters K, we can calculate the graph Laplacian denoted as $L = D^{-1/2} A D^{-1/2} \in R^{N \times N}$ where D is the diagonal matrix of the degree matrix.
 
-- Matrix $X_{nXk} = [X_1 ... X_k]$ can be find by combining eigen vectors corresponding to K largest eigen values of $L_T$. 
+- Matrix $X_{n \times k} = [X_1 ... X_k]$ can be found by combining eigen vectors corresponding to K largest eigen values of $L$. 
 
 - Matrix $X^*$ is formed by normalizing $X$ by row. 
 
@@ -157,7 +171,7 @@ knitr::include_graphics("edgebet.png")
 ---
 
 # <font size="7">Spectral community detection without covariates</font>
-```{r, echo=FALSE, out.width="75%", fig.align = 'top', fig.cap="5 communities"}
+```{r, echo=FALSE, out.width="75%", fig.align = 'top'}
 knitr::include_graphics("spectral.png")
 ```
 
@@ -167,23 +181,34 @@ knitr::include_graphics("spectral.png")
 
 #  <font size="7">Spectral community detection with covariates</font>
 
-- The CASC algorithm uses eigen vectors derived from the Matrix $Y = (A+D)X$  Where X is the covariate matrix. 
+- The Covariate Assisted Spectral Clustering(CASC) algorithm uses covariates of the nodes in addition to the structure of the network itself. 
 
-- The largest $K$ eigen vectors are used to perform K-means clustering.
+- The graph Laplacian used for this algortihm can be calculated as $\bar{L} = L + \alpha X X^T$, where $X$ is the $n \times p$ matrix of $p$ covariate values of the nodes.
+
+- $K$ eigen vectors from $K$ largest eigen values are used to perform K-means clustering similar to Spectral clustering without covariates.
 
 
 ---
 
 #  <font size="7">Spectral community detection with covariates</font>
-```{r, echo=FALSE, out.width="70%", fig.align = 'top', fig.cap=" 5 communities but only 38 nodes"}
+```{r, echo=FALSE, out.width="75%", fig.align = 'top'}
 knitr::include_graphics("SpectralCov.png")
 ```
 <!-- ![](spectralCov.png) -->
 
+<!-- --- -->
+
+<!-- .row[ -->
+<!-- <img src="edgebet.png"> -->
+<!-- <img src="SpectralCov.png"> -->
+<!-- <img src="Spectral.png"> -->
+<!-- ] -->
+
+
 ---
 
 # <font size="7">Comparison of community detection algorithms</font>
-```{r, echo=FALSE, fig.align = 'top'}
+```{r, echo=FALSE, out.height="25%", fig.align = 'top'}
 knitr::include_graphics("boxplt.png")
 ```
 <!-- ![](boxplt.png) -->
@@ -197,11 +222,11 @@ Adjusted Rand Index(ARI) is a common measure used to compare outcomes from commu
 
 Here in place for ground truth we are using ARI to compare similarities between two algorithms. 
 
-Comparison between Edge betweenness and Spectral clustering algorithm: 0.54
+Comparison between Edge betweenness and Spectral clustering algorithm: 0.48
 
-Comparison between Edge betweenness and Spectral clustering algorithm with Covariates: 0.045
+Comparison between Edge betweenness and Spectral clustering algorithm with covariates: 0.268
 
-Comparison between Spectral clustering algorithm and Spectral clustering algorithm: 0.016
+Comparison between Spectral clustering algorithm with and without covariates: 0.29
 
 ---
 
@@ -233,6 +258,10 @@ Comparison between Spectral clustering algorithm and Spectral clustering algorit
 - Thank you OHA for sharing the data presented here.
 
 ---
+class: middle, center
+# <font size="20">Thank you!</font>
+
+---
 
 # <font size="7">References</font>
 
@@ -250,6 +279,4 @@ Comparison between Spectral clustering algorithm and Spectral clustering algorit
 
 [7] https://www.oregon.gov/geo/Pages/sdlibrary.aspx
 
----
-class: middle, center
-# <font size="20">Thank you!</font>
+[8] https://spatialdata.oregonexplorer.info/geoportal/search;fq=Transportation;q=*roads*

@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>Assessing relationships between wastewater testing data for COVID-19 within locations in Oregon using transportation network data.</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="Gauri Phatak, Department of Statistics" />
+    <meta name="author" content="Katherine McLaughlin, James Molyneux, Department of Statistics" />
+    <meta name="author" content="Christine Kelly, Tyler Radniecki, Biomolecular Engineering" />
+    <meta name="date" content="2023-06-12" />
+    <script src="libs/header-attrs/header-attrs.js"></script>
+    <link href="libs/remark-css/default.css" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+.title[
+# Assessing relationships between wastewater testing data for COVID-19 within locations in Oregon using transportation network data.
+]
+.author[
+### <font size="6">Gauri Phatak, Department of Statistics</font>
+]
+.author[
+### <font size="4">Katherine McLaughlin, James Molyneux, Department of Statistics</font>
+]
+.author[
+### <font size="4">Christine Kelly, Tyler Radniecki, Biomolecular Engineering</font>
+]
+.institute[
+### Oregon State University
+]
+.date[
+### 2023-06-12
+]
+
+---
+
+
+
+
+class: top 
+
+# &lt;font size="7"&gt;Motivation&lt;/font&gt;
+.pull-left[
+.my-syle[
+- CDC launched National wastewater Surveillance System (NWSS) in Sept 2020 in order to monitor the COVID-19 pandemic.
+
+- Coronavirus Sewer Surveillance began as a part of TRACE COVID-19 project but it has evolved into a standalone project funded by Oregon Health Authority(OHA).
+
+- COVID spreads through airborne transmission and can be tracked using movement of people to and from various locations. 
+
+- We are using highway transportation network as a proxy to movement of population through the state of Oregon.
+ ]]
+ 
+.pull-right[
+![](CDCmap.png)
+]
+
+---
+class: top 
+
+# &lt;font size="7"&gt; Research directions&lt;/font&gt;
+
+  - Select Sentinel locations from within the wastewater cities to provide early warning system for various pathogens. 
+ 
+  - Generate a sphere of influence for the important cities.
+
+  - Temporal data comparison between wastewater data and publicly available cases, death count and vaccine data.
+
+
+---
+class: top, center
+
+# &lt;font size="7"&gt;Plot of highway data&lt;/font&gt;
+
+There are 242 cities in Oregon, 44 of which participated in the wastewater surveillance program at least once over the last three years.
+ 
+![Map of cities in Oregon (orange) and wastewater cities (Green)](citiesplot.png)
+
+---
+class: top 
+
+# &lt;font size="7"&gt;Social networks and community detection&lt;/font&gt; 
+
+--
+
+  - Networks created using Highway data 
+  
+--
+
+    * Two cities connected by a highway form a connected node pair.
+    
+    * The highway connection indicating movement between cities can relate to disease transmisssion.
+    
+    * Shortest path algorithm is used to find distance between each of the wastewater cities.
+
+--
+
+  - Community Detection Algorithm.
+  
+--
+
+    * Find set of nodes within a network that are closely related to each other based on a certain metric.
+    
+    * Node covariates can be used in addition to structural network data. 
+    
+    * We use wastewater measurements taken at wastewater treatment plants averaged over the delta wave. 
+    
+    * Adding wastewater measurements can provide us with communities detected along divisions such as rural/urban, population or another latent variable.
+  
+--
+
+---
+class:top , center
+
+# &lt;font size="7"&gt;Plot of highway network&lt;/font&gt;
+&lt;div class="figure" style="text-align: top"&gt;
+&lt;img src="Highwayplot.png" alt="vertices:242  edges: 264" width="90%" /&gt;
+&lt;p class="caption"&gt;vertices:242  edges: 264&lt;/p&gt;
+&lt;/div&gt;
+
+&lt;!-- \# vertices:242  \# edges: 264 --&gt;
+&lt;!-- ![](Highwayplot.png) --&gt;
+
+
+---
+class: top , center
+
+# &lt;font size="7"&gt;Plot of highway network with wastewater cities&lt;/font&gt;
+&lt;div class="figure" style="text-align: top"&gt;
+&lt;img src="Directplot.png" alt="vertices:44  edges: 78" width="90%" /&gt;
+&lt;p class="caption"&gt;vertices:44  edges: 78&lt;/p&gt;
+&lt;/div&gt;
+
+&lt;!-- \# vertices:44  \# edges: 78 --&gt;
+&lt;!-- ![](Directplot.png) --&gt;
+
+---
+
+# Community Detection Algorithms
+
+- Edge betweenness
+
+- Spectral clustering without covariates
+
+- Spectral clustering with covariates
+
+---
+
+# &lt;font size="7"&gt;Edge betweenness community detection&lt;/font&gt;
+
+
+- Edge betweenness of an edge is defined as the number of shortest paths between any two vertices that run through the edge. 
+
+- Edges connecting communities have higher betweenness. 
+
+- Algorithm for identifying communities based on edge betweenness measure:
+  
+  1) Calculate betweenness for all edges in network
+  
+  2) Remove edges with highest betweenness
+  
+  3) Recalculate betweenness for edges affected by removal
+  
+  4) Repeat from step 2 till no edges remain. 
+  
+- The above algorithm results in a dendogram with each node as a leaf. 
+
+---
+
+# &lt;font size="7"&gt;Edge betweenness results&lt;/font&gt;
+&lt;img src="edgebet.png" width="75%" /&gt;
+
+&lt;!-- ![](edgebet.png) --&gt;
+
+---
+
+# &lt;font size="7"&gt;Spectral community detection without covariates&lt;/font&gt;
+
+
+- Given adjacency matrix `\(A\)`, number of clusters K, we can calculate the graph Laplacian denoted as `\(L = D^{-1/2} A D^{-1/2} \in R^{N \times N}\)` where D is the diagonal matrix of the degree matrix.
+
+- Matrix `\(X_{n \times k} = [X_1 ... X_k]\)` can be found by combining eigen vectors corresponding to K largest eigen values of `\(L\)`. 
+
+- Matrix `\(X^*\)` is formed by normalizing `\(X\)` by row. 
+
+- Treating each row of `\(X^*\)` as a point run K-means clustering algorithm.
+
+---
+
+# &lt;font size="7"&gt;Spectral community detection without covariates&lt;/font&gt;
+&lt;img src="spectral.png" width="75%" /&gt;
+
+&lt;!-- ![](spectral.png) --&gt;
+
+---
+
+#  &lt;font size="7"&gt;Spectral community detection with covariates&lt;/font&gt;
+
+- The Covariate Assisted Spectral Clustering(CASC) algorithm uses covariates of the nodes in addition to the structure of the network itself. 
+
+- The graph Laplacian used for this algortihm can be calculated as `\(\bar{L} = L + \alpha X X^T\)`, where `\(X\)` is the `\(n \times p\)` matrix of `\(p\)` covariate values of the nodes.
+
+- `\(K\)` eigen vectors from `\(K\)` largest eigen values are used to perform K-means clustering similar to Spectral clustering without covariates.
+
+
+---
+
+#  &lt;font size="7"&gt;Spectral community detection with covariates&lt;/font&gt;
+&lt;img src="SpectralCov.png" width="75%" /&gt;
+&lt;!-- ![](spectralCov.png) --&gt;
+
+&lt;!-- --- --&gt;
+
+&lt;!-- .row[ --&gt;
+&lt;!-- &lt;img src="edgebet.png"&gt; --&gt;
+&lt;!-- &lt;img src="SpectralCov.png"&gt; --&gt;
+&lt;!-- &lt;img src="Spectral.png"&gt; --&gt;
+&lt;!-- ] --&gt;
+
+
+---
+
+# &lt;font size="7"&gt;Comparison of community detection algorithms&lt;/font&gt;
+&lt;img src="boxplt.png" width="2916" height="25%" /&gt;
+&lt;!-- ![](boxplt.png) --&gt;
+
+
+---
+
+## &lt;font size="7"&gt;Comparison using Adjusted Rand Index&lt;/font&gt;
+
+Adjusted Rand Index(ARI) is a common measure used to compare outcomes from community detection algorithms and ground truth.
+
+Here in place for ground truth we are using ARI to compare similarities between two algorithms. 
+
+Comparison between Edge betweenness and Spectral clustering algorithm: 0.48
+
+Comparison between Edge betweenness and Spectral clustering algorithm with covariates: 0.268
+
+Comparison between Spectral clustering algorithm with and without covariates: 0.29
+
+---
+
+# &lt;font size="7"&gt;Future Work&lt;/font&gt;
+
+- Temporal data
+  * Some Community Detection Algorithms take into account the temporal nature of edges at different time points.
+  * The wastewater data is temporal in nature. One of the direction of our research is including temporal nature of covariates.
+--
+
+- Missingness of node data
+  * Not all locations provided water samples every week. Hence, assessing communities using CASC is limited by weeks that have information for all or most of the nodes. It is likely the data is not missing at random making the problem a good candidate for further research in data imputation. 
+--
+
+- Add weighted edges by using Safe Graph data. Currently using Highway data as proxy.
+--
+
+- Add other demographic data, publicly available case, death count and political affiliations as covariates.
+--
+
+- Reduce the number of location that we need to monitor to get usable information regarding pathogen spread within the state. 
+
+---
+
+# &lt;font size="7"&gt;Acknowledgements&lt;/font&gt;
+
+- Thank you Dr. Tyler Radniecki and Dr. Christine Kelly and Molecular Engineering researchers in OSU College of Engineering who lead the wastewater testing for TRACE.
+
+- Thank you OHA for sharing the data presented here.
+
+---
+class: middle, center
+# &lt;font size="20"&gt;Thank you!&lt;/font&gt;
+
+---
+
+# &lt;font size="7"&gt;References&lt;/font&gt;
+
+[1] https://www.cdc.gov/nwss/wastewater-surveillance.html
+
+[2] https://www.npr.org/sections/health-shots/2023/04/24/1171177281/wastewater-surveillance-covid-tracking
+
+[3] https://trace.oregonstate.edu/ 
+
+[4] https://www.oregon.gov/oha/ERD/Pages/OHA-releases-COVID-19-Wastewater-monitoring-data.aspx
+
+[5] https://www.pnas.org/doi/10.1073/pnas.122653799
+
+[6] https://proceedings.neurips.cc/paper/2001/file/801272ee79cfde7fa5960571fee36b9b-Paper.pdf
+
+[7] https://www.oregon.gov/geo/Pages/sdlibrary.aspx
+
+[8] https://spatialdata.oregonexplorer.info/geoportal/search;fq=Transportation;q=*roads*
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "github",
+"highlightLines": true,
+"countIncrementalSlides": false
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+// add `data-at-shortcutkeys` attribute to <body> to resolve conflicts with JAWS
+// screen reader (see PR #262)
+(function(d) {
+  let res = {};
+  d.querySelectorAll('.remark-help-content table tr').forEach(tr => {
+    const t = tr.querySelector('td:nth-child(2)').innerText;
+    tr.querySelectorAll('td:first-child .key').forEach(key => {
+      const k = key.innerText;
+      if (/^[a-z]$/.test(k)) res[k] = t;  // must be a single letter (key)
+    });
+  });
+  d.body.setAttribute('data-at-shortcutkeys', JSON.stringify(res));
+})(document);
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>

@@ -92,7 +92,7 @@ plot_graph(WWgrph, membership(mem_wt), "Walktrap")
 ```{r}
 
 ## SBM method
-n = 5
+n = 6
 thresh = 0.005
 maxIter = 50
 g <- WWgrph
@@ -183,29 +183,44 @@ E(WWgrph)$wchStn <- 0
 todel <-  c("Springfield", "Yachats","Toledo","Boardman","Depoe Bay","Condon")
 
 ## Using CASCORE package.
-adj_m <- as_adjacency_matrix(delete_vertices(WWgrph, todel),
-                             sparse = FALSE)
+g <- delete_vertices(WWgrph, todel)
+V(g)$name <- as.character(1:length(V(g)))
+adj_m <- as_adjacency_matrix(g, sparse = FALSE)
 
 ## Using Spectral Covariate clustering for the different waves
 ## Look into the alphan argument. 
-for(a in seq(5, 40, by=5)){
 
-  mem_specCov <- CASC(adj_m, as.numeric(cov[-match(todel, cov$name),4]), 
-                      K = 5,  itermax  = 1000, startn = 50, alphan = a)
-  plot_graph(delete_vertices(WWgrph, todel), mem_specCov, "Spectral with covariates")
-
-}
+k=6
+# for(a in seq(5, 40, by=5)){
+# 
+#   mem_specCov <- CASC(adj_m, as.numeric(cov[-match(todel, cov$name),4]), 
+#                       K = k,  itermax  = 1000, startn = 50, alphan = a)
+#   plot_graph(delete_vertices(WWgrph, todel), mem_specCov, "Spectral with covariates")
+# 
+# }
 
 mem_specCov <- CASC(adj_m, as.numeric(cov[-match(todel, cov$name),4]), 
-                      K = 5,  itermax  = 1000, startn = 50, alphan = 1)
+                      K = k,  itermax  = 1000, startn = 50, alphan = 1)
 png("spectralCov.png", 600,500)
-plot_graph(delete_vertices(WWgrph, todel), mem_specCov, NA)
+plot_graph(g, mem_specCov, NA)
 dev.off()
 
-mem_specCov <- merge(as.data.frame(cbind(name = cov$name)),
-                     as.data.frame(cbind(membership = mem_specCov,
-                                         name = cov[-match(todel, cov$name),1])),
-                     by ="name", all.x = TRUE)
+# mem_specCov <- merge(as.data.frame(cbind(name = cov$name)),
+#                      as.data.frame(cbind(membership = mem_specCov,
+#                                          name = cov[-match(todel, cov$name),1])),
+#                      by ="name", all.x = TRUE)
+
+## Regularized Spectral  clustering 
+mem_spec <- RegSpectralClust(g, k, FALSE)
+png("spectral.png", 600,500)
+plot_graph(g, mem_spec, NA)
+dev.off()
+
+mem_edge <- cluster_edge_betweenness(g, weights = 1/(E(g)$distance),directed = FALSE)
+png("edgebet.png", 600,500)
+plot_graph(g, membership(mem_edge), NA)
+dev.off()
+
 
 
 ```
@@ -229,8 +244,8 @@ op <- as.data.frame(cbind(Edge_betweenness = membership(mem_edge),
                           SBM = mem_sbm[[1]][[1]], 
                           DCSBM = mem_dc[[1]][[1]], 
                           Spectral = mem_spec, 
-                          SpectralCov = mem_specCov$membership))
-BOXPLOTS <- function(o, covVal, g){
+                          SpectralCov = mem_specCov))
+BOXPLOTS <- function(o, covVal, g, num, k){
   
   o$val <- covVal #<- merge(x = o, y = covVal, by = "City", all.o = TRUE)
   o  <- pivot_longer(o,!val, names_to = "Algorithm", values_to = "Membership" )
@@ -239,10 +254,12 @@ BOXPLOTS <- function(o, covVal, g){
   p <- list()
   aov_op <- list()
   # The palette with black:
-  cbPalette <- c( "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+  #cbPalette <- c( "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+  
+  cbPalette <- c(rep("#0072B2", k))
 
   
-  for(i in 1:11){ ## We have 10 algorithms 
+  for(i in 1:num){ ## We have 10 algorithms 
     #print(i)
     p[[o[[i]]$Algorithm[1]]] <- ggplot(data = o[[i]] %>% filter(!is.na(Membership))) +
       geom_boxplot(aes(x = Membership, y = val, fill = Membership)) + 
@@ -261,34 +278,45 @@ BOXPLOTS <- function(o, covVal, g){
 ## plotting delta values
 #delV <-  as.data.frame(cbind(V(WWgrph)$name, V(WWgrph)$delta))
 
-p  <- BOXPLOTS(op,V(WWgrph)$delta, g)
+```
+
+
+```{r}
+
+## Creating boxplots for the 38 communities
+op<- as.data.frame(cbind(Edge_betweenness = membership(mem_edge),
+           Spectral_Clustering  = mem_spec,
+           SpectralWCovariates = mem_specCov))
+p  <- BOXPLOTS(op,V(g)$delta, g, 3, 6)
 aov <- p[[2]]
 p <- p[[1]]
 
-plt <- grid.arrange(p$Edge_betweenness,  p$Spectral, p$SpectralCov, ncol =1)
-
-#p$SpectralCov
+plt <- grid.arrange(p$Edge_betweenness,  p$Spectral_Clustering, p$SpectralWCovariates, ncol =1)
 
 ggsave("boxplt.png", plt)
+
+
+
 ```
+
 
 ## Comparing the outputs using adjusted rand index.
 
 ```{r}
 ## Comparing edge betweenness and spectral w/o covariates
-compare(op$Edge_betweenness[!is.na(op$SpectralCov)], 
-        op$Spectral[!is.na(op$SpectralCov)], 
+compare(op$Edge_betweenness, 
+        op$Spectral_Clustering, 
         method = "adjusted.rand")
 
 ## Comparing edge betweenness and spectral w covariates
-compare(op$Edge_betweenness[!is.na(op$SpectralCov)], 
-        op$SpectralCov[!is.na(op$SpectralCov)], 
+compare(op$Edge_betweenness, 
+        op$SpectralWCovariates, 
         method = "adjusted.rand")
 
 ## comparing between spectral w and w/o covariates
 
-compare(op$Spectral[!is.na(op$SpectralCov)], 
-        op$SpectralCov[!is.na(op$SpectralCov)], 
+compare(op$Spectral_Clustering, 
+        op$SpectralWCovariates, 
         method = "adjusted.rand")
 
 

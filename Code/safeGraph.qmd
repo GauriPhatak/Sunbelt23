@@ -99,7 +99,7 @@ py_cities <- py_cities[py_cities$city %in% ct_sbst, ]
 
 ```
 
-## Filtering out non relevant columns 
+## Filtering out non relevant columns
 
 ```{r}
 py_cities <- py_cities %>% select(city,postal_code,date_range_start,date_range_end,raw_visit_counts,raw_visitor_counts,poi_cbg,visitor_home_cbgs,visitor_daytime_cbgs,distance_from_home,median_dwell)
@@ -128,7 +128,6 @@ the census block code is read as
 000100 - Tract
 
 2 - block group
-
 ```
 
 ```{r}

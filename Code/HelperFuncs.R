@@ -227,7 +227,7 @@ RegSpectralClust <-  function(G, k, regularize = TRUE ){
   I <- diag(x = 1, nrow = length(V(G)), ncol = length(V(G)))
   tau = mean(degree(G))
   if(regularize == FALSE){tau = 0}
-  Dt <- diag(degree(G)+tau, nrow = length(V(G)))
+  Dt <- diag(degree(G)+tau+0.5, nrow = length(V(G)))
   
 ## find the -1/2 root of Matrix Dt
 
