@@ -6,7 +6,7 @@
     <meta name="author" content="Gauri Phatak, Department of Statistics" />
     <meta name="author" content="Katherine McLaughlin, James Molyneux, Department of Statistics" />
     <meta name="author" content="Christine Kelly, Tyler Radniecki, Biomolecular Engineering" />
-    <meta name="date" content="2023-06-12" />
+    <meta name="date" content="2023-06-15" />
     <script src="libs/header-attrs/header-attrs.js"></script>
     <link href="libs/remark-css/default.css" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" type="text/css" />
@@ -31,7 +31,7 @@ class: center, middle, inverse, title-slide
 ### Oregon State University
 ]
 .date[
-### 2023-06-12
+### 2023-06-15
 ]
 
 ---
@@ -39,7 +39,7 @@ class: center, middle, inverse, title-slide
 
 
 
-class: top 
+class:top 
 
 # &lt;font size="7"&gt;Motivation&lt;/font&gt;
 .pull-left[
@@ -58,7 +58,7 @@ class: top
 ]
 
 ---
-class: top 
+class:top 
 
 # &lt;font size="7"&gt; Research directions&lt;/font&gt;
 
@@ -70,7 +70,7 @@ class: top
 
 
 ---
-class: top, center
+class:top, center
 
 # &lt;font size="7"&gt;Plot of highway data&lt;/font&gt;
 
@@ -79,34 +79,22 @@ There are 242 cities in Oregon, 44 of which participated in the wastewater surve
 ![Map of cities in Oregon (orange) and wastewater cities (Green)](citiesplot.png)
 
 ---
-class: top 
+class:top 
 
 # &lt;font size="7"&gt;Social networks and community detection&lt;/font&gt; 
 
 --
 
   - Networks created using Highway data 
-  
---
-
     * Two cities connected by a highway form a connected node pair.
-    
     * The highway connection indicating movement between cities can relate to disease transmisssion.
-    
     * Shortest path algorithm is used to find distance between each of the wastewater cities.
-
 --
 
   - Community Detection Algorithm.
-  
---
-
     * Find set of nodes within a network that are closely related to each other based on a certain metric.
-    
     * Node covariates can be used in addition to structural network data. 
-    
     * We use wastewater measurements taken at wastewater treatment plants averaged over the delta wave. 
-    
     * Adding wastewater measurements can provide us with communities detected along divisions such as rural/urban, population or another latent variable.
   
 --
@@ -125,9 +113,9 @@ class:top , center
 
 
 ---
-class: top , center
+class:top , center
 
-# &lt;font size="7"&gt;Plot of highway network with wastewater cities&lt;/font&gt;
+# &lt;font size="6"&gt;Plot of highway network with wastewater cities&lt;/font&gt;
 &lt;div class="figure" style="text-align: top"&gt;
 &lt;img src="Directplot.png" alt="vertices:44  edges: 78" width="90%" /&gt;
 &lt;p class="caption"&gt;vertices:44  edges: 78&lt;/p&gt;
@@ -137,6 +125,7 @@ class: top , center
 &lt;!-- ![](Directplot.png) --&gt;
 
 ---
+class:top , center
 
 # Community Detection Algorithms
 
@@ -147,6 +136,7 @@ class: top , center
 - Spectral clustering with covariates
 
 ---
+class:top , center
 
 # &lt;font size="7"&gt;Edge betweenness community detection&lt;/font&gt;
 
@@ -168,6 +158,7 @@ class: top , center
 - The above algorithm results in a dendogram with each node as a leaf. 
 
 ---
+class:top , center
 
 # &lt;font size="7"&gt;Edge betweenness results&lt;/font&gt;
 &lt;img src="edgebet.png" width="75%" /&gt;
@@ -175,6 +166,7 @@ class: top , center
 &lt;!-- ![](edgebet.png) --&gt;
 
 ---
+class:top , center
 
 # &lt;font size="7"&gt;Spectral community detection without covariates&lt;/font&gt;
 
@@ -188,6 +180,7 @@ class: top , center
 - Treating each row of `\(X^*\)` as a point run K-means clustering algorithm.
 
 ---
+class:top , center
 
 # &lt;font size="7"&gt;Spectral community detection without covariates&lt;/font&gt;
 &lt;img src="spectral.png" width="75%" /&gt;
@@ -195,6 +188,7 @@ class: top , center
 &lt;!-- ![](spectral.png) --&gt;
 
 ---
+class:top , center
 
 #  &lt;font size="7"&gt;Spectral community detection with covariates&lt;/font&gt;
 
@@ -206,6 +200,7 @@ class: top , center
 
 
 ---
+class:top , center
 
 #  &lt;font size="7"&gt;Spectral community detection with covariates&lt;/font&gt;
 &lt;img src="SpectralCov.png" width="75%" /&gt;
@@ -221,13 +216,15 @@ class: top , center
 
 
 ---
+class:top , center
 
 # &lt;font size="7"&gt;Comparison of community detection algorithms&lt;/font&gt;
-&lt;img src="boxplt.png" width="2916" height="25%" /&gt;
+&lt;img src="boxplt.png" width="2800" height="25%" /&gt;
 &lt;!-- ![](boxplt.png) --&gt;
 
 
 ---
+class:top , center
 
 ## &lt;font size="7"&gt;Comparison using Adjusted Rand Index&lt;/font&gt;
 
@@ -242,6 +239,7 @@ Comparison between Edge betweenness and Spectral clustering algorithm with covar
 Comparison between Spectral clustering algorithm with and without covariates: 0.29
 
 ---
+class:top , center
 
 # &lt;font size="7"&gt;Future Work&lt;/font&gt;
 
@@ -263,6 +261,7 @@ Comparison between Spectral clustering algorithm with and without covariates: 0.
 - Reduce the number of location that we need to monitor to get usable information regarding pathogen spread within the state. 
 
 ---
+class:top , center
 
 # &lt;font size="7"&gt;Acknowledgements&lt;/font&gt;
 
@@ -275,6 +274,7 @@ class: middle, center
 # &lt;font size="20"&gt;Thank you!&lt;/font&gt;
 
 ---
+class:top , center
 
 # &lt;font size="7"&gt;References&lt;/font&gt;
 

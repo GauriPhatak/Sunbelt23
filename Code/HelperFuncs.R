@@ -305,13 +305,99 @@ CovAssistedSpecClust <- function(G, X, k, Regularize = TRUE){
 
 
 
+findEdges <- function(geom, hwd, id, type){
+  
+  city_cntr <- ct %>% 
+    st_as_sf() %>% 
+    st_centroid() %>% 
+    st_cast("POINT") %>% 
+    st_transform(4326) %>% 
+    st_coordinates()
+  
+  distMat <- distm(city_cntr)
+  colnames(distMat) <- ct$city_name
+  rownames(distMat) <- ct$city_name
+  
+  edges <- data.frame(matrix(ncol = 4, nrow=0))
+  
+  for(hwy_id in id) {
+    dist<- c()
+    sbst <- hwd[hwd$st_hwy_idx == hwy_id,]
+    int <- st_intersection(sbst, geom)
+    sortedV <- int %>% 
+      group_by(city_name) %>%
+      dplyr::summarise(m = median(beg_mp_no)) %>%
+      arrange(m)
+    #Subset of cities in the data
+    #ct$city_name[ct$city_name %in% unique(int$city_name)]
+    sortedV$city_nameConn <- c(sortedV$city_name[-1], 0)
+    
+    sortedCT <- as.matrix(cbind(sortedV$city_name, sortedV$city_nameConn), ncol =2 )#[1: length(sortedV$city_name)-1,]
+    #print(hwy_id)
+    #print(sortedCT)
+    
+    for (i in 1:dim(sortedV)[1]-1) {
+      dist <- c(dist, distMat[sortedCT[i,1], sortedCT[i,2]])
+    }
+    ##Cannot use the milepost numbers as distance metric... it's different for different highways
+    #dist <- c(sortedV$m[-1],0) - sortedV$m
+    edges <- rbind(edges,cbind(sortedV$city_name, sortedV$city_nameConn,
+                               rep(hwy_id,length(sortedV$city_name)),
+                               dist)[1:length(sortedV$city_name)-1,])
+  }
+  edges <- cbind(edges, type)
+  colnames(edges) <- c("to","from","hwy_id","distance","type")
+  return(edges)
+}
 
 
+ShortestPathGrph <- function(ct_sbst, hwy_grph, city_name, simple = TRUE){
+  
+  ## keeping all the edges from above. Checking if this would add more edges to the data
+  saveDirEdges <-  data.frame(matrix(ncol = 3, nrow = 0))
+  
+  distV <-  distances(hwy_grph, ct_sbst, 
+                      ct_sbst,
+                      weights = round(as.numeric(E(hwy_grph)$distance)))
+  
+  for (i in 1:length(ct_sbst)) {
+    
+    trav <- list()
+    path <- shortest_paths(hwy_grph, ct_sbst[i], 
+                           ct_sbst, output = "both" , 
+                           weights = round(as.numeric(E(hwy_grph)$distance)))
+     
+    for(j in 1:length(ct_sbst)){
+      curPath <- names(unlist(path$vpath[[j]]))
+      subPath <- curPath[curPath %in% ct_sbst]
+      if(length(subPath) > 1){
+        newEdges <- cbind(subPath[1:length(subPath)-1], subPath[2:length(subPath)])
+        newEdges <- cbind(newEdges, as.numeric(apply(newEdges , 1, function(x) distV[x[1], x[2]])))
+        saveDirEdges <- rbind(saveDirEdges, newEdges )
+      }
+    }
+  }
+  colnames(saveDirEdges) <- c("to","from", "distance")
+  saveDirEdges$distance <- as.numeric(saveDirEdges$distance)
+  
+  ## Creating edges from the paths that we generate using shortest path algorithm. 
+  ## Coloring based on the weight of the edge i.e. the number of nodes between the two nodes of interest.
+  
+  DirectGrph <- graph_from_data_frame(d = saveDirEdges, vertices = city_name, directed = FALSE)
+  
+  if(simple == TRUE){
+    DirectGrph <- simplify(DirectGrph, edge.attr.comb = "min")
+  }
+  
+  return(DirectGrph)
+}
 
-
-
-
-
+plot_graph <- function(g, m, title){
+  plot.igraph(g, vertex.size = 4, vertex.label = NA,
+              vertex.color = m,
+              edge.width = 1, layout = cbind(as.numeric(V(g)$lat), as.numeric(V(g)$lon)), 
+              main = title)
+}
 
 
 

@@ -49,12 +49,7 @@ rm(totalDat)
 ```{r}
 source("HelperFuncs.R")
 
-plot_graph <- function(g, m, title){
-  plot.igraph(g, vertex.size = 4, vertex.label = NA,
-            vertex.color = m,
-            edge.width = 1, layout = cbind(V(g)$lat, V(g)$lon), 
-            main = title)
-}
+
 ```
 
 
@@ -92,18 +87,18 @@ plot_graph(WWgrph, membership(mem_wt), "Walktrap")
 ```{r}
 
 ## SBM method
-n = 6
+n = length(unique(membership(mem_edge)))
 thresh = 0.005
 maxIter = 50
 g <- WWgrph
 V(g)$name <- as.character(1:length(V(g)))
 
-mem_sbm <- lazySBM(g, as.numeric(n), "simple", thresh, maxIter)
-plot_graph(g, mem_sbm[[1]][[1]], "SBM")
-
-## DCSBM
-mem_dc <- lazySBM(g, as.numeric(n), "DC", thresh, maxIter)
-plot_graph(g, mem_dc[[1]][[1]], "DCSBM")
+# mem_sbm <- lazySBM(g, as.numeric(n), "simple", thresh, maxIter)
+# plot_graph(g, mem_sbm[[1]][[1]], "SBM")
+# 
+# ## DCSBM
+# mem_dc <- lazySBM(g, as.numeric(n), "DC", thresh, maxIter)
+# plot_graph(g, mem_dc[[1]][[1]], "DCSBM")
 
 ## Regularized Spectral  clustering 
 mem_spec <- RegSpectralClust(g, n, FALSE)
@@ -111,98 +106,99 @@ png("spectral.png", 600,500)
 plot_graph(g, mem_spec, NA)
 dev.off()
 
+plot_graph(WWgrph, membership(mem_edge), NA)
+plot_graph(g, mem_spec, NA)
+
 ```
 
 ```{r}
 ## importing wastewater data/ this is the data from 5/19
 
-covid <- read_csv("C:/Users/gauph/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/5.19.23/Combined_all_sample_data_aggregated_byfilter_2023-05-19.csv")
-
-covid <- covid[covid$SampleType == "Influent",]
-covid$Date <- as.dates(covid$Date)
-
-covid$epiweek <- epiweek(covid$Date)
-covid$epiyear <- epiyear(covid$Date)
-covid$ym <- format(as.Date(covid$Date), "%Y-%m")
-## subsampling OHA data only.
-covid <- covid[covid$Study == "OHA",]
-
-covid_my <- covid %>%
-  dplyr::group_by(ym, Location) %>%
-  dplyr::summarize(meanLogCopies = mean(LogCopiesPerL, na.rm = TRUE), 
-                   county = first(na.omit(County)))
-
-df <- covid %>%
-    ungroup() %>%
-    mutate(RV = as.numeric(paste0(epiyear,".",epiweek)))%>%
-    mutate(Wave = case_when(
-           between(RV, 2020.36,2021.09 )~"Pre-Alpha",
-           between(RV,2021.09, 2021.26 )~ "Alpha",
-           between(RV,2021.26,2021.44 )~ "Delta",
-           between(RV,2021.48, 2022.13 )~ "Omicron",
-           between(RV,2022.14, 2022.31 )~ "OmicronBA.2"
-           ))
-
-
-## Aggregating based on wave
-covid_wv <- df %>%
-  dplyr::group_by(Location, Wave) %>%
-  dplyr::summarize(mlc = mean(LogCopiesPerL, na.rm = TRUE),
-                   county = first(na.omit(County))) %>%
-  filter(!is.na(Wave))
-
-
-## merging data for waves into the graph object as attributes
-V(WWgrph)$prealpha <- unlist((covid_wv %>% filter(Wave == "Pre-Alpha"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Pre-Alpha"))$Location),3])
-
-V(WWgrph)$alpha <- unlist((covid_wv %>% filter(Wave == "Alpha"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Alpha"))$Location),3])
- 
-V(WWgrph)$delta <- unlist((covid_wv %>% filter(Wave == "Delta"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Delta"))$Location),3])
-
-V(WWgrph)$Omicron <- unlist((covid_wv %>% filter(Wave == "Omicron"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Omicron"))$Location),3])
-
-V(WWgrph)$OmicronBA <- unlist((covid_wv %>% filter(Wave == "OmicronBA.2"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "OmicronBA.2"))$Location),3])
-
-#V(WWgrph)$pop <- WWpop$Population[match(V(WWgrph)$name,  WWpop$Location)]
-
-#V(WWgrph)$county <- covid_wv$county[]
-
-
-cov <- as.data.frame(cbind(V(WWgrph)$name,V(WWgrph)$prealpha,
-                           V(WWgrph)$alpha,V(WWgrph)$delta,
-                           V(WWgrph)$Omicron,V(WWgrph)$OmicronBA,
-                           V(WWgrph)$pop))
-
-colnames(cov) <- c("name","prealpha","alpha","delta","Omicron","OmicronBA")#,"pop")
-## Reguarized spectral clustering with covariates.
-## removeing nodes that have consistent NA values
-## I am not able to remove some fo the value because the stupid edge covariates are set to NULL.
-## setting the edge covariates to 0 instead for now.
-E(WWgrph)$stsn <- 0
-E(WWgrph)$wchStn <- 0
-todel <-  c("Springfield", "Yachats","Toledo","Boardman","Depoe Bay","Condon")
-
-## Using CASCORE package.
-g <- delete_vertices(WWgrph, todel)
-V(g)$name <- as.character(1:length(V(g)))
-adj_m <- as_adjacency_matrix(g, sparse = FALSE)
+# covid <- read_csv("C:/Users/gauph/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/5.19.23/Combined_all_sample_data_aggregated_byfilter_2023-05-19.csv")
+# 
+# covid <- covid[covid$SampleType == "Influent",]
+# covid$Date <- as.dates(covid$Date)
+# 
+# covid$epiweek <- epiweek(covid$Date)
+# covid$epiyear <- epiyear(covid$Date)
+# covid$ym <- format(as.Date(covid$Date), "%Y-%m")
+# ## subsampling OHA data only.
+# covid <- covid[covid$Study == "OHA",]
+# 
+# covid_my <- covid %>%
+#   dplyr::group_by(ym, Location) %>%
+#   dplyr::summarize(meanLogCopies = mean(LogCopiesPerL, na.rm = TRUE), 
+#                    county = first(na.omit(County)))
+# 
+# df <- covid %>%
+#     ungroup() %>%
+#     mutate(RV = as.numeric(paste0(epiyear,".",epiweek)))%>%
+#     mutate(Wave = case_when(
+#            between(RV, 2020.36,2021.09 )~"Pre-Alpha",
+#            between(RV,2021.09, 2021.26 )~ "Alpha",
+#            between(RV,2021.26,2021.44 )~ "Delta",
+#            between(RV,2021.48, 2022.13 )~ "Omicron",
+#            between(RV,2022.14, 2022.31 )~ "OmicronBA.2"
+#            ))
+# 
+# 
+# ## Aggregating based on wave
+# covid_wv <- df %>%
+#   dplyr::group_by(Location, Wave) %>%
+#   dplyr::summarize(mlc = mean(LogCopiesPerL, na.rm = TRUE),
+#                    county = first(na.omit(County))) %>%
+#   filter(!is.na(Wave))
+# 
+# 
+# ## merging data for waves into the graph object as attributes
+# V(WWgrph)$prealpha <- unlist((covid_wv %>% filter(Wave == "Pre-Alpha"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Pre-Alpha"))$Location),3])
+# 
+# V(WWgrph)$alpha <- unlist((covid_wv %>% filter(Wave == "Alpha"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Alpha"))$Location),3])
+#  
+# V(WWgrph)$delta <- unlist((covid_wv %>% filter(Wave == "Delta"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Delta"))$Location),3])
+# 
+# V(WWgrph)$Omicron <- unlist((covid_wv %>% filter(Wave == "Omicron"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Omicron"))$Location),3])
+# 
+# V(WWgrph)$OmicronBA <- unlist((covid_wv %>% filter(Wave == "OmicronBA.2"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "OmicronBA.2"))$Location),3])
+# 
+# #V(WWgrph)$pop <- WWpop$Population[match(V(WWgrph)$name,  WWpop$Location)]
+# 
+# #V(WWgrph)$county <- covid_wv$county[]
+# 
+# 
+# cov <- as.data.frame(cbind(V(WWgrph)$name,V(WWgrph)$prealpha,
+#                            V(WWgrph)$alpha,V(WWgrph)$delta,
+#                            V(WWgrph)$Omicron,V(WWgrph)$OmicronBA,
+#                            V(WWgrph)$pop))
+# 
+# colnames(cov) <- c("name","prealpha","alpha","delta","Omicron","OmicronBA")#,"pop")
+# ## Reguarized spectral clustering with covariates.
+# ## removeing nodes that have consistent NA values
+# ## I am not able to remove some fo the value because the stupid edge covariates are set to NULL.
+# ## setting the edge covariates to 0 instead for now.
+# E(WWgrph)$stsn <- 0
+# E(WWgrph)$wchStn <- 0
+# todel <-  c("Springfield", "Yachats","Toledo","Boardman","Depoe Bay","Condon")
+# 
+# ## Using CASCORE package.
+# g <- delete_vertices(WWgrph, todel)
+# V(g)$city <- V(g)$name
+# V(g)$name <- as.character(1:length(V(g)))
+adj_m <- as_adjacency_matrix(WWgrph, sparse = FALSE)
 
 ## Using Spectral Covariate clustering for the different waves
 ## Look into the alphan argument. 
-
-k=6
 # for(a in seq(5, 40, by=5)){
 # 
-#   mem_specCov <- CASC(adj_m, as.numeric(cov[-match(todel, cov$name),4]), 
-#                       K = k,  itermax  = 1000, startn = 50, alphan = a)
-#   plot_graph(delete_vertices(WWgrph, todel), mem_specCov, "Spectral with covariates")
+#   mem_specCov <- CASC(adj_m, as.numeric(V(WWgrph)$delta), K = k,  itermax  = 1000, startn = 50, alphan = a)
+#   plot_graph(WWgrph, mem_specCov, "Spectral with covariates")
 # 
 # }
 
-mem_specCov <- CASC(adj_m, as.numeric(cov[-match(todel, cov$name),4]), 
-                      K = k,  itermax  = 1000, startn = 50, alphan = 1)
+op <- CASC(adj_m, as.numeric(V(WWgrph)$delta), K = n,  
+           itermax  = 1000, startn = 50, alphan = 5)
 png("spectralCov.png", 600,500)
-plot_graph(g, mem_specCov, NA)
+plot_graph(WWgrph, op, NA)
 dev.off()
 
 # mem_specCov <- merge(as.data.frame(cbind(name = cov$name)),
@@ -211,16 +207,20 @@ dev.off()
 #                      by ="name", all.x = TRUE)
 
 ## Regularized Spectral  clustering 
-mem_spec <- RegSpectralClust(g, k, FALSE)
+mem_spec <- RegSpectralClust(WWgrph, n, FALSE)
 png("spectral.png", 600,500)
-plot_graph(g, mem_spec, NA)
+plot_graph(WWgrph, mem_spec, NA)
 dev.off()
 
-mem_edge <- cluster_edge_betweenness(g, weights = 1/(E(g)$distance),directed = FALSE)
+mem_edge <- cluster_edge_betweenness(WWgrph, weights = 1/(E(WWgrph)$distance),directed = FALSE)
 png("edgebet.png", 600,500)
-plot_graph(g, membership(mem_edge), NA)
+plot_graph(WWgrph, membership(mem_edge), NA)
 dev.off()
 
+
+plot_graph(WWgrph, mem_spec, "Spectral")
+plot_graph(WWgrph, membership(mem_edge), "Edge")
+plot_graph(WWgrph, op, "SpecCov")
 
 
 ```
@@ -241,10 +241,10 @@ op <- as.data.frame(cbind(Edge_betweenness = membership(mem_edge),
                           Leading_eigen = membership(mem_le), 
                           label_propogation = membership(mem_lp), 
                           Optimal = membership(mem_o), 
-                          SBM = mem_sbm[[1]][[1]], 
-                          DCSBM = mem_dc[[1]][[1]], 
+                          #SBM = mem_sbm[[1]][[1]], 
+                          #DCSBM = mem_dc[[1]][[1]], 
                           Spectral = mem_spec, 
-                          SpectralCov = mem_specCov))
+                          SpectralCov = op))
 BOXPLOTS <- function(o, covVal, g, num, k){
   
   o$val <- covVal #<- merge(x = o, y = covVal, by = "City", all.o = TRUE)
@@ -286,8 +286,8 @@ BOXPLOTS <- function(o, covVal, g, num, k){
 ## Creating boxplots for the 38 communities
 op<- as.data.frame(cbind(Edge_betweenness = membership(mem_edge),
            Spectral_Clustering  = mem_spec,
-           SpectralWCovariates = mem_specCov))
-p  <- BOXPLOTS(op,V(g)$delta, g, 3, 6)
+           SpectralWCovariates = op))
+p  <- BOXPLOTS(op,as.numeric(V(g)$delta), g, 3, n)
 aov <- p[[2]]
 p <- p[[1]]
 
@@ -320,6 +320,23 @@ compare(op$Spectral_Clustering,
         method = "adjusted.rand")
 
 
+```
+## Creating graph without losing the edges.
+
+
+```{r}
+V(g)$name <- V(g)$city
+edges <- as.matrix(as_edgelist(g), ncols = 2)
+for(v in todel){
+  nbr <- as_ids(neighbors(WWgrph, v)) 
+  nbr <- nbr[!(nbr %in% todel)]
+  edges <- rbind(edges, as.matrix(expand.grid(nbr,nbr), ncol = 2))
+}
+
+nG <- simplify(graph_from_edgelist(edges, directed = FALSE))
+
+plot(nG, vertex.label = NA)
+V(nG)
 ```
 
 

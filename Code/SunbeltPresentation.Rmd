@@ -20,7 +20,7 @@ output:
 options(htmltools.dir.version = FALSE)
 ```
 
-class: top 
+class:top 
 
 # <font size="7">Motivation</font>
 .pull-left[
@@ -39,7 +39,7 @@ class: top
 ]
 
 ---
-class: top 
+class:top 
 
 # <font size="7"> Research directions</font>
 
@@ -51,7 +51,7 @@ class: top
 
 
 ---
-class: top, center
+class:top, center
 
 # <font size="7">Plot of highway data</font>
 
@@ -60,34 +60,22 @@ There are 242 cities in Oregon, 44 of which participated in the wastewater surve
 ![Map of cities in Oregon (orange) and wastewater cities (Green)](citiesplot.png)
 
 ---
-class: top 
+class:top 
 
 # <font size="7">Social networks and community detection</font> 
 
 --
 
   - Networks created using Highway data 
-  
---
-
     * Two cities connected by a highway form a connected node pair.
-    
     * The highway connection indicating movement between cities can relate to disease transmisssion.
-    
     * Shortest path algorithm is used to find distance between each of the wastewater cities.
-
 --
 
   - Community Detection Algorithm.
-  
---
-
     * Find set of nodes within a network that are closely related to each other based on a certain metric.
-    
     * Node covariates can be used in addition to structural network data. 
-    
     * We use wastewater measurements taken at wastewater treatment plants averaged over the delta wave. 
-    
     * Adding wastewater measurements can provide us with communities detected along divisions such as rural/urban, population or another latent variable.
   
 --
@@ -105,9 +93,9 @@ knitr::include_graphics("Highwayplot.png")
 
 
 ---
-class: top , center
+class:top , center
 
-# <font size="7">Plot of highway network with wastewater cities</font>
+# <font size="6">Plot of highway network with wastewater cities</font>
 ```{r, echo=FALSE, out.width="90%", fig.align = 'top', fig.cap="vertices:44  edges: 78"}
 knitr::include_graphics("Directplot.png")
 ```
@@ -116,6 +104,7 @@ knitr::include_graphics("Directplot.png")
 <!-- ![](Directplot.png) -->
 
 ---
+class:top , center
 
 # Community Detection Algorithms
 
@@ -126,6 +115,7 @@ knitr::include_graphics("Directplot.png")
 - Spectral clustering with covariates
 
 ---
+class:top , center
 
 # <font size="7">Edge betweenness community detection</font>
 
@@ -147,6 +137,7 @@ knitr::include_graphics("Directplot.png")
 - The above algorithm results in a dendogram with each node as a leaf. 
 
 ---
+class:top , center
 
 # <font size="7">Edge betweenness results</font>
 ```{r, echo=FALSE, out.width="75%", fig.align = 'top'}
@@ -156,6 +147,7 @@ knitr::include_graphics("edgebet.png")
 <!-- ![](edgebet.png) -->
 
 ---
+class:top , center
 
 # <font size="7">Spectral community detection without covariates</font>
 
@@ -169,6 +161,7 @@ knitr::include_graphics("edgebet.png")
 - Treating each row of $X^*$ as a point run K-means clustering algorithm.
 
 ---
+class:top , center
 
 # <font size="7">Spectral community detection without covariates</font>
 ```{r, echo=FALSE, out.width="75%", fig.align = 'top'}
@@ -178,6 +171,7 @@ knitr::include_graphics("spectral.png")
 <!-- ![](spectral.png) -->
 
 ---
+class:top , center
 
 #  <font size="7">Spectral community detection with covariates</font>
 
@@ -189,6 +183,7 @@ knitr::include_graphics("spectral.png")
 
 
 ---
+class:top , center
 
 #  <font size="7">Spectral community detection with covariates</font>
 ```{r, echo=FALSE, out.width="75%", fig.align = 'top'}
@@ -206,6 +201,7 @@ knitr::include_graphics("SpectralCov.png")
 
 
 ---
+class:top , center
 
 # <font size="7">Comparison of community detection algorithms</font>
 ```{r, echo=FALSE, out.height="25%", fig.align = 'top'}
@@ -215,6 +211,7 @@ knitr::include_graphics("boxplt.png")
 
 
 ---
+class:top , center
 
 ## <font size="7">Comparison using Adjusted Rand Index</font>
 
@@ -229,6 +226,7 @@ Comparison between Edge betweenness and Spectral clustering algorithm with covar
 Comparison between Spectral clustering algorithm with and without covariates: 0.29
 
 ---
+class:top , center
 
 # <font size="7">Future Work</font>
 
@@ -250,6 +248,7 @@ Comparison between Spectral clustering algorithm with and without covariates: 0.
 - Reduce the number of location that we need to monitor to get usable information regarding pathogen spread within the state. 
 
 ---
+class:top , center
 
 # <font size="7">Acknowledgements</font>
 
@@ -262,6 +261,7 @@ class: middle, center
 # <font size="20">Thank you!</font>
 
 ---
+class:top , center
 
 # <font size="7">References</font>
 
