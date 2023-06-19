@@ -77,8 +77,6 @@ class:top
     * Node covariates can be used in addition to structural network data. 
     * We use wastewater measurements taken at wastewater treatment plants averaged over the delta wave. 
     * Adding wastewater measurements can provide us with communities detected along divisions such as rural/urban, population or another latent variable.
-  
---
 
 ---
 class:top , center
@@ -104,7 +102,7 @@ knitr::include_graphics("Directplot.png")
 <!-- ![](Directplot.png) -->
 
 ---
-class:top , center
+class:top
 
 # Community Detection Algorithms
 
@@ -115,7 +113,7 @@ class:top , center
 - Spectral clustering with covariates
 
 ---
-class:top , center
+class:top
 
 # <font size="7">Edge betweenness community detection</font>
 
@@ -147,7 +145,7 @@ knitr::include_graphics("edgebet.png")
 <!-- ![](edgebet.png) -->
 
 ---
-class:top , center
+class:top
 
 # <font size="7">Spectral community detection without covariates</font>
 
@@ -171,7 +169,7 @@ knitr::include_graphics("spectral.png")
 <!-- ![](spectral.png) -->
 
 ---
-class:top , center
+class:top
 
 #  <font size="7">Spectral community detection with covariates</font>
 
@@ -211,7 +209,7 @@ knitr::include_graphics("boxplt.png")
 
 
 ---
-class:top , center
+class:top
 
 ## <font size="7">Comparison using Adjusted Rand Index</font>
 
@@ -219,14 +217,14 @@ Adjusted Rand Index(ARI) is a common measure used to compare outcomes from commu
 
 Here in place for ground truth we are using ARI to compare similarities between two algorithms. 
 
-Comparison between Edge betweenness and Spectral clustering algorithm: 0.48
+Comparison between Edge betweenness and Spectral clustering algorithm: 0.60
 
-Comparison between Edge betweenness and Spectral clustering algorithm with covariates: 0.268
+Comparison between Edge betweenness and Spectral clustering algorithm with covariates: 0.46
 
-Comparison between Spectral clustering algorithm with and without covariates: 0.29
+Comparison between Spectral clustering algorithm with and without covariates: 0.46
 
 ---
-class:top , center
+class:top
 
 # <font size="7">Future Work</font>
 
@@ -248,7 +246,7 @@ class:top , center
 - Reduce the number of location that we need to monitor to get usable information regarding pathogen spread within the state. 
 
 ---
-class:top , center
+class:top
 
 # <font size="7">Acknowledgements</font>
 
@@ -261,7 +259,7 @@ class: middle, center
 # <font size="20">Thank you!</font>
 
 ---
-class:top , center
+class:top
 
 # <font size="7">References</font>
 

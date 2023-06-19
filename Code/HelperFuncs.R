@@ -396,7 +396,8 @@ plot_graph <- function(g, m, title){
   plot.igraph(g, vertex.size = 4, vertex.label = NA,
               vertex.color = m,
               edge.width = 1, layout = cbind(as.numeric(V(g)$lat), as.numeric(V(g)$lon)), 
-              main = title)
+              main = title,
+              margin = -0.01)
 }
 
 

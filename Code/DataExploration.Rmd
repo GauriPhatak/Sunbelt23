@@ -590,35 +590,73 @@ df <- do.call(rbind.data.frame, sapply(dat, '[', 3))
 df$Date <- as.Date(as.integer(df$Date), origin = "1970-01-01")
 
 ct_hull <- st_convex_hull(ct)
-#ct_hull <- st_buffer(ct_hull, dist  = 20000)
+ct_hull <- st_buffer(ct_hull, dist  = 1000)
 
 
 AllEdges <- findEdges(ct_hull, hwd, id, "0")
 
 hwy_grph <- graph_from_data_frame(d = AllEdges,vertices = ct$city_name, directed = FALSE)
-
 ## cities present in ct and wastewater data
 ct_sbst <- ct$city_name[ct$city_name %in% unique(df$Location)]
 incl <- V(hwy_grph)$name %in% ct_sbst
-V(hwy_grph)$included <- ifelse(incl == TRUE, "orangered3", "grey37")
+V(hwy_grph)$included <- ifelse(incl == TRUE, "#0072B2", "#D55E00")
+V(hwy_grph)$size <- ifelse(incl == TRUE, 3 , 1.5)
+#ifelse(incl == TRUE, "#009E73", "#E69F00")# ifelse(incl == TRUE, "orangered3", "grey37")
 E(hwy_grph)$weight <- round(as.numeric(AllEdges$distance), 2)
 
 DirectGrph <- ShortestPathGrph(ct_sbst, hwy_grph, ct$city_name, TRUE)
 V(DirectGrph)$lat <- city_cntr[,1]
 V(DirectGrph)$lon <- city_cntr[,2]
+incl <- V(DirectGrph)$name %in% ct_sbst
+V(DirectGrph)$included <- ifelse(incl == TRUE, "#0072B2", "#D55E00")
+V(DirectGrph)$size <- ifelse(incl == TRUE, 3 , 1.5)
+#hwy_grph <- simplify(hwy_grph)
 
 
-plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,
+plot.igraph(hwy_grph, vertex.label = NA, 
+            vertex.size = V(hwy_grph)$size,
             vertex.color = V(hwy_grph)$included, 
             vertex.frame.color = V(hwy_grph)$included, 
-            edge.color = "darkgrey", 
+            edge.color = "grey28", 
             edge.width = 1, layout = city_cntr)
 
-plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
+plot.igraph(DirectGrph, vertex.label = NA, 
+            vertex.size = V(DirectGrph)$size,
+            vertex.color = V(DirectGrph)$included, 
+            vertex.frame.color = V(DirectGrph)$included, 
+            edge.color = "grey28", 
+            edge.width = 1, layout = city_cntr)
+
+png("Highwayplot.png", 600,500)
+plot.igraph(hwy_grph, vertex.label = NA, 
+            vertex.size = V(hwy_grph)$size,
             vertex.color = V(hwy_grph)$included, 
             vertex.frame.color = V(hwy_grph)$included, 
-            edge.color = "darkgrey", 
+            edge.color = "grey28", 
             edge.width = 1, layout = city_cntr)
+dev.off()
+
+png("DirectPlot.png", 600,500)
+plot.igraph(DirectGrph, vertex.label = NA, 
+            vertex.size = V(DirectGrph)$size,
+            vertex.color = V(DirectGrph)$included, 
+            vertex.frame.color = V(DirectGrph)$included, 
+            edge.color = "grey28", 
+            edge.width = 1, layout = city_cntr)
+dev.off()
+
+ct_centroid <- st_centroid(ct)
+ct_centroid$label <- NA
+
+ggplot() +
+  geom_sf(data = hwd, aes(geometry = shape), color = "grey28")+
+  geom_sf(data = ct_centroid, aes(geometry = shape),
+          fill = "#D55E00", color = "#D55E00")+
+  geom_sf(data = ct_centroid[V(DirectGrph)$name %in% ct_sbst,],
+          aes(geometry = shape), fill = "#0072B2", color = "#0072B2") +
+  theme_minimal()
+ggsave("citiesplot.png")
+
 
 ```
 

@@ -186,19 +186,19 @@ plot_graph(g, mem_spec, NA)
 # V(g)$name <- as.character(1:length(V(g)))
 adj_m <- as_adjacency_matrix(WWgrph, sparse = FALSE)
 
-## Using Spectral Covariate clustering for the different waves
-## Look into the alphan argument. 
-# for(a in seq(5, 40, by=5)){
-# 
-#   mem_specCov <- CASC(adj_m, as.numeric(V(WWgrph)$delta), K = k,  itermax  = 1000, startn = 50, alphan = a)
-#   plot_graph(WWgrph, mem_specCov, "Spectral with covariates")
-# 
-# }
+# Using Spectral Covariate clustering for the different waves
+# Look into the alphan argument.
+for(a in seq(5, 40, by=5)){
 
-op <- CASC(adj_m, as.numeric(V(WWgrph)$delta), K = n,  
-           itermax  = 1000, startn = 50, alphan = 5)
+  mem_specCov <- CASC(adj_m, as.numeric(V(WWgrph)$delta), K = n,  itermax  = 1000, startn = 50, alphan = a)
+  plot_graph(WWgrph, mem_specCov, paste0("Spectral with covariates ", as.character(a)))
+
+}
+
+mem_cov <- CASC(adj_m, as.numeric(V(WWgrph)$delta), K = n,  
+           itermax  = 1000, startn = 80, alphan = 5)
 png("spectralCov.png", 600,500)
-plot_graph(WWgrph, op, NA)
+plot_graph(WWgrph, mem_cov, NA)
 dev.off()
 
 # mem_specCov <- merge(as.data.frame(cbind(name = cov$name)),
@@ -220,7 +220,7 @@ dev.off()
 
 plot_graph(WWgrph, mem_spec, "Spectral")
 plot_graph(WWgrph, membership(mem_edge), "Edge")
-plot_graph(WWgrph, op, "SpecCov")
+plot_graph(WWgrph, mem_cov, "SpecCov")
 
 
 ```
@@ -244,7 +244,7 @@ op <- as.data.frame(cbind(Edge_betweenness = membership(mem_edge),
                           #SBM = mem_sbm[[1]][[1]], 
                           #DCSBM = mem_dc[[1]][[1]], 
                           Spectral = mem_spec, 
-                          SpectralCov = op))
+                          SpectralCov = mem_cov))
 BOXPLOTS <- function(o, covVal, g, num, k){
   
   o$val <- covVal #<- merge(x = o, y = covVal, by = "City", all.o = TRUE)
@@ -284,9 +284,9 @@ BOXPLOTS <- function(o, covVal, g, num, k){
 ```{r}
 
 ## Creating boxplots for the 38 communities
-op<- as.data.frame(cbind(Edge_betweenness = membership(mem_edge),
+op <- as.data.frame(cbind(Edge_betweenness = membership(mem_edge),
            Spectral_Clustering  = mem_spec,
-           SpectralWCovariates = op))
+           SpectralWCovariates = mem_cov))
 p  <- BOXPLOTS(op,as.numeric(V(g)$delta), g, 3, n)
 aov <- p[[2]]
 p <- p[[1]]
