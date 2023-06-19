@@ -52,6 +52,52 @@ library(tigris)
 import pandas as pd
 import numpy as np
 
+def ReadData(path, chunksize, ct_sbst):
+  n = chunksize
+  file = path
+  df_chunks = []
+  
+  for df in pd.read_csv(file, chunksize = n, iterator = True, compression='gzip'):
+    df_f = df.loc[df['region'] == "OR"]
+    df_chunks.append(df_f)
+    master_df = pd.concat(df_chunks)
+    master_df.columns
+
+    master_df = master_df[['city','region','postal_code','date_range_start',
+    'date_range_end','raw_visit_counts','raw_visitor_counts','visits_by_day',
+    'visits_by_each_hour', 'poi_cbg', 'visitor_home_cbgs', 'visitor_daytime_cbgs',
+    'visitor_country_of_origin', 'distance_from_home', 'median_dwell']]
+    # master_df['dateStart'] = pd.to_datetime(master_df['date_range_start'],
+    # format = '%Y%m%d%H%M%S')
+
+  master_df = master_df[master_df['city'].isin(r.ct_sbst)]
+  return master_df
+
+  # for df in pd.read_csv(file, chunksize = n, iterator = True, compression='gzip'):
+  #   df_f = df.loc[df['region'] == "OR"]
+  #   df_chunks.appen(df_f)
+  #   master_df = pd.concat(df_chunks)
+  #   master_df.columns
+  #   master_df = master_df[['city','region','postal_code','date_range_start',
+  #   'date_range_end','raw_visit_counts','raw_visitor_counts','visits_by_day',
+  #   'visits_by_each_hour', 'poi_cbg', 'visitor_home_cbgs', 'visitor_daytime_cbgs',
+  #   'visitor_country_of_origin', 'distance_from_home', 'median_dwell']]
+  #   master_df['dateStart'] = pd.to_datetime(master_df['date_range_start'], 
+  #   format = '%Y%m%d%H%M%S')
+  #   
+  # master_df = master_df[master_df['city'].isin(r.ct_sbst),]
+  # 
+
+  
+  
+    
+```
+
+```{python}
+
+import pandas as pd
+import numpy as np
+
 n = 10000
 file  = "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/2020-01-06-weekly-patterns.csv.gz"
 
@@ -92,10 +138,25 @@ ct <- st_read(hwpath, layer = "City_Limits__2016_")
 ## cities present in ct and wastewater data
 ct_sbst <- ct$city_name[ct$city_name %in% unique(df$Location)]
 #df_sbst <- df[df$Location %in% ct_sbst, ]
+#py_cities <- py$master_df
+#py_cities <- py_cities[py_cities$city %in% ct_sbst, ]
 
-py_cities <- py$master_df
+## Chunksize
+n = 10000
 
-py_cities <- py_cities[py_cities$city %in% ct_sbst, ]
+## List all the files in this folder
+WP <-  "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/"
+allFiles <- list.files(WP)
+OR_files <- "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/OregonWeeklyPatterns/"
+#file  = "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/2020-01-06-weekly-patterns.csv.gz"
+
+for (file in allFiles) {
+  py_cities <- py$ReadData(paste0(WP,file),n,ct_sbst)
+  write_csv(py_cities, paste0(OR_files,str_replace(file,".gz","")))
+  
+  print(paste0("File completed: ",file))
+ }
+
 
 ```
 
@@ -115,7 +176,7 @@ py_cities$date_range_end <- strftime(ymd_hms(py_cities$date_range_end),format="%
 the census block code is read as
 
 |             |                                |            |                                                         |              |
-|-------------|--------------------------------|------------|---------------------------------------------------------|--------------|
+|------------|------------|------------|-------------------------|------------|
 | Block Group | STATE+COUNTY+TRACT+BLOCK GROUP | 2+3+6+1=12 | Block Group 1 in Census Tract 2231 in Harris County, TX | 482012231001 |
 
 ```         
