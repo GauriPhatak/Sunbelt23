@@ -67,55 +67,36 @@ def ReadData(path, chunksize, ct_sbst):
     'date_range_end','raw_visit_counts','raw_visitor_counts','visits_by_day',
     'visits_by_each_hour', 'poi_cbg', 'visitor_home_cbgs', 'visitor_daytime_cbgs',
     'visitor_country_of_origin', 'distance_from_home', 'median_dwell']]
-    # master_df['dateStart'] = pd.to_datetime(master_df['date_range_start'],
-    # format = '%Y%m%d%H%M%S')
 
   master_df = master_df[master_df['city'].isin(r.ct_sbst)]
   return master_df
-
-  # for df in pd.read_csv(file, chunksize = n, iterator = True, compression='gzip'):
-  #   df_f = df.loc[df['region'] == "OR"]
-  #   df_chunks.appen(df_f)
-  #   master_df = pd.concat(df_chunks)
-  #   master_df.columns
-  #   master_df = master_df[['city','region','postal_code','date_range_start',
-  #   'date_range_end','raw_visit_counts','raw_visitor_counts','visits_by_day',
-  #   'visits_by_each_hour', 'poi_cbg', 'visitor_home_cbgs', 'visitor_daytime_cbgs',
-  #   'visitor_country_of_origin', 'distance_from_home', 'median_dwell']]
-  #   master_df['dateStart'] = pd.to_datetime(master_df['date_range_start'], 
-  #   format = '%Y%m%d%H%M%S')
-  #   
-  # master_df = master_df[master_df['city'].isin(r.ct_sbst),]
-  # 
-
-  
   
     
 ```
 
 ```{python}
 
-import pandas as pd
-import numpy as np
-
-n = 10000
-file  = "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/2020-01-06-weekly-patterns.csv.gz"
-
-df_chunks = []
-
-for df in pd.read_csv(file, chunksize = n, iterator = True, compression='gzip'):
-  df_f  = df.loc[df['region'] == "OR"]
-  df_chunks.append(df_f)
-
-master_df = pd.concat(df_chunks)
-
-master_df.columns
-
-master_df = master_df[['city','region','postal_code','date_range_start', 'date_range_end','raw_visit_counts','raw_visitor_counts','visits_by_day', 'visits_by_each_hour', 'poi_cbg', 'visitor_home_cbgs', 'visitor_daytime_cbgs', 'visitor_country_of_origin', 'distance_from_home', 'median_dwell']]
-
-master_df['dateStart'] = pd.to_datetime(master_df['date_range_start'], format='%Y%m%d%H%M%S')
-
-print(master_df.dtypes)
+# import pandas as pd
+# import numpy as np
+# 
+# n = 10000
+# file  = "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/2020-01-06-weekly-patterns.csv.gz"
+# 
+# df_chunks = []
+# 
+# for df in pd.read_csv(file, chunksize = n, iterator = True, compression='gzip'):
+#   df_f  = df.loc[df['region'] == "OR"]
+#   df_chunks.append(df_f)
+# 
+# master_df = pd.concat(df_chunks)
+# 
+# master_df.columns
+# 
+# master_df = master_df[['city','region','postal_code','date_range_start', 'date_range_end','raw_visit_counts','raw_visitor_counts','visits_by_day', 'visits_by_each_hour', 'poi_cbg', 'visitor_home_cbgs', 'visitor_daytime_cbgs', 'visitor_country_of_origin', 'distance_from_home', 'median_dwell']]
+# 
+# master_df['dateStart'] = pd.to_datetime(master_df['date_range_start'], format='%Y%m%d%H%M%S')
+# 
+# print(master_df.dtypes)
 ```
 
 ``` {.R myenvs="conda_list()"}
@@ -150,12 +131,82 @@ allFiles <- list.files(WP)
 OR_files <- "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/OregonWeeklyPatterns/"
 #file  = "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/2020-01-06-weekly-patterns.csv.gz"
 
+```
+
+```{r}
+## Do not run this code unless the filtered data is corrupted
+
 for (file in allFiles) {
   py_cities <- py$ReadData(paste0(WP,file),n,ct_sbst)
-  write_csv(py_cities, paste0(OR_files,str_replace(file,".gz","")))
+  write_csv(py_cities, paste0(OR_files,"WeeklyData/",str_replace(file,".gz","")))
   
   print(paste0("File completed: ",file))
  }
+
+
+
+```
+
+## Consolidating the 2020 data. 
+
+```{r, warning=FALSE}
+## This consolidates all the 2020 data. This data is saved in total2020.csv file.
+## check if the columns are same for all the data files
+allFiles <- list.files(paste0(OR_files,"WeeklyData/"))
+dat <- data.frame(matrix(ncol=4, nrow=0))
+censusBlock <- data.frame(matrix(ncol = 2, nrow = 0)) 
+
+for (file in allFiles) {
+  py_cities <- read.csv(paste0(OR_files,"WeeklyData/", file))
+  py_cities <- py_cities %>% select(city,postal_code,date_range_start,
+                                    date_range_end,raw_visit_counts,
+                                    raw_visitor_counts,poi_cbg,visitor_home_cbgs,
+                                    visitor_daytime_cbgs,
+                                    distance_from_home,median_dwell)
+  
+  py_cities$date_range_start <- strftime(ymd_hms(py_cities$date_range_start),
+                                         format="%Y-%m-%d")
+  py_cities$date_range_end <- strftime(ymd_hms(py_cities$date_range_end),
+                                       format="%Y-%m-%d")
+  
+  ## perform the above for all cities all together
+  cityCensusblock_map <- py_cities %>% 
+    select(city, poi_cbg) %>% 
+    group_by(city) %>%
+    group_modify(~ as.data.frame(str_sub(.x$poi_cbg, 3,11))) %>%
+    distinct()
+  
+  colnames(cityCensusblock_map) <- c("city", "tract")
+  censusBlock <- rbind(censusBlock, cityCensusblock_map)
+  
+  py_cities <- py_cities %>% 
+    select(city, visitor_home_cbgs,date_range_start) %>%
+    mutate(home_cbgs = str_extract_all(visitor_home_cbgs, "[0-9]+")) %>%
+    unnest() %>%
+    select(city, home_cbgs,date_range_start)
+  
+  #py_cities <- py_cities[!is.na(py_cities$home_cbgs ),]
+  py_cities <- as.data.frame(
+    cbind(py_cities$city[seq(1,length(py_cities$city),by=2)],
+          matrix(py_cities$home_cbgs,ncol = 2,byrow = TRUE),
+          py_cities$date_range_start[seq(1,length(py_cities$city),by=2)]))
+  
+  colnames(py_cities) <- c("City","Code","Count","startDate")
+  py_cities$Count <- as.numeric(py_cities$Count)
+  py_cities$VistTract <- unlist(map(py_cities$Code,
+                                    function(x) str_sub(x, 3,11)))
+  py_cities <- py_cities %>%
+    group_by(City, VistTract) %>%
+    dplyr::summarize(totalcount = sum(Count, na.rm = TRUE),
+                     startDate =  first(startDate)) %>% 
+    ungroup()
+  
+  dat <- rbind(dat, py_cities)
+}
+
+write_csv(dat, paste0(OR_files,"Total2020.csv"))
+write_csv(distinct(censusBlock),
+          paste0(OR_files,"DistinctCensusBlocks.csv"))
 
 
 ```
@@ -163,10 +214,10 @@ for (file in allFiles) {
 ## Filtering out non relevant columns
 
 ```{r}
-py_cities <- py_cities %>% select(city,postal_code,date_range_start,date_range_end,raw_visit_counts,raw_visitor_counts,poi_cbg,visitor_home_cbgs,visitor_daytime_cbgs,distance_from_home,median_dwell)
-
-py_cities$date_range_start <- strftime(ymd_hms(py_cities$date_range_start),format="%Y-%m-%d")
-py_cities$date_range_end <- strftime(ymd_hms(py_cities$date_range_end),format="%Y-%m-%d")
+# py_cities <- py_cities %>% select(city,postal_code,date_range_start,date_range_end,raw_visit_counts,raw_visitor_counts,poi_cbg,visitor_home_cbgs,visitor_daytime_cbgs,distance_from_home,median_dwell)
+# 
+# py_cities$date_range_start <- strftime(ymd_hms(py_cities$date_range_start),format="%Y-%m-%d")
+# py_cities$date_range_end <- strftime(ymd_hms(py_cities$date_range_end),format="%Y-%m-%d")
 
 
 ```
@@ -176,7 +227,7 @@ py_cities$date_range_end <- strftime(ymd_hms(py_cities$date_range_end),format="%
 the census block code is read as
 
 |             |                                |            |                                                         |              |
-|------------|------------|------------|-------------------------|------------|
+|-------------|-------------|-------------|--------------------|-------------|
 | Block Group | STATE+COUNTY+TRACT+BLOCK GROUP | 2+3+6+1=12 | Block Group 1 in Census Tract 2231 in Harris County, TX | 482012231001 |
 
 ```         
@@ -207,20 +258,20 @@ colnames(cityCensusblock_map) <- c("city", "tract")
 
 ```{r}
 
-corvallis <- py_cities[py_cities$city == "Corvallis",]
-
-corvallis_visits <- as.data.frame(matrix(unlist(corvallis$visitor_home_cbgs %>% map(function(x) str_extract_all(x, "[0-9]+")[[1]])), ncol = 2, byrow = TRUE))
-
-colnames(corvallis_visits) <- c("home_cbgs", "count")
-
-corvallis_visits$count <- as.integer(corvallis_visits$count)
-
-
-corvallis_visits <- corvallis_visits %>% group_by(home_cbgs) %>%
-  dplyr::summarize(totalcount = sum(count, na.rm = TRUE)) %>% ungroup()
-
-## getting the count of visits from within state and outside state
-corvallis_visits <- corvallis_visits[unlist(map(corvallis_visits$home_cbgs, function(x) str_sub(x, 1,2))) =="41",]
+# corvallis <- py_cities[py_cities$city == "Corvallis",]
+# 
+# corvallis_visits <- as.data.frame(matrix(unlist(corvallis$visitor_home_cbgs %>% map(function(x) str_extract_all(x, "[0-9]+")[[1]])), ncol = 2, byrow = TRUE))
+# 
+# colnames(corvallis_visits) <- c("home_cbgs", "count")
+# 
+# corvallis_visits$count <- as.integer(corvallis_visits$count)
+# 
+# 
+# corvallis_visits <- corvallis_visits %>% group_by(home_cbgs) %>%
+#   dplyr::summarize(totalcount = sum(count, na.rm = TRUE)) %>% ungroup()
+# 
+# ## getting the count of visits from within state and outside state
+# corvallis_visits <- corvallis_visits[unlist(map(corvallis_visits$home_cbgs, function(x) str_sub(x, 1,2))) =="41",]
 
 ### Splitting the cbgs based on the definition above
 #corvallis_visits$tracts <- unlist(map(corvallis_visits$home_cbgs, function(x) str_sub(x, 6,11)))
@@ -232,32 +283,32 @@ corvallis_visits <- corvallis_visits[unlist(map(corvallis_visits$home_cbgs, func
 
 ```{r}
 
-## perform the above for all cities all together
-
-py_cities <- py_cities %>% 
-  select(city, visitor_home_cbgs) %>%
-  mutate(home_cbgs = str_extract_all(visitor_home_cbgs, "[0-9]+")) %>%
-  unnest() %>%
-  select(city, home_cbgs)
-
-#py_cities <- py_cities[!is.na(py_cities$home_cbgs ),]
-py_cities <- as.data.frame(cbind(py_cities$city[seq(1, 
-                                                    length(py_cities$city), 
-                                                    by=2)], 
-                                 matrix(py_cities$home_cbgs, 
-                                        ncol = 2, 
-                                        byrow = TRUE)))
-
-colnames(py_cities) <- c("City","Code","Count")
-py_cities$Count <- as.numeric(py_cities$Count)
-py_cities$VistTract <- unlist(map(py_cities$Code,
-                                  function(x) str_sub(x, 3,11)))
-py_cities <- py_cities %>%
-  group_by(City, VistTract) %>%
-  dplyr::summarize(totalcount = sum(Count, na.rm = TRUE)) %>% 
-  ungroup()
-
-match(py_cities$VistTract, cityCensusblock_map$tract)
+# ## perform the above for all cities all together
+# 
+# py_cities <- py_cities %>% 
+#   select(city, visitor_home_cbgs) %>%
+#   mutate(home_cbgs = str_extract_all(visitor_home_cbgs, "[0-9]+")) %>%
+#   unnest() %>%
+#   select(city, home_cbgs)
+# 
+# #py_cities <- py_cities[!is.na(py_cities$home_cbgs ),]
+# py_cities <- as.data.frame(cbind(py_cities$city[seq(1, 
+#                                                     length(py_cities$city), 
+#                                                     by=2)], 
+#                                  matrix(py_cities$home_cbgs, 
+#                                         ncol = 2, 
+#                                         byrow = TRUE)))
+# 
+# colnames(py_cities) <- c("City","Code","Count")
+# py_cities$Count <- as.numeric(py_cities$Count)
+# py_cities$VistTract <- unlist(map(py_cities$Code,
+#                                   function(x) str_sub(x, 3,11)))
+# py_cities <- py_cities %>%
+#   group_by(City, VistTract) %>%
+#   dplyr::summarize(totalcount = sum(Count, na.rm = TRUE)) %>% 
+#   ungroup()
+# 
+# match(py_cities$VistTract, cityCensusblock_map$tract)
 ```
 
 ```{r}
