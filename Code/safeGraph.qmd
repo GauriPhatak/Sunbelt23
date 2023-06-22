@@ -147,13 +147,15 @@ for (file in allFiles) {
 
 ```
 
-## Consolidating the 2020 data. 
+## Consolidating the 2020 data.
 
 ```{r, warning=FALSE}
 ## This consolidates all the 2020 data. This data is saved in total2020.csv file.
 ## check if the columns are same for all the data files
 allFiles <- list.files(paste0(OR_files,"WeeklyData/"))
-dat <- data.frame(matrix(ncol=4, nrow=0))
+ORdat <- data.frame(matrix(ncol=4, nrow=0))
+NonORdat <- data.frame(matrix(ncol = 4, nrow = 0))
+dat <- data.frame(matrix(ncol = 4, nrow = 0))
 censusBlock <- data.frame(matrix(ncol = 2, nrow = 0)) 
 
 for (file in allFiles) {
@@ -170,15 +172,15 @@ for (file in allFiles) {
                                        format="%Y-%m-%d")
   
   ## perform the above for all cities all together
-  cityCensusblock_map <- py_cities %>% 
-    select(city, poi_cbg) %>% 
-    group_by(city) %>%
-    group_modify(~ as.data.frame(str_sub(.x$poi_cbg, 3,11))) %>%
-    distinct()
-  
-  colnames(cityCensusblock_map) <- c("city", "tract")
-  censusBlock <- rbind(censusBlock, cityCensusblock_map)
-  
+  # cityCensusblock_map <- py_cities %>% 
+  #   select(city, poi_cbg) %>% 
+  #   group_by(city) %>%
+  #   group_modify(~ as.data.frame(str_sub(.x$poi_cbg, 3,11))) %>%
+  #   distinct()
+  # 
+  # colnames(cityCensusblock_map) <- c("city", "tract")
+  # censusBlock <- rbind(censusBlock, cityCensusblock_map)
+  # 
   py_cities <- py_cities %>% 
     select(city, visitor_home_cbgs,date_range_start) %>%
     mutate(home_cbgs = str_extract_all(visitor_home_cbgs, "[0-9]+")) %>%
@@ -198,16 +200,23 @@ for (file in allFiles) {
   py_cities <- py_cities %>%
     group_by(City, VistTract) %>%
     dplyr::summarize(totalcount = sum(Count, na.rm = TRUE),
-                     startDate =  first(startDate)) %>% 
+                     startDate =  first(startDate),
+                     code  = first(Code)) %>% 
     ungroup()
-  
+  or_visits <- py_cities[substr(py_cities$code, start = 1, stop = 2) == "41", ]
+  non_or_visits <- py_cities[!(substr(py_cities$code, start = 1, stop = 2) == "41"),]
+  ORdat <- rbind(ORdat, or_visits)
+  NonORdat <- rbind(NonORdat, non_or_visits)
   dat <- rbind(dat, py_cities)
 }
 
 write_csv(dat, paste0(OR_files,"Total2020.csv"))
-write_csv(distinct(censusBlock),
-          paste0(OR_files,"DistinctCensusBlocks.csv"))
+write_csv(ORdat, paste0(OR_files,"OR2020.csv"))
+write_csv(NonORdat, paste0(OR_files,"NonOR2020.csv"))
 
+# write_csv(distinct(censusBlock),
+#           paste0(OR_files,"DistinctCensusBlocks.csv"))
+# 
 
 ```
 
@@ -227,7 +236,7 @@ write_csv(distinct(censusBlock),
 the census block code is read as
 
 |             |                                |            |                                                         |              |
-|-------------|-------------|-------------|--------------------|-------------|
+|------------|------------|------------|-------------------------|------------|
 | Block Group | STATE+COUNTY+TRACT+BLOCK GROUP | 2+3+6+1=12 | Block Group 1 in Census Tract 2231 in Harris County, TX | 482012231001 |
 
 ```         
@@ -312,7 +321,72 @@ colnames(cityCensusblock_map) <- c("city", "tract")
 ```
 
 ```{r}
+## Updated code for getting the 
 
+oregon_bg <- st_as_sf(block_groups(state = "Oregon"))
+ct_sbst <- ct#[ct$city_name %in% unique(df$Location),]
+oregon_bg <- st_transform(oregon_bg, crs = st_crs(ct_sbst))
+
+countiesDat <- counties(state = "OR")
+oregon_bg$countyName <- countiesDat$NAME[match(oregon_bg$COUNTYFP, countiesDat$COUNTYFP)]
+
+
+bg_intersect <- st_intersection(ct_sbst,oregon_bg)
+cities <- as.data.frame(cbind(bg_intersect$GEOID, 
+                              bg_intersect$city_name,
+                              bg_intersect$countyName))
+colnames(cities) <- c("CBGS", "city_name","county_name")
+write_csv(cities,paste0(OR_files,"DistinctCensusBlocks.csv"))
+
+
+```
+
+```{r}
+
+
+totaldat <- read.csv(paste0(OR_files,"Total2020.csv"))
+ORdat <- read.csv(paste0(OR_files,"OR2020.csv"))
+NonORdat <- read.csv(paste0(OR_files,"NonOR2020.csv"))
+censusBlk <- read.csv(paste0(OR_files,"DistinctCensusBlocks.csv"))
+
+
+```
+
+```{r}
+censusBlk$CBGS <- as.character(censusBlk$CBGS)
+ORdat$code <- as.character(ORdat$code)
+ORdat$countyfps <- unlist(map(ORdat$code, 
+                              function(x) str_sub(x, 3,5)))
+m <- match(ORdat$countyfps, countiesDat$COUNTYFP)
+ORdat$county <- countiesDat$NAME[m]
+
+m <- match(ORdat$code, censusBlk$CBGS)
+ORdat$visitor_city <- censusBlk$city_name[m]
+
+m <- match(censusBlk$city_name, 
+           ct$city_name[ct$city_name %in% unique(df$Location)])
+censusBlk_sbst <- censusBlk[complete.cases(censusBlk[m,]),]
+
+m <- match(ORdat$code, censusBlk_sbst$CBGS)
+ORdat$visitor_city_sbst <- censusBlk_sbst$city_name[m]
+
+write.csv(ORdat,paste0(OR_files,"OR2020.csv"))
+
+```
+
+```{r}
+
+## Lets take a look at whats going on with the codes that return NA even before updating based on the WW water cities. 
+
+## These are locations that are not in the cities but might be rural regions. 
+naOR <- ORdat[is.na(ORdat$visitor_city),]
+gbg <- naOR[naOR$code %in% as.numeric(oregon_bg$GEOID),]
+
+## using the data at block level. We find that the number of geoids is same as from the block_groups function.
+gbg <- blocks(stat = "OR")
+gbg$GEOID <- as.numeric(unlist(map(gbg$GEOID20, function(x) str_sub(x, 1,12))))
+length(unique(gbg$GEOID))
+#gbg$GEOID %in% oregon_bg$GEOID
 
 
 ```
