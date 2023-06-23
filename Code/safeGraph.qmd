@@ -39,11 +39,6 @@ library(CASCORE)
 library(stringr)
 library(purrr)
 library(tigris)
-#miniconda_uninstall()
-#install_miniconda(path = miniconda_path() , update = T)
-#conda_list(conda = "e:/miniconda/_conda.exe")
-#use_condaenv(condaenv = "r-reticulate", conda = "e:/miniconda/_conda.exe")
-#py_install(packages = c("pandas", "scikit-learn"))
 
 ```
 
@@ -71,40 +66,11 @@ def ReadData(path, chunksize, ct_sbst):
   master_df = master_df[master_df['city'].isin(r.ct_sbst)]
   return master_df
   
-    
-```
-
-```{python}
-
-# import pandas as pd
-# import numpy as np
-# 
-# n = 10000
-# file  = "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/2020-01-06-weekly-patterns.csv.gz"
-# 
-# df_chunks = []
-# 
-# for df in pd.read_csv(file, chunksize = n, iterator = True, compression='gzip'):
-#   df_f  = df.loc[df['region'] == "OR"]
-#   df_chunks.append(df_f)
-# 
-# master_df = pd.concat(df_chunks)
-# 
-# master_df.columns
-# 
-# master_df = master_df[['city','region','postal_code','date_range_start', 'date_range_end','raw_visit_counts','raw_visitor_counts','visits_by_day', 'visits_by_each_hour', 'poi_cbg', 'visitor_home_cbgs', 'visitor_daytime_cbgs', 'visitor_country_of_origin', 'distance_from_home', 'median_dwell']]
-# 
-# master_df['dateStart'] = pd.to_datetime(master_df['date_range_start'], format='%Y%m%d%H%M%S')
-# 
-# print(master_df.dtypes)
-```
-
-``` {.R myenvs="conda_list()"}
 ```
 
 ## Filtering out cities that we do not require currently.
 
-```{r}
+```{r, warning=FALSE}
 WD <- "C:\\Users\\gauph\\Box\\Preliminary Results Coronavirus Sewer Surveillance\\Data files\\covid data files\\TestingSandbox\\RScripts"
 dat <- readRDS(paste(WD, "\\..\\COVID_Data_ROutput\\ProcessedCOVIDDataInfo.rds", sep= ""))
 
@@ -113,14 +79,10 @@ df$Date <- as.Date(as.integer(df$Date), origin = "1970-01-01")
 
 ##Loading city data
 hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
-#rgdal::ogrListLayers(hwpath)
 ct <- st_read(hwpath, layer = "City_Limits__2016_")
 
 ## cities present in ct and wastewater data
 ct_sbst <- ct$city_name[ct$city_name %in% unique(df$Location)]
-#df_sbst <- df[df$Location %in% ct_sbst, ]
-#py_cities <- py$master_df
-#py_cities <- py_cities[py_cities$city %in% ct_sbst, ]
 
 ## Chunksize
 n = 10000
@@ -129,7 +91,6 @@ n = 10000
 WP <-  "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/"
 allFiles <- list.files(WP)
 OR_files <- "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/OregonWeeklyPatterns/"
-#file  = "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/2020-01-06-weekly-patterns.csv.gz"
 
 ```
 
@@ -142,8 +103,6 @@ for (file in allFiles) {
   
   print(paste0("File completed: ",file))
  }
-
-
 
 ```
 
@@ -171,23 +130,13 @@ for (file in allFiles) {
   py_cities$date_range_end <- strftime(ymd_hms(py_cities$date_range_end),
                                        format="%Y-%m-%d")
   
-  ## perform the above for all cities all together
-  # cityCensusblock_map <- py_cities %>% 
-  #   select(city, poi_cbg) %>% 
-  #   group_by(city) %>%
-  #   group_modify(~ as.data.frame(str_sub(.x$poi_cbg, 3,11))) %>%
-  #   distinct()
-  # 
-  # colnames(cityCensusblock_map) <- c("city", "tract")
-  # censusBlock <- rbind(censusBlock, cityCensusblock_map)
-  # 
+  
   py_cities <- py_cities %>% 
     select(city, visitor_home_cbgs,date_range_start) %>%
     mutate(home_cbgs = str_extract_all(visitor_home_cbgs, "[0-9]+")) %>%
     unnest() %>%
     select(city, home_cbgs,date_range_start)
   
-  #py_cities <- py_cities[!is.na(py_cities$home_cbgs ),]
   py_cities <- as.data.frame(
     cbind(py_cities$city[seq(1,length(py_cities$city),by=2)],
           matrix(py_cities$home_cbgs,ncol = 2,byrow = TRUE),
@@ -214,22 +163,9 @@ write_csv(dat, paste0(OR_files,"Total2020.csv"))
 write_csv(ORdat, paste0(OR_files,"OR2020.csv"))
 write_csv(NonORdat, paste0(OR_files,"NonOR2020.csv"))
 
-# write_csv(distinct(censusBlock),
-#           paste0(OR_files,"DistinctCensusBlocks.csv"))
-# 
-
 ```
 
 ## Filtering out non relevant columns
-
-```{r}
-# py_cities <- py_cities %>% select(city,postal_code,date_range_start,date_range_end,raw_visit_counts,raw_visitor_counts,poi_cbg,visitor_home_cbgs,visitor_daytime_cbgs,distance_from_home,median_dwell)
-# 
-# py_cities$date_range_start <- strftime(ymd_hms(py_cities$date_range_start),format="%Y-%m-%d")
-# py_cities$date_range_end <- strftime(ymd_hms(py_cities$date_range_end),format="%Y-%m-%d")
-
-
-```
 
 ## Combining by city to find visitors from different CBGS visiting that particular city.
 
@@ -261,63 +197,7 @@ cityCensusblock_map <- py_cities %>%
   distinct()
 
 colnames(cityCensusblock_map) <- c("city", "tract")
-#unique(unlist(map(cityCensus_map, function(x) str_sub(x, 3,11))))
 
-```
-
-```{r}
-
-# corvallis <- py_cities[py_cities$city == "Corvallis",]
-# 
-# corvallis_visits <- as.data.frame(matrix(unlist(corvallis$visitor_home_cbgs %>% map(function(x) str_extract_all(x, "[0-9]+")[[1]])), ncol = 2, byrow = TRUE))
-# 
-# colnames(corvallis_visits) <- c("home_cbgs", "count")
-# 
-# corvallis_visits$count <- as.integer(corvallis_visits$count)
-# 
-# 
-# corvallis_visits <- corvallis_visits %>% group_by(home_cbgs) %>%
-#   dplyr::summarize(totalcount = sum(count, na.rm = TRUE)) %>% ungroup()
-# 
-# ## getting the count of visits from within state and outside state
-# corvallis_visits <- corvallis_visits[unlist(map(corvallis_visits$home_cbgs, function(x) str_sub(x, 1,2))) =="41",]
-
-### Splitting the cbgs based on the definition above
-#corvallis_visits$tracts <- unlist(map(corvallis_visits$home_cbgs, function(x) str_sub(x, 6,11)))
-
-#corvallis_visits$counties <- unlist(map(corvallis_visits$home_cbgs, function(x) str_sub(x, 3,5)))
-
-
-```
-
-```{r}
-
-# ## perform the above for all cities all together
-# 
-# py_cities <- py_cities %>% 
-#   select(city, visitor_home_cbgs) %>%
-#   mutate(home_cbgs = str_extract_all(visitor_home_cbgs, "[0-9]+")) %>%
-#   unnest() %>%
-#   select(city, home_cbgs)
-# 
-# #py_cities <- py_cities[!is.na(py_cities$home_cbgs ),]
-# py_cities <- as.data.frame(cbind(py_cities$city[seq(1, 
-#                                                     length(py_cities$city), 
-#                                                     by=2)], 
-#                                  matrix(py_cities$home_cbgs, 
-#                                         ncol = 2, 
-#                                         byrow = TRUE)))
-# 
-# colnames(py_cities) <- c("City","Code","Count")
-# py_cities$Count <- as.numeric(py_cities$Count)
-# py_cities$VistTract <- unlist(map(py_cities$Code,
-#                                   function(x) str_sub(x, 3,11)))
-# py_cities <- py_cities %>%
-#   group_by(City, VistTract) %>%
-#   dplyr::summarize(totalcount = sum(Count, na.rm = TRUE)) %>% 
-#   ungroup()
-# 
-# match(py_cities$VistTract, cityCensusblock_map$tract)
 ```
 
 ```{r}
@@ -342,17 +222,6 @@ write_csv(cities,paste0(OR_files,"DistinctCensusBlocks.csv"))
 ```
 
 ```{r}
-
-
-totaldat <- read.csv(paste0(OR_files,"Total2020.csv"))
-ORdat <- read.csv(paste0(OR_files,"OR2020.csv"))
-NonORdat <- read.csv(paste0(OR_files,"NonOR2020.csv"))
-censusBlk <- read.csv(paste0(OR_files,"DistinctCensusBlocks.csv"))
-
-
-```
-
-```{r}
 censusBlk$CBGS <- as.character(censusBlk$CBGS)
 ORdat$code <- as.character(ORdat$code)
 ORdat$countyfps <- unlist(map(ORdat$code, 
@@ -371,6 +240,15 @@ m <- match(ORdat$code, censusBlk_sbst$CBGS)
 ORdat$visitor_city_sbst <- censusBlk_sbst$city_name[m]
 
 write.csv(ORdat,paste0(OR_files,"OR2020.csv"))
+
+```
+
+```{r}
+
+totaldat <- read.csv(paste0(OR_files,"Total2020.csv"))
+ORdat <- read.csv(paste0(OR_files,"OR2020.csv"))
+NonORdat <- read.csv(paste0(OR_files,"NonOR2020.csv"))
+censusBlk <- read.csv(paste0(OR_files,"DistinctCensusBlocks.csv"))
 
 ```
 
