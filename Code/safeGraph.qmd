@@ -39,6 +39,7 @@ library(CASCORE)
 library(stringr)
 library(purrr)
 library(tigris)
+library(gifski)
 
 ```
 
@@ -269,6 +270,89 @@ length(unique(gbg$GEOID))
 
 ```
 
-```{python}
+```{r}
+## Building graph using the subset of the oregon dataset including just the ww cities. 
+
+ORsbst <- ORdat[!is.na(ORdat$visitor_city_sbst), ]
+
+ORsbst$startDate <- parse_date_time(ORsbst$startDate, orders = "ymd")
+ORsbst$epiweek <- paste(epiweek(ORsbst$startDate ), 
+                        as.character(year(ORsbst$startDate )), 
+                        sep= "-")
+ORsbstGrpd  <- ORsbst %>% 
+  subset(select = c(City, epiweek, totalcount, visitor_city_sbst, startDate)) %>%
+  group_by(visitor_city_sbst, City, epiweek) %>%
+  dplyr::summarise(sumCnt =  sum(totalcount),
+                   date = first(startDate)) %>%
+  ungroup() %>%
+  arrange(date)
+  
+## getting the latitude longitude of all the cities
+ct_cen <- ct %>% 
+  st_as_sf() %>%
+  st_centroid() %>%
+  st_cast("POINT") %>%
+  st_transform(4326) %>%
+  st_coordinates() %>%
+  as.data.frame()
+
+ct_cen$ct <- ct$city_name
+
+# Creating discrete time maps 
+epiweek <- unique(ORsbstGrpd$epiweek)
+
+## creating a backup 
+ORsbstGrpdWkly <- ORsbstGrpd
+  
+```
+
+```{r}
+
+
+
+## No removing the ties within cities
+ORsbstGrpd <- ORsbstGrpd[ORsbstGrpd$visitor_city_sbst != ORsbstGrpd$City, ]
+
+## find the summary for the number of counts 
+summary(ORsbstGrpd$sumCnt)
+barplot(ORsbstGrpd$sumCnt)
+m <- round(median(ORsbstGrpd$sumCnt))
+
+ORsbstGrpd <- ORsbstGrpd[ORsbstGrpd$sumCnt > m, ]
+
+#Creating the big graph using all the edges and counts as edge weights
+
+G <- graph_from_data_frame(ORsbstGrpd, directed = TRUE, vertices = ct_cen$ct )
+V(G)$lat <- as.numeric(ct_cen[,1])
+V(G)$lon <- as.numeric(ct_cen[,2])
+
+i=1
+for(week in epiweek) {
+  
+  g <- subgraph.edges(G,
+                      E(G)[E(G)$epiweek == week],
+                      delete.vertices = TRUE)
+  g <- simplify(g, remove.multiple = TRUE, remove.loops = TRUE, edge.attr.comb = list(sumCnt = "sum"))
+  png(sprintf("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code\\animap\\%03d.png",i) ,width=5000, height=5000, res=372)
+  plot.igraph(g, margin=0, frame=F, vertex.size = 3,vertex.frame = NA, 
+              vertex.color = "darkblue", main = as.character(week),
+        vertex.label=NA, edge.color="cornsilk4",
+        layout=cbind(V(g)$lat, V(g)$lon), 
+        edge.arrow.size = 0.01, edge.width= log(E(g)$sumCnt))
+  dev.off()
+  i <- i+1
+  
+}
+
+png_files <- list.files(paste0(getwd()[1],"/animap"), pattern = ".*png$", full.names= TRUE)
+
+gifski(png_files , gif_file = "ORegonSF.gif", width = 800, height = 600, delay = 1)
+```
+
+```{r}
+## creating the map with median value per week. 
+
+
+
 
 ```
