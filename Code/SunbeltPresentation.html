@@ -6,7 +6,6 @@
     <meta name="author" content="Gauri Phatak, Department of Statistics" />
     <meta name="author" content="Katherine McLaughlin, James Molyneux, Department of Statistics" />
     <meta name="author" content="Christine Kelly, Tyler Radniecki, Biomolecular Engineering" />
-    <meta name="date" content="2023-06-16" />
     <script src="libs/header-attrs/header-attrs.js"></script>
     <link href="libs/remark-css/default.css" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" type="text/css" />
@@ -16,7 +15,7 @@
 class: center, middle, inverse, title-slide
 
 .title[
-# Assessing relationships between wastewater testing data for COVID-19 within locations in Oregon using transportation network data.
+# <font size="8">Assessing relationships between wastewater testing data for COVID-19 within locations in Oregon using transportation network data.</font>
 ]
 .author[
 ### <font size="6">Gauri Phatak, Department of Statistics</font>
@@ -30,9 +29,6 @@ class: center, middle, inverse, title-slide
 .institute[
 ### Oregon State University
 ]
-.date[
-### 2023-06-16
-]
 
 ---
 
@@ -43,7 +39,6 @@ class:top
 
 # &lt;font size="7"&gt;Motivation&lt;/font&gt;
 .pull-left[
-.my-syle[
 - CDC launched National wastewater Surveillance System (NWSS) in Sept 2020 in order to monitor the COVID-19 pandemic.
 
 - Coronavirus Sewer Surveillance began as a part of TRACE COVID-19 project but it has evolved into a standalone project funded by Oregon Health Authority(OHA).
@@ -51,7 +46,7 @@ class:top
 - COVID spreads through airborne transmission and can be tracked using movement of people to and from various locations. 
 
 - We are using highway transportation network as a proxy to movement of population through the state of Oregon.
- ]]
+ ]
  
 .pull-right[
 ![](CDCmap.png)
@@ -192,7 +187,7 @@ class:top
 
 - The Covariate Assisted Spectral Clustering(CASC) algorithm uses covariates of the nodes in addition to the structure of the network itself. 
 
-- The graph Laplacian used for this algortihm can be calculated as `\(\bar{L} = L + \alpha X X^T\)`, where `\(X\)` is the `\(n \times p\)` matrix of `\(p\)` covariate values of the nodes.
+- The graph Laplacian used for this algortihm can be calculated as `\(\bar{L} = L + \alpha X X^T\)`, where `\(X\)` is the `\(n \times p\)` matrix of `\(p\)` covariate values of the nodes. `\(L = D^{-1/2} A D^{-1/2} \in R^{N \times N}\)` is calculated in the same way as spectral clustering without covariates.
 
 - `\(K\)` eigen vectors from `\(K\)` largest eigen values are used to perform K-means clustering similar to Spectral clustering without covariates.
 
@@ -271,6 +266,8 @@ class:top
 class: middle, center
 # &lt;font size="20"&gt;Thank you!&lt;/font&gt;
 
+.footer[email: phatakg@oregonstate.edu]
+
 ---
 class:top
 
@@ -290,7 +287,50 @@ class:top
 
 [7] https://www.oregon.gov/geo/Pages/sdlibrary.aspx
 
-[8] https://spatialdata.oregonexplorer.info/geoportal/search;fq=Transportation;q=*roads*
+[8] https://spatialdata.oregonexplorer.info/geoportal/search;fq=Transportation;q=\*roads\*
+
+
+---
+class:top
+
+# &lt;font size="7"&gt;Compare edge betweenness and spectral without covariates&lt;/font&gt;
+
+.pull-left[
+
+&lt;img src="edgebet.png" width="125%" /&gt;
+
+]
+.pull-right[
+&lt;img src="spectral.png" width="125%" /&gt;
+]
+
+---
+class:top
+
+# &lt;font size="7"&gt;Compare edge betweenness and spectral with covariates&lt;/font&gt;
+
+.pull-left[
+
+&lt;img src="edgebet.png" width="125%" /&gt;
+
+]
+.pull-right[
+&lt;img src="spectralCov.png" width="125%" /&gt;
+]
+
+---
+class:top
+
+# &lt;font size="7"&gt;Compare Spectral wihtout and with covariates&lt;/font&gt;
+
+.pull-left[
+
+&lt;img src="Spectral.png" width="125%" /&gt;
+
+]
+.pull-right[
+&lt;img src="spectralCov.png" width="125%" /&gt;
+]
     </textarea>
 <style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
 <script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>

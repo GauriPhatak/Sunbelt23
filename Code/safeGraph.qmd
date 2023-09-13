@@ -72,8 +72,8 @@ def ReadData(path, chunksize, ct_sbst):
 ## Filtering out cities that we do not require currently.
 
 ```{r, warning=FALSE}
-WD <- "C:\\Users\\gauph\\Box\\Preliminary Results Coronavirus Sewer Surveillance\\Data files\\covid data files\\TestingSandbox\\RScripts"
-dat <- readRDS(paste(WD, "\\..\\COVID_Data_ROutput\\ProcessedCOVIDDataInfo.rds", sep= ""))
+WD <- "C:\\Users\\gauph\\Box\\Preliminary Results Coronavirus Sewer Surveillance\\Data files\\covid data files\\COVID_Data_ROutput"
+dat <- readRDS(paste(WD, "\\ProcessedCOVIDDataInfo.rds", sep= ""))
 
 df <- do.call(rbind.data.frame, sapply(dat, '[', 3))
 df$Date <- as.Date(as.integer(df$Date), origin = "1970-01-01")
@@ -85,13 +85,16 @@ ct <- st_read(hwpath, layer = "City_Limits__2016_")
 ## cities present in ct and wastewater data
 ct_sbst <- ct$city_name[ct$city_name %in% unique(df$Location)]
 
+OR_files <- "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/OregonWeeklyPatterns/"
+ORdat <- read.csv(paste0(OR_files,"OR2020.csv"))
+## Building graph using the subset of the oregon dataset including just the ww cities. 
+
 ## Chunksize
-n = 10000
+#n = 10000
 
 ## List all the files in this folder
-WP <-  "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/"
-allFiles <- list.files(WP)
-OR_files <- "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/OregonWeeklyPatterns/"
+#WP <-  "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/"
+#allFiles <- list.files(WP)
 
 ```
 
@@ -173,7 +176,7 @@ write_csv(NonORdat, paste0(OR_files,"NonOR2020.csv"))
 the census block code is read as
 
 |             |                                |            |                                                         |              |
-|------------|------------|------------|-------------------------|------------|
+|-------------|--------------------------------|------------|---------------------------------------------------------|--------------|
 | Block Group | STATE+COUNTY+TRACT+BLOCK GROUP | 2+3+6+1=12 | Block Group 1 in Census Tract 2231 in Harris County, TX | 482012231001 |
 
 ```         
@@ -313,16 +316,24 @@ ORsbstGrpdWkly <- ORsbstGrpd
 ## No removing the ties within cities
 ORsbstGrpd <- ORsbstGrpd[ORsbstGrpd$visitor_city_sbst != ORsbstGrpd$City, ]
 
-## find the summary for the number of counts 
-summary(ORsbstGrpd$sumCnt)
+gbg <- ORsbstGrpd %>%
+  group_by(epiweek) %>%
+  dplyr::summarise(med  = median(sumCnt),
+                   m = mean(sumCnt))
+
 barplot(ORsbstGrpd$sumCnt)
 m <- round(median(ORsbstGrpd$sumCnt))
 
-ORsbstGrpd <- ORsbstGrpd[ORsbstGrpd$sumCnt > m, ]
+ORsbstGrpd <- ORsbstGrpd %>% 
+  group_by(epiweek) %>%
+  filter(sumCnt > median(sumCnt)) %>%
+  ungroup()
+  
+#ORsbstGrpd <- ORsbstGrpd[ORsbstGrpd$sumCnt > m, ]
 
 #Creating the big graph using all the edges and counts as edge weights
 
-G <- graph_from_data_frame(ORsbstGrpd, directed = TRUE, vertices = ct_cen$ct )
+G <- graph_from_data_frame(ORsbstGrpd, directed = TRUE, vertices = ct_cen$ct)
 V(G)$lat <- as.numeric(ct_cen[,1])
 V(G)$lon <- as.numeric(ct_cen[,2])
 
@@ -332,25 +343,182 @@ for(week in epiweek) {
   g <- subgraph.edges(G,
                       E(G)[E(G)$epiweek == week],
                       delete.vertices = TRUE)
-  g <- simplify(g, remove.multiple = TRUE, remove.loops = TRUE, edge.attr.comb = list(sumCnt = "sum"))
-  png(sprintf("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code\\animap\\%03d.png",i) ,width=5000, height=5000, res=372)
+  # g <- simplify(g, remove.multiple = TRUE, remove.loops = TRUE, edge.attr.comb = list(sumCnt = "sum"))
+  png(sprintf("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code\\animap\\sfgrph\\%03d.png",i),
+      width=5000, height=5000, res=372)
   plot.igraph(g, margin=0, frame=F, vertex.size = 3,vertex.frame = NA, 
               vertex.color = "darkblue", main = as.character(week),
         vertex.label=NA, edge.color="cornsilk4",
         layout=cbind(V(g)$lat, V(g)$lon), 
-        edge.arrow.size = 0.01, edge.width= log(E(g)$sumCnt))
+        edge.arrow.size = 0.01)
   dev.off()
   i <- i+1
   
 }
 
-png_files <- list.files(paste0(getwd()[1],"/animap"), pattern = ".*png$", full.names= TRUE)
+png_files <- list.files(paste0(getwd()[1],"/animap/sfgrph"), 
+                        pattern = ".*png$", full.names= TRUE)
 
-gifski(png_files , gif_file = "ORegonSF.gif", width = 800, height = 600, delay = 1)
+gifski(png_files , gif_file = "ORegonSFmed.gif", width = 800, height = 600, delay = 1)
 ```
 
 ```{r}
-## creating the map with median value per week. 
+
+## Removeing vertices wihtout connections
+Isolated = which(degree(G)==0)
+G2 = delete_vertices(G, Isolated)
+
+## Normalize the weekly traffic data.
+E(G2)$sumCnt <- ((E(G2)$sumCnt - min(E(G2)$sumCnt))/(max(E(G2)$sumCnt) - min(E(G2)$sumCnt)))+0.01
+
+## fitting community detection algorithm for the safegraph data for each week. 
+
+## fitting edgebetweenness algorithm
+c <- rep(0,45)
+i=1
+unlink("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code\\animap\\edge\\*.png")
+for(week in epiweek) {
+  
+  g <- subgraph.edges(G2,
+                      E(G2)[E(G2)$epiweek == week],
+                      delete.vertices = FALSE)
+  mem <- cluster_edge_betweenness(g,weights = E(g)$sumCnt ,directed = FALSE)$membership
+  c <- cbind(c, mem)
+  png(sprintf("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code\\animap\\edge\\%03d.png",i),
+      width=5000, height=5000, res=372)
+  plot.igraph(g, margin=0, frame=F, vertex.size = 3,vertex.frame = NA, 
+              vertex.color = mem, main = as.character(week),
+        vertex.label=NA, edge.color="cornsilk4",
+        layout=cbind(V(g)$lat, V(g)$lon), 
+        edge.arrow.size = 0.01)
+  dev.off()
+  i <- i+1
+  
+}
+png_files <- list.files(paste0(getwd()[1],"/animap/edge"), 
+                        pattern = ".*png$", full.names= TRUE)
+
+gifski(png_files , gif_file = "ORegonSFedgeWwtsUndir.gif", 
+       width = 800, height = 600, delay = 1)
+apply(c, MARGIN = 2, function(x) length(unique(x)))
+
+```
+
+``` r
+```
+
+```{r}
+
+## fitting spectral community detection algorithm
+source("HelperFuncs.R")
+c <- rep(0,45)
+i=1
+for(week in epiweek) {
+  
+  g <- subgraph.edges(G2,
+                      E(G2)[E(G2)$epiweek == week],
+                      delete.vertices = FALSE)
+  mem <- RegSpectralClust(g, k = 9 )
+  c <- cbind(c, mem)
+  png(sprintf("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code\\animap\\spectral\\%03d.png",i),
+      width=5000, height=5000, res=372)
+  plot.igraph(g, margin=0, frame=F, vertex.size = 3,vertex.frame = NA, 
+              vertex.color = mem, main = as.character(week),
+        vertex.label=NA, edge.color="cornsilk4",
+        layout=cbind(V(g)$lat, V(g)$lon), 
+        edge.arrow.size = 0.01)
+  dev.off()
+  
+}
+png_files <- list.files(paste0(getwd()[1],"/animap/spectral"), 
+                        pattern = ".*png$", full.names= TRUE)
+
+gifski(png_files , gif_file = "ORegonSFspectral.gif", 
+       width = 800, height = 600, delay = 1)
+
+
+```
+
+```{r}
+
+source("HelperFuncs.R") 
+
+### Reading the OR data. At this point the data does not contain within city ties and does not contain any cities other than wastewater cities.
+# Set multiple thresholds for cutoffs
+
+thresh <- c(0.10,0.20,0.30,0.40,0.50,0.60,0.70,0.80,0.90)
+
+comlist <- list()
+
+## create a subset of just the wastewater cities
+NotwwCty <- !(ct_cen$ct %in% (ORsbstGrpd %>% 
+                pivot_longer(cols = c('visitor_city_sbst', 'City')) %>% 
+                select(value) %>% 
+                unique())$value)
+
+for( t in thresh){
+  
+  ## Create networks considering all the thresholds above. 
+  TG <- ORsbstGrpd %>% 
+    dplyr::group_by(epiweek) %>%
+    dplyr::mutate(q = quantile(sumCnt, probs = t))%>%
+    filter(sumCnt > q) %>%
+     ungroup()
+  
+  #Creating the big graph using all the edges and counts as edge weights
+  G <- graph_from_data_frame(TG, directed = TRUE, vertices = ct_cen$ct)
+  V(G)$lat <- as.numeric(ct_cen[,1])
+  V(G)$lon <- as.numeric(ct_cen[,2])
+  ## Removing vertices wihtout connections
+  #Isolated = which(degree(G)==0)
+  G2 = delete_vertices(G, NotwwCty)
+  ## Normalize the weekly traffic data.
+  #E(G2)$sumCnt <- ((E(G2)$sumCnt - min(E(G2)$sumCnt))/(max(E(G2)$sumCnt) - min(E(G2)$sumCnt)))+0.01
+  ## Applying Community detection methods to the networks formed above.
+  
+###### DISCUSS THE ISSUE WITH USING WEIGHTED EDGEBETWEENNESS FROM IGRAPH DIRECTLY https://github.com/igraph/igraph/issues/1040   page 24 : https://arxiv.org/pdf/0906.0612.pdf #######
+  
+###### Edge betweenness based community detection is works by repeatedly cutting the edge with the highest edge betweenness. This way it constructs a "dendrogram", i.e. a series of possible clusterings. Then it selects the one with the highest modularity.Betweenness calculations are based on the concept of graph distance. When the algorithm is given weights, it interprets it as the "length"/"distance" of that edge. Conceptually, vertices connected with a "short" / "low weight" edge are more tightly coupled than those connected by a "long" / "high weight" edge.But modularity calculations use weights the opposite way. It is high weight values (instead of low ones) that indicate tighter coupling.###### 
+  
+########## Might have to use my implementation for edgebetweenness algorithm. Unfortunately it is very slow and needs me to implement a more efficient version. ###### 
+  
+  c <- as.data.frame(matrix(nrow = 46, ncol=0))#rep(0,46)
+  d <- as.data.frame(matrix(nrow = 46, ncol=0))#rep(0,46)
+  i=1
+  for(week in epiweek) {
+    
+    g <- subgraph.edges(G2,
+                        E(G2)[E(G2)$epiweek == week],
+                        delete.vertices = FALSE)
+      ## 1. Applying Edge-betweenness
+    mem <- cluster_edge_betweenness(g,
+                                    weights = E(g)$sumCnt ,
+                                    directed = TRUE, 
+                                    modularity = TRUE, 
+                                    membership = TRUE)$membership
+    c[,i] <- mem
+      ## 2. Applying Spectral CLustering algorithm
+    mem <- RegSpectralClust(g, k = 9 )
+    d[,i] <- mem
+
+
+    i <- i+1
+    
+  }
+  
+  comlist[[as.character(t)]] <- c
+  
+  ## Descriptive summaries of the various generated networks.
+  
+  ## 1. Network structure descriptions
+  ## 2. Community detection over time for various networks.
+  
+  ## Incorporate wastewater measurements as covariates ... For missing values reduce the number of missing values. 
+  
+  ## apply STERGM model for all the created networks.
+  
+  
+}
 
 
 

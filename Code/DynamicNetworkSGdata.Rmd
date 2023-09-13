@@ -1,0 +1,354 @@
+---
+title: "Dynamic Network models"
+output: pdf_document
+date: "2023-08-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+#library(spdep)
+library(igraph)
+library(sf)
+library(lubridate)
+library(chron)
+library(readxl)
+library(CASCORE)
+library(gridExtra)
+
+library(tergm)
+library(tsna)
+library(ndtv)
+```
+
+
+## Setting up the data and a dynamic network model.
+
+```{r}
+WD <- "C:\\Users\\gauph\\Box\\Preliminary Results Coronavirus Sewer Surveillance\\Data files\\covid data files\\COVID_Data_ROutput"
+dat <- readRDS(paste(WD, "\\ProcessedCOVIDDataInfo.rds", sep= ""))
+
+df <- do.call(rbind.data.frame, sapply(dat, '[', 3))
+df$Date <- as.Date(as.integer(df$Date), origin = "1970-01-01")
+
+##Loading city data
+hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
+ct <- st_read(hwpath, layer = "City_Limits__2016_")
+
+## cities present in ct and wastewater data
+ct_sbst <- ct$city_name[ct$city_name %in% unique(df$Location)]
+
+OR_files <- "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/OregonWeeklyPatterns/"
+ORdat <- read.csv(paste0(OR_files,"OR2020.csv"))
+## Building graph using the subset of the oregon dataset including just the ww cities. 
+
+ORsbst <- ORdat[!is.na(ORdat$visitor_city_sbst), ]
+
+ORsbst$startDate <- parse_date_time(ORsbst$startDate, orders = "ymd")
+ORsbst$epiweek <- paste(epiweek(ORsbst$startDate ), 
+                        as.character(year(ORsbst$startDate )), 
+                        sep= "-")
+ORsbstGrpd  <- ORsbst %>% 
+  subset(select = c(City, epiweek, totalcount, visitor_city_sbst, startDate)) %>%
+  group_by(visitor_city_sbst, City, epiweek) %>%
+  dplyr::summarise(sumCnt =  sum(totalcount),
+                   date = first(startDate)) %>%
+  ungroup() %>%
+  arrange(date)
+
+## getting the latitude longitude of all the cities
+ct_cen <- ct %>% 
+  st_as_sf() %>%
+  st_centroid() %>%
+  st_cast("POINT") %>%
+  st_transform(4326) %>%
+  st_coordinates() %>%
+  as.data.frame()
+
+ct_cen$ct <- ct$city_name
+
+# Creating discrete time maps 
+epiweek <- unique(ORsbstGrpd$epiweek)
+## No removing the ties within cities
+ORsbstGrpd <- ORsbstGrpd[ORsbstGrpd$visitor_city_sbst != ORsbstGrpd$City, ]
+
+# ORsbstGrpd <- ORsbstGrpd %>% 
+#   group_by(epiweek) %>%
+#   filter(sumCnt > median(sumCnt)) %>%
+#   ungroup()
+
+```
+Creating the network model using Network package
+
+The Separable model:
+The separable model was introduced in Krivitsky and Handcock (2010). “Separable” here means that formation is assumed to be independent of dissolution within time step, and Markov dependent between steps. This allows the factors that influence formation to be different than those that influence dissolution.
+
+
+prevalence=incidence×duration
+
+To translate this to dynamic networks: the expression above says that the number of ties present in the cross-section (prevalence) is a function of the rate at which they form (incidence) and the rate at which they dissolve (1/duration). The faster ties form, the more ties will be present in the cross-section, and the more slowly they form, the fewer will be present. The slower ties dissolve, the longer the duration, the more ties will be present in the cross-section, and the reverse (faster/shorter/fewer) again holds. The cross-sectional prevalence of ties is determined by both processes.
+
+```{r}
+
+Vpid <- unique(matrix(rbind(t(ORsbstGrpd$visitor_city_sbst), 
+                            t(ORsbstGrpd$City)), ncol = 1))
+ordr <- unique(ORsbstGrpd$epiweek)
+# byEpiweek <- ORsbstGrpd %>% 
+#   subset(select = c(visitor_city_sbst,City,sumCnt,epiweek,date)) %>%
+#   `colnames<-`(c("from", "to", "weight","epiweek", "date")) %>%
+#   group_by(epiweek) %>%
+#   group_map(~as.network(.x, vertices = data.frame(name = Vpid)), .keep = TRUE) %>%
+#   network.list()
+# 
+nwlist <- list()
+for(week in ordr) {
+  s <- ORsbstGrpd[ORsbstGrpd$epiweek == week,] %>%
+    `colnames<-`(c("from", "to", "weight","epiweek", "date")) %>%
+    as.network(vertices = data.frame(name = Vpid))
+  nwlist <- append(nwlist, list(s))
+}
+
+# dny <- networkDynamic(network.list = byEpiweek, 
+#                       vertex.pid = "vertex.names")
+# summary(byEpiweek)
+
+
+samp.fit.fp <- tergm(nwlist ~
+                       Form(~edges+mutual+cyclicalties+transitiveties) +
+                       Persist(~edges+mutual+cyclicalties+transitiveties),
+                     estimate = "CMLE")
+summary(samp.fit.fp)
+```
+
+
+```{r}
+samp.fit.cc <- tergm(nwlist ~
+                       Cross(~edges+mutual+cyclicalties+transitiveties) +
+                       Change(~edges+mutual+cyclicalties+transitiveties),
+                     estimate = "CMLE")
+summary(samp.fit.cc)
+
+```
+
+
+
+
+```{r}
+par(mar = c(2, 2, 2, 2))
+
+mcmc.diagnostics(samp.fit.fp, which="plots")
+mcmc.diagnostics(samp.fit.cc, which="plots")
+```
+
+
+
+
+
+
+```{r}
+
+
+source("HelperFuncs.R") 
+
+### Reading the OR data. At this point the data does not contain within city ties and does not contain any cities other than wastewater cities.
+# Set multiple thresholds for cutoffs
+
+thresh <- c(0.10,0.20,0.30,0.40,0.50,0.60,0.70,0.80,0.90)
+
+comlist <- list()
+
+## create a subset of just the wastewater cities
+NotwwCty <- !(ct_cen$ct %in% (ORsbstGrpd %>% 
+                                pivot_longer(cols = c('visitor_city_sbst', 'City')) %>% 
+                                select(value) %>% 
+                                unique())$value)
+
+names <- c("threshold", "Nnode","Nedges", "diameter","mean_distance","edge_density","reciprocity","transitivity","degreeDist", "degrees")
+NetDsc <- as.data.frame(matrix(nrow = 0, ncol=10))
+colnames(NetDsc) <- names
+names <- c("threshold","week", "Nnode","Nedges", "diameter","mean_distance","edge_density","reciprocity","transitivity","degreeDist","degrees")
+NetDscTS <- as.data.frame(matrix(nrow = 0, ncol=11))
+colnames(NetDscTS) <- names
+
+## TERGM op list
+op <- list()
+# Vpid <- unique(matrix(rbind(t(TG$visitor_city_sbst), 
+#                             t(TG$City)), ncol = 1))
+for( t in thresh){
+  
+  
+  ## Create networks considering all the thresholds above. 
+  TG <- ORsbstGrpd %>% 
+    dplyr::group_by(epiweek) %>%
+    dplyr::mutate(q = quantile(sumCnt, probs = t)) %>%
+    filter(sumCnt > q) %>%
+    ungroup()
+  
+  #Creating the big graph using all the edges and counts as edge weights
+  G <- graph_from_data_frame(TG, directed = TRUE, vertices = ct_cen$ct)
+  V(G)$lat <- as.numeric(ct_cen[,1])
+  V(G)$lon <- as.numeric(ct_cen[,2])
+  ## Removing vertices wihtout connections
+  #Isolated = which(degree(G)==0)
+  G2 = delete_vertices(G, NotwwCty)
+  
+  ## Network structure descriptions overall
+  NetDsc[nrow(NetDsc)+1,] <- c(t,sum(V(G2)$degree==0),gsize(G2),diameter(G2),mean_distance(G2),
+                               edge_density(G2),reciprocity(G2),transitivity(G2),
+                               list(list(table(igraph::degree(G2))/sum(table(igraph::degree(G2))))),
+                               list(list(igraph::degree(G2))))
+  #degree(),strength(),closeness(),betweenness(),page_rank(),authority_score()
+  
+  
+  ## Normalize the weekly traffic data.
+  #E(G2)$sumCnt <- ((E(G2)$sumCnt - min(E(G2)$sumCnt))/(max(E(G2)$sumCnt) - min(E(G2)$sumCnt)))+0.01
+  ## Applying Community detection methods to the networks formed above.
+  
+  ###### DISCUSS THE ISSUE WITH USING WEIGHTED EDGEBETWEENNESS FROM IGRAPH DIRECTLY https://github.com/igraph/igraph/issues/1040   page 24 : https://arxiv.org/pdf/0906.0612.pdf #######
+  
+  ###### Edge betweenness based community detection is works by repeatedly cutting the edge with the highest edge betweenness. This way it constructs a "dendrogram", i.e. a series of possible clusterings. Then it selects the one with the highest modularity.Betweenness calculations are based on the concept of graph distance. When the algorithm is given weights, it interprets it as the "length"/"distance" of that edge. Conceptually, vertices connected with a "short" / "low weight" edge are more tightly coupled than those connected by a "long" / "high weight" edge.But modularity calculations use weights the opposite way. It is high weight values (instead of low ones) that indicate tighter coupling.###### 
+  
+  ########## Might have to use my implementation for edgebetweenness algorithm. Unfortunately it is very slow and needs me to implement a more efficient version. ###### 
+  
+  c <- as.data.frame(matrix(nrow = 46, ncol=0))#rep(0,46)
+  d <- as.data.frame(matrix(nrow = 46, ncol=0))#rep(0,46)
+  i=1
+  nwlist <- list()
+  
+  for(week in epiweek) {
+    
+    g <- subgraph.edges(G2,
+                        E(G2)[E(G2)$epiweek == week],
+                        delete.vertices = FALSE)
+    ## 2. Community detection over time for various networks.
+    
+    ## a. Applying Edge-betweenness
+    # mem <- cluster_edge_betweenness(g,
+    #                                 weights = E(g)$sumCnt ,
+    #                                 directed = TRUE, 
+    #                                 modularity = TRUE, 
+    #                                 membership = TRUE)$membership
+    mem <- cluster_infomap(g, e.weights = E(g)$sumCnt)$membership
+    
+    c[,i] <- mem
+    ## b. Applying Spectral Clustering algorithm
+    mem <- RegSpectralClust(as.undirected(g), k = 6 )
+    d[,i] <- mem
+    
+    
+    ## Network structure descriptions overall
+    NetDscTS[nrow(NetDscTS)+1,]<-c(t,week,sum(V(g)$degree==0),gsize(g),diameter(g),
+                                   mean_distance(g),edge_density(g),
+                                   reciprocity(g),transitivity(g),
+                                   list(list(table(igraph::degree(g))/sum(table(igraph::degree(g))))),                                  
+                                   list(list(igraph::degree(G2))))
+    
+    ## Creating a network list
+    s <- TG[TG$epiweek == week,] %>%
+      subset(select = -q)%>%
+      `colnames<-`(c("from", "to", "epiweek","weight", "date")) %>%
+      as.network(vertices = data.frame(name = Vpid))
+    nwlist <- append(nwlist, list(s))
+    i <- i+1
+  }
+  
+  comlist[[as.character(t)]] <- c
+  comlist[[as.character(t)]] <- d
+  
+  ## Incorporate wastewater measurements as covariates ... For missing values reduce the number of missing values. 
+  ## apply STERGM model for all the created networks.
+  # samp.fit.fp <- tergm(nwlist ~
+  #                        Form(~edges+mutual+cyclicalties+transitiveties) +
+  #                        Persist(~edges+mutual+cyclicalties+transitiveties),
+  #                      estimate = "CMLE")
+  # op[[as.character(t)]] <- summary(samp.fit.fp)
+  
+}
+
+```
+
+
+## Plots
+
+```{r, fig.height=11}
+NetDscTS$week <- ordered(NetDscTS$week, levels = epiweek)
+
+NetDscTS %>% 
+  ggplot() +
+  geom_line(aes(y = diameter, x = factor(week), group = 1))+
+    facet_wrap(vars(threshold), ncol = 1, strip.position = "top") +
+  theme(strip.background = element_blank(), strip.placement = "outside", axis.text.x = element_text(angle = 45, size = 5))
+```
+
+```{r, fig.height=11}
+NetDscTS %>% 
+  ggplot() +
+  geom_line(aes(y = Nnode, x = factor(week), group = 1))+
+    facet_wrap(vars(threshold),  ncol = 1, strip.position = "top") +
+  theme(strip.background = element_blank(), strip.placement = "outside", axis.text.x = element_text(angle = 45, size = 5))
+```
+```{r, fig.height=11}
+NetDscTS %>% 
+  ggplot() +
+  geom_line(aes(y = Nedges, x = factor(week), group = 1))+
+    facet_wrap(vars(threshold),  ncol = 1, strip.position = "top") +
+  theme(strip.background = element_blank(), strip.placement = "outside", axis.text.x = element_text(angle = 45, size = 5))
+```
+```{r, fig.height=11}
+NetDscTS %>% 
+  ggplot() +
+  geom_line(aes(y = mean_distance, x = factor(week), group = 1))+
+    facet_wrap(vars(threshold), ncol = 1, strip.position = "top") +
+  theme(strip.background = element_blank(), strip.placement = "outside", axis.text.x = element_text(angle = 45, size = 5))
+```
+```{r, fig.height=11}
+NetDscTS %>% 
+  ggplot() +
+  geom_line(aes(y = edge_density, x = factor(week), group = 1))+
+    facet_wrap(vars(threshold), scales = "free_y", ncol = 1, strip.position = "top") +
+  theme(strip.background = element_blank(), strip.placement = "outside", axis.text.x = element_text(angle = 45, size = 5))
+
+NetDscTS %>% 
+  ggplot() +
+  geom_line(aes(y = edge_density, x = factor(week), group = 1))+
+    facet_wrap(vars(threshold),  ncol = 1, strip.position = "top") +
+  theme(strip.background = element_blank(), strip.placement = "outside", axis.text.x = element_text(angle = 45, size = 5))
+```
+
+```{r, fig.height=11}
+NetDscTS %>% 
+  ggplot() +
+  geom_line(aes(y = reciprocity, x = factor(week), group = 1))+
+    facet_wrap(vars(threshold),  ncol = 1, strip.position = "top") +
+  theme(strip.background = element_blank(), strip.placement = "outside", axis.text.x = element_text(angle = 45, size = 5))
+```
+
+
+```{r, fig.height=11}
+NetDscTS %>% 
+  ggplot() +
+  geom_line(aes(y = transitivity, x = factor(week), group = 1))+
+    facet_wrap(vars(threshold), ncol = 1, strip.position = "top") +
+  theme(strip.background = element_blank(), strip.placement = "outside", axis.text.x = element_text(angle = 45, size = 5))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

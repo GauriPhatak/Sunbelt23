@@ -584,8 +584,8 @@ hwd <- st_read(hwpath, layer="Highway_Network__2015_")
 hwd <- st_zm(hwd)
 id <- unique(hwd$st_hwy_idx)
 
-WD <- "C:\\Users\\gauph\\Box\\Preliminary Results Coronavirus Sewer Surveillance\\Data files\\covid data files\\TestingSandbox\\RScripts"
-dat <- readRDS(paste(WD, "\\..\\COVID_Data_ROutput\\ProcessedCOVIDDataInfo.rds", sep= ""))
+WD <- "C:\\Users\\gauph\\Box\\Preliminary Results Coronavirus Sewer Surveillance\\Data files/covid data files/COVID_Data_ROutput"
+dat <- readRDS(paste(WD, "/ProcessedCOVIDDataInfo.rds", sep= ""))
 df <- do.call(rbind.data.frame, sapply(dat, '[', 3))
 df$Date <- as.Date(as.integer(df$Date), origin = "1970-01-01")
 
@@ -711,7 +711,7 @@ plot_graph(g, op, "Spectral")
 
 ## importing wastewater data/
 
-covid <- read_csv("C:/Users/gauph/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/5.19.23/Combined_all_sample_data_aggregated_byfilter_2023-05-19.csv")
+covid <- read_csv("C:/Users/gauph/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/9.12.23/Combined_all_sample_data_aggregated_bysample2023-09-12.csv")
 
 covid <- covid[covid$SampleType == "Influent",]
 covid$Date <- as.dates(covid$Date)
@@ -765,8 +765,6 @@ V(WWgrph)$alpha <- unlist((covid_wv %>% filter(Wave == "Alpha"))[match(V(WWgrph)
 V(WWgrph)$delta <- unlist((covid_wv %>% filter(Wave == "Delta"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Delta"))$Location),3])
 
 V(WWgrph)$Omicron <- unlist((covid_wv %>% filter(Wave == "Omicron"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "Omicron"))$Location),3])
-
-V(WWgrph)$OmicronBA <- unlist((covid_wv %>% filter(Wave == "OmicronBA.2"))[match(V(WWgrph)$name , (covid_wv %>% filter(Wave == "OmicronBA.2"))$Location),3])
 
 cov <- as.data.frame(cbind(V(WWgrph)$name,V(WWgrph)$prealpha, 
                            V(WWgrph)$alpha,V(WWgrph)$delta,

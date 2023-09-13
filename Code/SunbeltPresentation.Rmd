@@ -1,11 +1,11 @@
 ---
-title: "Assessing relationships between wastewater testing data for COVID-19 within locations in Oregon using transportation network data."
+title: <font size="8">Assessing relationships between wastewater testing data for COVID-19 within locations in Oregon using transportation network data.</font>
 author: 
 - <font size="6">Gauri Phatak, Department of Statistics</font>
 - <font size="4">Katherine McLaughlin, James Molyneux, Department of Statistics</font>
 - <font size="4">Christine Kelly, Tyler Radniecki, Biomolecular Engineering</font>
 institute: "Oregon State University"
-date: "`r Sys.Date()`"
+#date: "`r Sys.Date()`"
 output:
   xaringan::moon_reader:
     css: [default, "styles.css"]
@@ -24,7 +24,6 @@ class:top
 
 # <font size="7">Motivation</font>
 .pull-left[
-.my-syle[
 - CDC launched National wastewater Surveillance System (NWSS) in Sept 2020 in order to monitor the COVID-19 pandemic.
 
 - Coronavirus Sewer Surveillance began as a part of TRACE COVID-19 project but it has evolved into a standalone project funded by Oregon Health Authority(OHA).
@@ -32,7 +31,7 @@ class:top
 - COVID spreads through airborne transmission and can be tracked using movement of people to and from various locations. 
 
 - We are using highway transportation network as a proxy to movement of population through the state of Oregon.
- ]]
+ ]
  
 .pull-right[
 ![](CDCmap.png)
@@ -175,7 +174,7 @@ class:top
 
 - The Covariate Assisted Spectral Clustering(CASC) algorithm uses covariates of the nodes in addition to the structure of the network itself. 
 
-- The graph Laplacian used for this algortihm can be calculated as $\bar{L} = L + \alpha X X^T$, where $X$ is the $n \times p$ matrix of $p$ covariate values of the nodes.
+- The graph Laplacian used for this algortihm can be calculated as $\bar{L} = L + \alpha X X^T$, where $X$ is the $n \times p$ matrix of $p$ covariate values of the nodes. $L = D^{-1/2} A D^{-1/2} \in R^{N \times N}$ is calculated in the same way as spectral clustering without covariates.
 
 - $K$ eigen vectors from $K$ largest eigen values are used to perform K-means clustering similar to Spectral clustering without covariates.
 
@@ -258,6 +257,8 @@ class:top
 class: middle, center
 # <font size="20">Thank you!</font>
 
+.footer[email: phatakg@oregonstate.edu]
+
 ---
 class:top
 
@@ -277,4 +278,59 @@ class:top
 
 [7] https://www.oregon.gov/geo/Pages/sdlibrary.aspx
 
-[8] https://spatialdata.oregonexplorer.info/geoportal/search;fq=Transportation;q=*roads*
+[8] https://spatialdata.oregonexplorer.info/geoportal/search;fq=Transportation;q=\*roads\*
+
+
+---
+class:top
+
+# <font size="7">Compare edge betweenness and spectral without covariates</font>
+
+.pull-left[
+
+```{r, echo=FALSE, out.width="125%", fig.align = 'top'}
+knitr::include_graphics("edgebet.png")
+```
+
+]
+.pull-right[
+```{r, echo=FALSE, out.width="125%", fig.align = 'top'}
+knitr::include_graphics("spectral.png")
+```
+]
+
+---
+class:top
+
+# <font size="7">Compare edge betweenness and spectral with covariates</font>
+
+.pull-left[
+
+```{r, echo=FALSE, out.width="125%", fig.align = 'top'}
+knitr::include_graphics("edgebet.png")
+```
+
+]
+.pull-right[
+```{r, echo=FALSE, out.width="125%", fig.align = 'top'}
+knitr::include_graphics("spectralCov.png")
+```
+]
+
+---
+class:top
+
+# <font size="7">Compare Spectral wihtout and with covariates</font>
+
+.pull-left[
+
+```{r, echo=FALSE, out.width="125%", fig.align = 'top'}
+knitr::include_graphics("Spectral.png")
+```
+
+]
+.pull-right[
+```{r, echo=FALSE, out.width="125%", fig.align = 'top'}
+knitr::include_graphics("spectralCov.png")
+```
+]

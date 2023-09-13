@@ -6,7 +6,7 @@ library(mlVAR)
 library(lmtest)
 library(igraph)
 ##Reading the combined all ddpcr data generated using the old code.
-dat <- read_csv("C:/Users/gauph/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/7.18.23/Combined_all_sample_data_aggregated_bysample2023-07-18.csv")
+dat <- read_csv("C:/Users/gauph/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/9.12.23/Combined_all_sample_data_aggregated_bysample2023-09-12.csv")
 dat <- dat[dat$SampleType == "Influent",]
 dat <- subset(dat, select = c(Location, County, LogCopiesPerL, Date, PCRplate))
 dat$Date <- parse_date_time(dat$Date, orders = "mdy")
@@ -55,7 +55,9 @@ ts <- ts %>% subset(select = -c(week,year))
 
 op <- cbind(expand_grid(x = 1:ncol(ts), y=1:ncol(ts)), 
             expand_grid(x = colnames(ts) , y = colnames(ts)))
-colnames(op) <- c("a","b","c1","c2")
+colnames(op) <- c("idx","idy","x","y")
+#values of x predict the values of Y
+#grangertest(x,y)
 
 op <- op[op[,1] != op[,2],]
 op$pValO1 <- unlist(apply(op, 1, function(x) grangertest(ts[,as.numeric(x[1])], 
@@ -63,6 +65,12 @@ op$pValO1 <- unlist(apply(op, 1, function(x) grangertest(ts[,as.numeric(x[1])],
                                                          order = 1)$Pr[2]))
 
 op$SigO1 <- op$pValO1 <= 0.05
+
+# op$pValO2 <- unlist(apply(op, 1, function(x) grangertest(ts[,as.numeric(x[1])], 
+#                                                          ts[,as.numeric(x[2])], 
+#                                                          order = 2)$Pr[2]))
+# 
+# op$SigO2 <- op$pValO2 <= 0.05
 
 ## subsetting only the significant nodes
 
@@ -72,18 +80,32 @@ opSig <- op[op$SigO1,]
 g <- grphDat$WWgrph
 l <- cbind(V(g)$name ,as.numeric(V(g)$lat), as.numeric(V(g)$lon))
 G <- graph_from_edgelist(as.matrix(opSig[, c(3,4)]), directed = TRUE)
-G <- simplify(G)
+#G <- simplify(G)
 lsig <- cbind(l[match(V(G)$name, l[,1]),],V(G)$name)
 lsig <- lsig[!is.na(lsig[,1]),]
-G2 <- delete.vertices(G, c("Warm Springs", "Dallas","Rock Creek"))
+G2 <- igraph::delete.vertices(G, c("Warm Springs", "Dallas","Rock Creek"))
 
-plot.igraph(G2, layout= cbind(as.numeric(lsig[,2]), as.numeric(lsig[,3])), 
+plot.igraph(G, layout= cbind(as.numeric(lsig[,2]), as.numeric(lsig[,3])), 
             vertex.colo= "darkblue", vertex.frame= NA, edge.color= "cornsilk4",
             vertex.label= NA, edge.width= 1, edge.arrow.size= 0.01, 
             vertex.size= 4)
 
+## Node importance measures for the granger test graph
+##degree centrality measure
 
+hist(degree(G2, mode = "out"))
+plot.igraph(G2, layout= cbind(as.numeric(lsig[,2]), as.numeric(lsig[,3])), 
+            vertex.colo= "darkblue", vertex.frame= NA, edge.color= "cornsilk4",
+            vertex.label= NA, edge.width= 1, edge.arrow.size= 0.01, 
+            vertex.size= degree(G2, mode = "out"))
+title("Out degrees")
 
+hist(degree(G2, mode = "in"))
+plot.igraph(G2, layout= cbind(as.numeric(lsig[,2]), as.numeric(lsig[,3])), 
+            vertex.colo= "darkblue", vertex.frame= NA, edge.color= "cornsilk4",
+            vertex.label= NA, edge.width= 1, edge.arrow.size= 0.01, 
+            vertex.size= degree(G2, mode = "in"))
+title("in degree")
 
 
 
