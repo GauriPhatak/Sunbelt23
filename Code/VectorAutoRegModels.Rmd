@@ -1,0 +1,242 @@
+---
+title: "VectorAutoRegressionModels"
+output: pdf_document
+date: "2023-10-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(epitools)
+library(readxl)
+library(fs)
+library(imputeTS)
+library(forecast)
+library(zoo)
+library(vars)
+library(bruceR)
+library(BigVAR)
+library(bigtime)
+```
+
+## Reading the wastewater data and creating epiweek calendar for it.
+
+
+```{r}
+dat <- read_excel(paste0(path_home(),
+                         "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/11.7.23 (1)/Combined_all_data_2023-11-08.xlsx"), 
+                  sheet = "COVID",
+                  guess_max = 10000)
+
+df <- dat  %>% 
+  filter(Study == "OHA") %>% 
+  subset(select = c(Date, logCopies, Location, County, Target, Site))
+
+epiweek <- epitools::as.week(df$Date, format  = "%m/%d/%y")
+df$epiweek <- as.numeric(epiweek$week)
+df$epimonth <- month(as.Date(df$Date, format = "%m/%d/%y"))
+df$year <- year(as.Date(df$Date, format = "%m/%d/%y"))
+
+df <- df %>%
+  group_by(Location, year, epiweek) %>%
+  summarise(meanlogcopies =  mean(logCopies, na.rm = TRUE)) %>%
+  pivot_wider(names_from = Location, values_from = meanlogcopies ) %>%
+  ungroup() %>%
+  arrange(year, epiweek)
+
+## Find locations that have more than 20% missing values.
+
+nas <- as.data.frame(cbind(colnames(df),(colSums(is.na(df))/dim(df)[1])*100))
+
+## removing locations that have more than 50% missing values
+pctThrs <- 50
+df <- df %>% subset(select = which(nas[,2] < pctThrs))
+colnames(df) <- make.names(colnames(df))
+## Remvoing st.Helens , Siletz and Siletz tribe ,Ontario, Ontario Prison, 
+
+df <- df %>% subset(select = -c(St..Helens , Siletz , Siletz.Tribe ,Ontario, Ontario.Prison))
+
+## using structTs function to remove na from the data.
+
+df_comp <- df %>%
+  subset(select = -c(year,epiweek)) %>% 
+  ts()
+
+
+for (i in 1:dim(df_comp)[2]) {
+  ts <- df_comp[,i] %>% 
+    #na.trim(sides = "left") %>%
+    imputeTS::na_kalman()
+  df_comp[,i] <- ts
+}
+
+
+```
+
+```{r}
+##Now we have a complete timeseries. We can divide it based on some criterion. for now I am taking chunks of size 20. Eventually this can be based on other factors such as season and lockdown etc.
+
+max  <- 30
+x <- seq_along(df_comp[,1])
+df_split <- as.data.frame(cbind(df_comp, split = ceiling(x/max))) %>%
+  group_by(split) %>%
+  group_split()
+  
+op <- list()
+for (i in 1:length(df_split)) {
+  op[[i]] <- df_split[[i]] %>%
+    subset(select = -c(split)) %>%
+    VAR(p = 2, type = "trend") %>%
+    granger_causality()
+}
+
+mapEdges <- list()
+i <- 0
+for(fit in op){
+  i <- i+1
+  mapEdges[[i]] <- fit$result$Causality
+}
+
+```
+
+
+```{r}
+#### using penalized VAR bigtime library
+opL1 <- list()
+for (i in 1:length(df_split)) {
+  k <- df_split[[i]] %>%
+    subset(select = -c(split)) %>%
+    scale()
+  opL1[[i]] <- sparseVAR(Y = k, p = 1,
+                         VARlseq = NULL, 
+                         VARpen = "L1" ,
+                         selection = "cv")
+}
+
+
+```
+
+
+
+## Creating Timeseries plots using the longer data.
+
+```{r, fig.width=10}
+
+#write_csv(rank, "HealthRegions.csv")
+# rank <- read_excel("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/RankingCOVIDWastewaterData.xlsx", 
+#                    sheet = "Master",guess_max = 10000)
+# 
+# names(rank) <- make.names(colnames(rank), unique = TRUE)
+# 
+# rank <- rank %>% 
+#   subset(select = c(Health.Region, Location)) %>%
+#   distinct()
+rank <- read_csv("HealthRegions.csv")
+df <- dat  %>% 
+  filter(Study == "OHA") %>% 
+  subset(select = c(Date, logCopies, Location, County, Target, Site))
+
+epiweek <- epitools::as.week(df$Date, format  = "%m/%d/%y")
+df$epiweek <- as.numeric(epiweek$week)
+df$epimonth <- month(as.Date(df$Date, format = "%m/%d/%y"))
+df$year <- year(as.Date(df$Date, format = "%m/%d/%y"))
+
+df_HR <- merge(df, rank, by = "Location", all.x = TRUE)
+
+df_HR <- df_HR %>%
+  group_by(Health.Region, year, epiweek) %>%
+  summarise(meanlogcopies =  mean(logCopies, na.rm = TRUE)) %>%
+  ungroup()
+df_HR$size <- ifelse(df_HR$year == 2023, 0.5,0.1)
+pal <- c("#F0E442", "#E69F00", "#D55E00", "#000000",  "#56B4E9", "#009E73" , "#0072B2", "#CC79A7")
+
+############## Creating plots by health region.
+
+for(var in c(1,2,3,5,6,7,9)){
+
+ print( df_HR  %>% filter(complete.cases(.)) %>%
+     filter(Health.Region == var) %>%
+     ggplot()+ #df[df$Health.Region == var & !is.na(df$epiweek),])+
+    geom_point(aes(y = meanlogcopies, 
+                  x = factor(epiweek),
+                  color = factor(year), size = factor(size), group = 1)) +
+      scale_size_discrete(range = c(1, 2))+
+      guides(size = FALSE, color = guide_legend(title = "Year"))+
+      #scale_size(range = c(0,0.5))+
+      geom_line(aes(y = meanlogcopies, 
+                  x = epiweek,
+                  color = factor(year))) +
+      scale_colour_manual(values = pal)+
+      ggtitle(paste("Comparison of of SARS-CoV-2 trend by Epiweek between years for Health Region", var, sep = " "))+ 
+      xlab("Epidemiological Week")+
+      ylab(paste("Average log copies/L for HR",var, sep = " "))+
+      theme_minimal() + theme( axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), panel.grid.major=element_line(colour="gray92"),panel.grid.minor=element_line(colour="gray92")))
+}
+
+df_county <- merge(df, rank, by = "Location", all.x = TRUE) 
+df_county <- df_county %>%
+  group_by(Health.Region, County, epiweek, year) %>%
+  summarise(meanlogcopies =  mean(logCopies, na.rm = TRUE)) %>%
+  ungroup()
+
+for(var in c(1,2,3,5,6,7,9)){
+  print(df_county %>% 
+          filter(complete.cases(.)) %>%
+          filter(year == 2023, Health.Region == var) %>%
+          ggplot()+
+          geom_point(aes(y = meanlogcopies, 
+                  x = factor(epiweek),
+                  color = factor(County))) +
+      guides(size = FALSE, color = guide_legend(title = "County"))+
+      #scale_size(range = c(0,0.5))+
+      geom_line(aes(y = meanlogcopies, 
+                  x = factor(epiweek),
+                  color = factor(County), group = County)) +
+      scale_colour_manual(values = pal)+
+      ggtitle(paste("Comparison of of SARS-CoV-2 trend by Epiweek between counties for Health Region", var, sep = " "))+ 
+      xlab("Epidemiological Week")+
+      ylab(paste("Average log copies/L for HR",var, sep = " "))+
+      theme_minimal() + theme( axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), panel.grid.major=element_line(colour="gray92"),panel.grid.minor=element_line(colour="gray92")))
+}
+
+############# Create a plpots by location
+
+df_loc <- merge(df, rank, by = "Location", all.x = TRUE) 
+df_loc <- df_loc %>%
+  group_by(County,Location, epiweek, year) %>%
+  summarise(meanlogcopies =  mean(logCopies, na.rm = TRUE)) %>%
+  ungroup()
+
+for(c in unique(df$County)){
+  print(df_loc %>% 
+          filter(complete.cases(.)) %>%
+          filter(year == 2023, County == c) %>%
+          ggplot()+
+          geom_point(aes(y = meanlogcopies, 
+                  x = factor(epiweek),
+                  color = factor(Location))) +
+      guides(size = FALSE, color = guide_legend(title = "Location"))+
+      #scale_size(range = c(0,0.5))+
+      geom_line(aes(y = meanlogcopies, 
+                  x = factor(epiweek),
+                  color = factor(Location), group = Location)) +
+      scale_colour_manual(values = pal)+
+      ggtitle(paste("Comparison of of SARS-CoV-2 trend by Epiweek between locations in", c,"County", sep = " "))+ 
+      xlab("Epidemiological Week")+
+      ylab(paste("Average log copies/L for",c,"County", sep = " "))+
+      theme_minimal() + theme( axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), panel.grid.major=element_line(colour="gray92"),panel.grid.minor=element_line(colour="gray92")))
+}
+
+
+
+
+```
+
+
+
+## Remove cities that We are not interested in
+
+
+
+
+

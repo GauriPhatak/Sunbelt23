@@ -90,11 +90,11 @@ ORdat <- read.csv(paste0(OR_files,"OR2020.csv"))
 ## Building graph using the subset of the oregon dataset including just the ww cities. 
 
 ## Chunksize
-#n = 10000
+n = 10000
 
 ## List all the files in this folder
-#WP <-  "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/"
-#allFiles <- list.files(WP)
+WP <-  "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/Weekly Patterns/2020_Weekly_Patterns/"
+allFiles <- list.files(WP)
 
 ```
 
@@ -103,10 +103,31 @@ ORdat <- read.csv(paste0(OR_files,"OR2020.csv"))
 
 for (file in allFiles) {
   py_cities <- py$ReadData(paste0(WP,file),n,ct_sbst)
-  write_csv(py_cities, paste0(OR_files,"WeeklyData/",str_replace(file,".gz","")))
-  
+  write_csv(py_cities, paste0(OR_files,"WeeklyDataT/",
+                              str_replace(file,".gz","")))
   print(paste0("File completed: ",file))
  }
+
+```
+
+```{r}
+## Reading the data from backfill data
+## List all the files in this folder
+WP <-  "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/backfill/2020_Weekly_Patterns/ByWeek/"
+allFiles <- list.files(WP, recursive = TRUE)
+
+OR_files <- "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/OregonWeeklyPatterns/"
+
+for (file in allFiles) {
+  py_cities <- py$ReadData(paste0(WP,file),n,ct_sbst)
+  if(!dir.exists(paste0(OR_files,"backfill/",str_split(file, "/")[[1]][[1]]))){
+    dir.create(paste0(OR_files,"backfill/",str_split(file, "/")[[1]][[1]]))
+  }
+  write_csv(py_cities, paste0(OR_files,"backfill/",
+                              str_replace(file,".gz","")))
+  print(paste0("File completed: ",file))
+}
+
 
 ```
 
@@ -115,14 +136,14 @@ for (file in allFiles) {
 ```{r, warning=FALSE}
 ## This consolidates all the 2020 data. This data is saved in total2020.csv file.
 ## check if the columns are same for all the data files
-allFiles <- list.files(paste0(OR_files,"WeeklyData/"))
+#allFiles <- list.files(paste0(OR_files,"WeeklyData/"))
 ORdat <- data.frame(matrix(ncol=4, nrow=0))
 NonORdat <- data.frame(matrix(ncol = 4, nrow = 0))
 dat <- data.frame(matrix(ncol = 4, nrow = 0))
 censusBlock <- data.frame(matrix(ncol = 2, nrow = 0)) 
 
 for (file in allFiles) {
-  py_cities <- read.csv(paste0(OR_files,"WeeklyData/", file))
+  py_cities <- read.csv(paste0(OR_files,"backfill/", str_replace(file,".gz","")))
   py_cities <- py_cities %>% select(city,postal_code,date_range_start,
                                     date_range_end,raw_visit_counts,
                                     raw_visitor_counts,poi_cbg,visitor_home_cbgs,
@@ -163,9 +184,9 @@ for (file in allFiles) {
   dat <- rbind(dat, py_cities)
 }
 
-write_csv(dat, paste0(OR_files,"Total2020.csv"))
-write_csv(ORdat, paste0(OR_files,"OR2020.csv"))
-write_csv(NonORdat, paste0(OR_files,"NonOR2020.csv"))
+#write_csv(dat, paste0(OR_files,"Total2020.csv"))
+#write_csv(ORdat, paste0(OR_files,"OR2020.csv"))
+#write_csv(NonORdat, paste0(OR_files,"NonOR2020.csv"))
 
 ```
 
@@ -176,7 +197,7 @@ write_csv(NonORdat, paste0(OR_files,"NonOR2020.csv"))
 the census block code is read as
 
 |             |                                |            |                                                         |              |
-|-------------|--------------------------------|------------|---------------------------------------------------------|--------------|
+|-------------|-------------|-------------|--------------------|-------------|
 | Block Group | STATE+COUNTY+TRACT+BLOCK GROUP | 2+3+6+1=12 | Block Group 1 in Census Tract 2231 in Harris County, TX | 482012231001 |
 
 ```         
@@ -214,7 +235,6 @@ oregon_bg <- st_transform(oregon_bg, crs = st_crs(ct_sbst))
 countiesDat <- counties(state = "OR")
 oregon_bg$countyName <- countiesDat$NAME[match(oregon_bg$COUNTYFP, countiesDat$COUNTYFP)]
 
-
 bg_intersect <- st_intersection(ct_sbst,oregon_bg)
 cities <- as.data.frame(cbind(bg_intersect$GEOID, 
                               bg_intersect$city_name,
@@ -224,6 +244,8 @@ write_csv(cities,paste0(OR_files,"DistinctCensusBlocks.csv"))
 
 
 ```
+
+Creating column for visitor cities in oregon for the OR dataset
 
 ```{r}
 censusBlk$CBGS <- as.character(censusBlk$CBGS)
@@ -244,6 +266,33 @@ m <- match(ORdat$code, censusBlk_sbst$CBGS)
 ORdat$visitor_city_sbst <- censusBlk_sbst$city_name[m]
 
 write.csv(ORdat,paste0(OR_files,"OR2020.csv"))
+
+```
+
+creating column of visitor cities for all the visitor cities from out of oregon and in oregon
+
+```{r}
+
+## Currently I am using the ct hwypath spatial data for getting the city names. I need to find a dataset that gives me names of places at a both a city and other levels.
+
+censusBlk$CBGS <- as.character(censusBlk$CBGS)
+ORtotaldat$code <- as.character(ORtotaldat$code)
+ORtotaldat$countyfps <- unlist(map(ORtotaldat$code, 
+                              function(x) str_sub(x, 3,5)))
+m <- match(ORtotaldat$countyfps, countiesDat$COUNTYFP)
+ORtotaldat$county <- countiesDat$NAME[m]
+
+m <- match(ORtotaldat$code, censusBlk$CBGS)
+ORtotaldat$visitor_city <- censusBlk$city_name[m]
+
+m <- match(censusBlk$city_name, 
+            ct$city_name[ct$city_name %in% unique(df$Location)])
+censusBlk_sbst <- censusBlk[complete.cases(censusBlk[m,]),]
+
+m <- match(ORtotaldat$code, censusBlk_sbst$CBGS)
+ORtotaldat$visitor_city_sbst <- censusBlk_sbst$city_name[m]
+
+write.csv(ORtotaldat,paste0(OR_files,"OR2020.csv"))
 
 ```
 

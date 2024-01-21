@@ -7,7 +7,7 @@ library(lmtest)
 library(igraph)
 ##Reading the combined all ddpcr data generated using the old code.
 dat <- read_csv("C:/Users/gauph/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/9.12.23/Combined_all_sample_data_aggregated_bysample2023-09-12.csv")
-dat <- dat[dat$SampleType == "Influent",]
+#dat <- dat[dat$SampleType == "Influent",]
 dat <- subset(dat, select = c(Location, County, LogCopiesPerL, Date, PCRplate))
 dat$Date <- parse_date_time(dat$Date, orders = "mdy")
 ## Reading highway graph data
@@ -43,15 +43,17 @@ ts <- dat %>%
   separate_wider_delim(epiweek, delim = "-", names = c("week","year"))
 
 
-## Subsetting just the 2021 data
+## Subsetting just the 202 data
 
 ts$week <- as.numeric(ts$week)
+ts <- ts %>% arrange(year, week)
 
-ts <- ts[ts$year == "2021" & ts$week <= 46 & ts$week >= 26,]
+#ts <- ts[, colSums(!is.na(ts)) > 50]
 
-ts <- ts[, colSums(!is.na(ts)) > 8]
+ts <- ts[ts$year == "2020" ,]#ts[ts$year == "2021" & ts$week <= 46 & ts$week >= 26,]
 
-ts <- ts %>% subset(select = -c(week,year))
+
+#ts <- ts %>% subset(select = -c(week,year))
 
 op <- cbind(expand_grid(x = 1:ncol(ts), y=1:ncol(ts)), 
             expand_grid(x = colnames(ts) , y = colnames(ts)))
@@ -85,7 +87,7 @@ lsig <- cbind(l[match(V(G)$name, l[,1]),],V(G)$name)
 lsig <- lsig[!is.na(lsig[,1]),]
 G2 <- igraph::delete.vertices(G, c("Warm Springs", "Dallas","Rock Creek"))
 
-plot.igraph(G, layout= cbind(as.numeric(lsig[,2]), as.numeric(lsig[,3])), 
+plot.igraph(G2, layout= cbind(as.numeric(lsig[,2]), as.numeric(lsig[,3])), 
             vertex.colo= "darkblue", vertex.frame= NA, edge.color= "cornsilk4",
             vertex.label= NA, edge.width= 1, edge.arrow.size= 0.01, 
             vertex.size= 4)
@@ -106,6 +108,40 @@ plot.igraph(G2, layout= cbind(as.numeric(lsig[,2]), as.numeric(lsig[,3])),
             vertex.label= NA, edge.width= 1, edge.arrow.size= 0.01, 
             vertex.size= degree(G2, mode = "in"))
 title("in degree")
+
+
+## Using the mgm package to fit 
+df <- ts %>% select_if(~ !any(is.na(.)))
+
+mgm_fit <- mgm(data = as.matrix(df),
+               type = rep('g', ncol(df) ),
+               k = 2)
+# Weighted adjacency matrix
+mgm_fit$pairwise$wadj
+
+# Visualize using qgraph()
+library(qgraph)
+qgraph(mgm_fit$pairwise$wadj,
+       edge.color = mgm_fit$pairwise$edgecolor,
+       layout = "spring",
+       labels =  colnames(df))
+
+## Plan of Action
+## Perform imputation and divide the data.
+## Fit a piecewise stationary Time series model
+## Look at degree centrality for each slice of graph
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

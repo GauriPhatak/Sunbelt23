@@ -6,7 +6,6 @@ library(data.table)
 library(expm)
 library(wordspace)
 library(stats)
-
 f <- function(x, n){
   #set.seed(42)
   sample(c(x,x,sample(x, n-2*length(x), replace=TRUE)))
@@ -248,47 +247,59 @@ RegSpectralClust <-  function(G, k, regularize = TRUE ){
 # Step 3:
   
   #3 Normalize each row of the matrix to have unit length
-  Xt <- normalize.rows(X$vectors[,1:k]) 
+  Xt <- normalize.rows(Re(X$vectors[,1:k])) 
   
 # Step 4 
   #Run kK- means algorithm on the subset of the eigen vector matrix of size nXk
   
-  op <- kmeans(Xt,k,iter.max = 50)
+  op <- kmeans(x = Xt,centers = k ,nstart = 10, iter.max = 100)
   
   return(op$cluster)
   
 }
 
 
-CovAssistedSpecClust <- function(G, X, k, Regularize = TRUE){
+CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "assortative", kmeansIter = 100){
   
   # Step 1:
   
   ## Find Adjacency matrix for the given graph.
-  
   A <- as_adjacency_matrix(G)
   
   ## find the Degree Diagonal matrix. regularized diagonal matrix here tau  =  average node degree.
   I <- diag(x = 1, nrow = length(V(G)), ncol = length(V(G)))
   tau = mean(degree(G))
-  if(regularize == FALSE){tau = 0}
+  if(Regularize == FALSE){tau = 0}
   Dt <- diag(degree(G)+tau, nrow = length(V(G)))
   
   ## find the -1/2 root of Matrix Dt
   
   ## Calculate the Regularized graph laplacian
-  
   Lt <-  solve(sqrtm(Dt)) %*% A %*% solve(sqrtm(Dt))
+  
+  if(type == "non-assortative"){
+    L_alpha <-  Lt %*% Lt + alpha *(X %*% t(X))
+  }
+  else if(type == "CCA"){
+    L_alpha <- Lt %*% X
+  }
+  else if(type == "assortative"){
+    L_alpha <-  Lt + alpha *(X %*% t(X))
+  }
+  else{
+    return("No type Specified!")
+  }
+  
   
   
   # Step 2:
   ## Fnd the eigen values and vectors of the Lt matrix
   
-  X <-  eigen(Lt)
+  X <-  eigen(L_alpha)
   
   ## print the difference between the eigen values 
-  print(X$values - lead(X$values))
-  flush.console()
+  #print(X$values - lead(X$values))
+  #flush.console()
   
   # Step 3:
   
@@ -298,12 +309,10 @@ CovAssistedSpecClust <- function(G, X, k, Regularize = TRUE){
   # Step 4 
   #Run kK- means algorithm on the subset of the eigen vector matrix of size nXk
   
-  op <- kmeans(Xt,k,iter.max = 30)
+  op <- kmeans(Xt,k,iter.max = kmeansIter)
   
   return(op$cluster)
 }
-
-
 
 findEdges <- function(geom, hwd, id, type){
   
@@ -400,7 +409,104 @@ plot_graph <- function(g, m, title){
               margin = -0.01)
 }
 
+## for all categories at random.MAR
+## Ties randomly removed
+removeRandEdges <- function(graph, percent){
+  
+  N <- gsize(graph)
+  numE <- floor((N * percent)/100)
+  to_be_removed <- get.edgelist(graph)[sample(1:N, numE),] #sample(1:N, numE, replace = FALSE)
+  return(list("graph" =  delete_edges(graph , to_be_removed),"ids"= to_be_removed))
+}
+
+#gbg <- removeRandEdges(cowNW, 10)
+#G <- gbg$graph
+#ids <- gbg$ids
+
+## For all categories based on a percentage for each categories in it. MNAR
+
+removeCatedges <- function(graph, attr, fxn, percent, category){
+  
+  edges <- unlist(incident_edges(graph, which(fxn(vertex_attr(graph, attr), category))), recursive = FALSE, use.names = FALSE)
+  N <- length(edges)
+  numE <- ceiling((N*percent)/100)
+  to_be_removed <- get.edgelist(graph, names = FALSE)[sample(edges, numE, replace = FALSE),]
+  to_be_removed <- paste(to_be_removed[,1], to_be_removed[,2], sep = "|")
+  print(length(to_be_removed))
+  ret_grph <- delete_edges(graph , to_be_removed)
+  return(list("graph" = ret_grph, "ids"= gsize(ret_grph)))
+}
+
+#gbg <- removeCatedges(cowNW, "gender", `==`,80, "2")
+#G <- gbg$graph
+#ids <- gbg$ids
+
+## remove values in the attributes at random
+
+removeRandAtt <- function(attrs, percent){
+  
+  N <- length(attrs)
+  numE <- floor((N*percent)/100)
+  to_be_removed <- sample(1:N , numE)
+  attrs[to_be_removed] <- NA
+  return(attrs)
+}
+#G <- cowNW
+#V(G)$years <-  removeRandAtt(V(G)$years, 10)
+
+removeCatAtt <- function(attr, cat, fxn, percent){
+  
+  L <- which(fxn(attr, cat))
+  N <- length(L)
+  numE <- floor((N*percent)/100)
+  to_be_removed <- sample( L, numE)
+  attr[to_be_removed] <- NA
+  return(attr)
+}
+
+#V(G)$gender <- removeCatAtt(V(G)$gender, "2", `==`, 20 )
+
+## Strategies for imputing the data
+
+## Unconditional means. This includes just simple methods of imputations.
+## for categorical variables impute based on the most frequent variable
+## Most common value imputation
+
+imputeCatAtt <- function(attr){
+  attr[is.na(attr)] <- which.max(table(attr))#as.matrix(as.data.frame(sort(table(attr), decreasing = TRUE ))$attr[1])
+  return(attr)
+}
+
+#imputeCatAtt(att$status)
+
+imputeContAtt <- function(attr){
+  attr[is.na(attr)] <- floor(mean(attr,na.rm = TRUE))
+  return(attr)
+} 
 
 
+
+CatRegImp <- function(att, attr){
+  
+  fitDat <- subset(att, !is.na(att[[attr]]))
+  pred <- subset(att, is.na(att[[attr]]))[, -which(colnames(att) %in% attr)]
+  form <- as.formula(paste0(attr,"~", paste(colnames(att)[colnames(att) != attr], sep = "+", collapse = "+")))
+  
+  if(nlevels(att[[attr]]) > 2){
+    fit  <- multinom(form, data =fitDat)
+    op   <- predict(fit, "probs", newdata = pred)
+    op <- ifelse(op > 0.5, 1, 0)
+    
+  } else {
+    fit <- glm(as.formula(paste0(attr,"~", paste(colnames(att)[colnames(att) != attr], sep = "+", collapse = "+"))), 
+               data = fitDat, family = binomial(link = "logit"))
+    op <- predict.glm(fit, newdata = pred, type = "response")
+    op <- ifelse(op > 0.5, 1, 0)
+  }
+  
+  att[[attr]][is.na(att[[attr]])] <- op
+  
+  return(att)
+}
 
 

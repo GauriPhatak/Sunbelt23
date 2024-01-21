@@ -1,0 +1,154 @@
+---
+title: <font size="8"> Program of Study </font>
+author: 
+- <font size="6">Gauri Phatak, Department of Statistics</font>
+institute: "Oregon State University"
+output: beamer_presentation
+---
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+library(tidyverse)
+library(kableExtra)
+```
+
+---
+
+![](introPOS.png)
+
+# <font size="7">Motivation</font>
+
+
+  - Community detection is used to find clusters within a network using the edge connection structure of the network.
+
+  - Covariate assisted community detection helps leverage node or edge specific information to form clusters by augmenting network structure information. 
+
+  - Networks with missing data:
+  
+    - Missing edges
+  
+    - Missing node or edge covariate values
+  
+  - The goal is to develop methodology that performs covariate assisted community detection on networks with missing data.
+
+---
+
+# <font size="7">Research Direction</font>
+
+  - Exponential Random Graph Models (ERGMs) specify the probability of observing the entire network as a function of structural network features and node or edge covariates.
+  
+  - Using appropriate network statistics in this model with the addition of covariate data is a useful tool to discover community structure within a realisation of a network.
+  
+  - The objective is to design a method that performs iterative updates for imputation of missing data and community detection for the nodes within the network.
+
+---
+
+# <font size="7">Research in Support of Developed Method</font>
+
+  - Create a framework to generate synthetic networks with covariates with a known community structure.
+  
+  - Use real life networks such as mobility networks (using Safegraph data) in conjunction with COVID waste water data to perform community detection with the goal of finding sentinel cities in the state of Oregon. An extension of the method we are developing would be to use it in dynamic networks such as the ones created using wastewater data.
+  
+  
+---
+
+# <font size="7">Potential Covariates under Consideration</font>
+
+- COVID waste water data is temporal in nature with missing values at some time points. Adding COVID waste water measurements can provide us with communities detected along divisions such as rural/urban, population or another latent variable.
+
+- Add weighted edges by using Safegraph mobility data.
+
+- Add other demographic data, publicly available case and death count data and political affiliations as covariates.
+
+---
+
+# <font size="7">Plot of Highway Data</font>
+
+There are 242 cities in Oregon, 44 of which participated in the COVID waste water surveillance program at least once over the last three years.
+ 
+![Map of cities in Oregon (orange) and wastewater cities (Green)](citiesplot.png)
+
+---
+
+# <font size="7">Plot of Highway Network</font>
+
+![Highway Network created using shortest distance](spectral.png)
+
+---
+
+# <font size="7">Potential thesis chapters</font>
+
+  - Chapter 1: Introduction
+  
+  - Chapter 2: Review of existing methods
+    - Current methodologies in community detection with covariates.
+    - Simulation showing Impact of missing data in community detection in networks.
+    
+  - Chapter 3: Method development
+    - Iterative method for missing data imputation and community detection in network data.
+    
+  - Chapter 4: Applications in synthetic and real data
+    - Simulating synthetic network data with different parameters and testing developed model against them.
+    - Applying method on real life data such as network generated using Safegraph data with COVID waste water measurements and other factors as covariates.
+    
+  - Chapter 5: Conclusion
+  
+---
+
+# <font size="7">Required Courses and Credit Completion</font>
+
+```{r, echo=FALSE}
+
+df <- c("ST541", "Probability, Computing, and Simulation", "4",
+        "ST551, 552, 553", "Statistical Methods", "12",
+        "ST561, 562, 563","Theory of Statistics", "12",
+        "ST623", "Generalized Regression Models", "3",
+        "ST625", "Survival Analysis", "3",
+        "ST651, 652", "Linear Model Theory", "6",
+        "ST661, 662, 663", "Advanced Theory of Statistics", "9",
+        "MTH664", "Probability Theory", "3",
+        "ST506", "Teaching Experience", "1",
+        "ST509","Consulting","(2 credits each year)",
+        "ST603", "PhD thesis research,","(36 minimum)",
+        "ST557","APPLIED MULTIVARIATE ANALYSIS", "3",
+        "ST565", "TIME SERIES" ,"3",
+        "ST531","SAMPLING METHODS", "3",
+        "ST567","SPATIAL STATISTICS",  "3",
+        "ST537", "DATA VISUALIZATION", "3",
+        "AI534","MACHINE LEARNING" , "4",
+        "CS520","GRAPH THEORY WITH APPLS TO CMP", "3",
+        "AI539","ST/ CONVEX OPTIMIZATION"  ,"4",
+        "CS515","ALGORITHMS & DATA STRUCTURES","4")
+df <- as.data.frame(matrix(df, nrow = 20, ncol = 3, byrow = TRUE))
+colnames(df) <- c("Class", "Title","Credit Hours Required")
+df$Status <- c(rep("Completed", 6),"Partial 663","Completed","14","4","38",rep("Completed",9))
+kable(df) %>% 
+  row_spec(0, bold = TRUE) %>%
+  kable_styling(latex_options="scale_down") %>%
+  pack_rows("Required",1, 11) %>%
+  pack_rows("Elective",12,20) %>%
+  add_footnote(c("Currently enrolled in ST663","Received an exemption for ST509 in 2022"))
+
+
+```
+
+---
+
+# <font size="7">Expected Timeline.</font>
+
+```{r, echo=FALSE}
+
+df <- c("Completion of Program of Study","Fall 2023",
+        "Completion of Preliminary Examination", "Spring 2024",
+        "Completion of Final Examination", "Fall 2024")
+df <- as.data.frame(matrix(df, nrow = 3, ncol = 2, byrow = TRUE))
+colnames(df) <- c("Milestones", "Expected completion term")
+kable(df, format = "latex") %>% 
+  row_spec(0, bold = TRUE) %>%
+  kable_styling(latex_options="scale_down")
+```
+
+
+---
+
+# <font size="20">Thank you!</font>

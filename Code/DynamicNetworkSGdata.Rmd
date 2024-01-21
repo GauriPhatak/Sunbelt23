@@ -42,14 +42,13 @@ ct_sbst <- ct$city_name[ct$city_name %in% unique(df$Location)]
 OR_files <- "//depot.engr.oregonstate.edu/mime_u1/agor/Safe Graph Data/OregonWeeklyPatterns/"
 ORdat <- read.csv(paste0(OR_files,"OR2020.csv"))
 ## Building graph using the subset of the oregon dataset including just the ww cities. 
-
 ORsbst <- ORdat[!is.na(ORdat$visitor_city_sbst), ]
 
 ORsbst$startDate <- parse_date_time(ORsbst$startDate, orders = "ymd")
 ORsbst$epiweek <- paste(epiweek(ORsbst$startDate ), 
                         as.character(year(ORsbst$startDate )), 
                         sep= "-")
-ORsbstGrpd  <- ORsbst %>% 
+ORsbstGrpd <- ORsbst %>% 
   subset(select = c(City, epiweek, totalcount, visitor_city_sbst, startDate)) %>%
   group_by(visitor_city_sbst, City, epiweek) %>%
   dplyr::summarise(sumCnt =  sum(totalcount),
@@ -109,16 +108,19 @@ for(week in ordr) {
   nwlist <- append(nwlist, list(s))
 }
 
+## Saving the created 
+
+
 # dny <- networkDynamic(network.list = byEpiweek, 
 #                       vertex.pid = "vertex.names")
 # summary(byEpiweek)
 
 
-samp.fit.fp <- tergm(nwlist ~
-                       Form(~edges+mutual+cyclicalties+transitiveties) +
-                       Persist(~edges+mutual+cyclicalties+transitiveties),
-                     estimate = "CMLE")
-summary(samp.fit.fp)
+#samp.fit.fp <- tergm(nwlist ~
+#                       Form(~edges+mutual+cyclicalties+transitiveties) +
+#                       Persist(~edges+mutual+cyclicalties+transitiveties),
+#                     estimate = "CMLE")
+#summary(samp.fit.fp)
 ```
 
 
@@ -142,7 +144,260 @@ mcmc.diagnostics(samp.fit.cc, which="plots")
 ```
 
 
+Creating a data frame of movement into and out of the cities. data frame of time series data
+Multiple time series:
+  Movement into the city total
+    Movement into the city from Wastewater cities only
+    Movement into the city from non wastewater cities within oregon
+    Movement into the cities from outside the state
+  Movement from the city total
+    Movement from the city to Wastewater cities only
+    Movement from the city to non wastewater cities within oregon
+    Movement from the cities to outside the state
+  Wastewater data for each city.
 
+
+```{r}
+
+## Lets concentrate on the just the wastewater cities for now and update the code for all the options above.
+
+## Total movement into a city for each week
+intoCity <- ORsbstGrpd %>%
+  subset(select = c(City, epiweek, sumCnt)) %>%
+  group_by(City, epiweek) %>%
+  dplyr::summarise(sumCnt =  sum(sumCnt, na.rm = TRUE)) %>%
+  pivot_wider(names_from = City, values_from = sumCnt) %>%
+  separate_wider_delim(epiweek,"-",names = c("week","year")) %>%
+  transform(week = as.numeric(week), year = as.numeric(year)) %>%
+  arrange(year, week)
+
+## Total movement out of a city for each week
+outOfCity <- ORsbstGrpd %>%
+  subset(select = c(visitor_city_sbst, epiweek, sumCnt)) %>%
+  group_by(visitor_city_sbst, epiweek) %>%
+  dplyr::summarise(sumCnt =  sum(sumCnt, na.rm = TRUE)) %>%
+  pivot_wider(names_from = visitor_city_sbst, values_from = sumCnt) %>%
+   separate_wider_delim(epiweek,"-",names = c("week","year")) %>%
+  transform(week = as.numeric(week), year = as.numeric(year)) %>%
+  arrange(year, week)
+
+```
+
+```{r}
+## create visualizations for each week.
+## Using data from the granger causality file
+library(tseries)
+## Bend has data from 2020 WW19 
+x <- diff(diff(log(ts$Bend[ts$week >= 29])))
+adf.test(x)
+plot(x)
+
+y <- diff(diff(log(intoCity$Bend[intoCity$week >= 29])))
+adf.test(y)
+plot(y)
+
+z <- diff(diff(log(outOfCity$Bend[outOfCity$week >= 29])))
+adf.test(z)
+plot(z)
+
+## Now that the two are stationary check cross correlation
+ccf(y, x)
+
+## Interestingly the out data is correlated to ww data at lag -2 , 2 , 3
+ccf(z, x)
+```
+
+```{r}
+
+## checking CCF for corvallis in and out data
+## Bend has data from 2020 WW19 
+x <- diff(diff(log(ts$Corvallis)))
+adf.test(x)
+plot(x)
+
+y <- diff(diff(log(intoCity$Corvallis[intoCity$week >= 17])))
+adf.test(y)
+plot(y)
+
+z <- diff(diff(log(outOfCity$Corvallis[outOfCity$week >= 17])))
+adf.test(z)
+plot(z)
+
+## Now that the two are stationary check cross correlation
+##Cross correlation at multiple lags -3,-4,-5, 1, 2
+ccf(y, x)
+
+
+## cross cor at -9, -10,-11
+ccf(z, x)
+
+```
+
+```{r}
+#3 checking for Durham.
+
+x <- diff(diff(log(ts$Durham[ts$week >= 18])))
+adf.test(x)
+plot(x)
+
+y <- diff(diff(log(intoCity$Durham[intoCity$week >= 18])))
+adf.test(y)
+plot(y)
+
+z <- diff(diff(log(outOfCity$Durham[outOfCity$week >= 18])))
+adf.test(z)
+plot(z)
+
+## Now that the two are stationary check cross correlation
+##Cross correlation at multiple lags
+ccf(y, x)
+
+## significant cross cor at various lags.
+ccf(z, x)
+# cross cor between movement in and out. Week might be too much aggregation.
+ccf(y,z)
+
+```
+
+```{r}
+#3 checking forforest grove
+
+x <- diff(diff(log(ts$`Forest Grove`[ts$week >= 17])))
+adf.test(x)
+plot(x)
+
+y <- diff(diff(log(intoCity$Forest.Grove[intoCity$week >= 17])))
+adf.test(y)
+plot(y)
+
+z <- diff(diff(log(outOfCity$Forest.Grove[outOfCity$week >= 17])))
+adf.test(z)
+plot(z)
+
+## Now that the two are stationary check cross correlation
+##Cross correlation at 0? 
+ccf(y, x)
+
+## No significance.
+ccf(z, x)
+# cross cor between movement in and out. Week might be too much aggregation.
+ccf(y,z)
+```
+
+```{r}
+#3 checking for Hillsboro
+
+x <- diff(diff(log(ts$Hillsboro[ts$week >= 18])))
+adf.test(x)
+plot(x)
+
+y <- diff(diff(log(intoCity$Hillsboro[intoCity$week >= 18])))
+adf.test(y)
+plot(y)
+
+z <- diff(diff(log(outOfCity$Hillsboro[outOfCity$week >= 18])))
+adf.test(z)
+plot(z)
+
+## Now that the two are stationary check cross correlation
+##No cross cor
+ccf(y, x)
+
+## no cross cor
+ccf(z, x)
+# cross cor between movement in and out. Week might be too much aggregation.
+ccf(y,z)
+```
+
+```{r}
+
+#3 checking for Newport
+
+x <- diff(diff(log(ts$Newport[ts$week >= 24])))
+adf.test(x)
+plot(x)
+
+y <- diff(diff(log(intoCity$Newport[intoCity$week >= 24])))
+adf.test(y)
+plot(y)
+
+z <- diff(diff(log(outOfCity$Newport[outOfCity$week >= 24])))
+adf.test(z)
+plot(z)
+
+## Now that the two are stationary check cross correlation
+## cross cor for 4,5,6
+ccf(y, x)
+
+## cross cor at -2, -3 
+ccf(z, x)
+
+# cross cor between movement in and out. Week might be too much aggregation.
+ccf(y,z)
+
+```
+
+Using in and out movement from total oregondata and non oregon data.
+
+```{r}
+## This file contains traffic into and out of the wastewater cities from non oregon addresses.
+NonORdat <- read.csv(paste0(OR_files,"NonOR2020.csv"))
+
+NonORdat$startDate <- parse_date_time(NonORdat$startDate, orders = "ymd")
+NonORdat$epiweek <- paste(epiweek(NonORdat$startDate ), 
+                        as.character(year(NonORdat$startDate )), 
+                        sep= "-")
+## Total movement into a city for each week
+intoCityNonOR <- NonORdat %>%
+  subset(select = c(City, epiweek, totalcount)) %>%
+  group_by(City, epiweek) %>%
+  dplyr::summarise(sumCnt =  sum(totalcount, na.rm = TRUE)) %>%
+  pivot_wider(names_from = City, values_from = sumCnt)
+
+## Total movement out of a city for each week
+# outOfCityNonOR <- NonORdat %>%
+#   subset(select = c(City, epiweek, totalcount)) %>%
+#   group_by(City, epiweek) %>%
+#   dplyr::summarise(sumCnt =  sum(totalcount,na.rm = TRUE)) %>%
+#   pivot_wider(names_from = City, values_from = sumCnt)
+
+
+## Creating an RDS with all the the timeseries of movement into and out of the cities. 
+move <- list(intoCity, outOfCity, intoCityNonOR)
+
+saveRDS(move, file = paste0(OR_files,"movedata.rds"))
+
+
+```
+
+
+Comapring timeseries data for each location and movement. 
+
+```{r}
+## Reading most recent aggregated data
+dat <- read.csv("C:/Users/gauph/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/9.15.23/Combined_all_OHA_aggregated_data_with_LODs_2023-09-15.csv")
+
+gbg<- as.Date(dat$Date, '%m/%d/%y')
+dat$epiweek <- paste(epiweek(gbg ), 
+                        as.character(year(gbg)), 
+                        sep= "-")
+#
+## subsetting location and log copies per liter and date for the data. 
+
+datTS <- dat %>%
+  subset(select = c(Location, epiweek, LogCopiesPerL)) %>%
+  group_by(Location, epiweek) %>%
+  dplyr::summarise(Val =  sum(LogCopiesPerL, na.rm = TRUE)) %>%
+  pivot_wider(names_from = Location, values_from = Val) %>%
+  separate_wider_delim(epiweek,"-",names = c("week","year")) %>%
+  transform(week = as.numeric(week), year = as.numeric(year)) %>%
+  arrange(year, week)
+
+##Create a node importance chart based on safegraph data. 
+
+## Create a correlation table 
+
+```
 
 
 
@@ -161,20 +416,31 @@ comlist <- list()
 ## create a subset of just the wastewater cities
 NotwwCty <- !(ct_cen$ct %in% (ORsbstGrpd %>% 
                                 pivot_longer(cols = c('visitor_city_sbst', 'City')) %>% 
-                                select(value) %>% 
+                                subset(select= value) %>% 
                                 unique())$value)
 
-names <- c("threshold", "Nnode","Nedges", "diameter","mean_distance","edge_density","reciprocity","transitivity","degreeDist", "degrees")
+names <- c("threshold", "Nnode","Nedges",
+           "diameter","mean_distance",
+           "edge_density","reciprocity",
+           "transitivity","degreeDist", "degrees")
+
 NetDsc <- as.data.frame(matrix(nrow = 0, ncol=10))
 colnames(NetDsc) <- names
-names <- c("threshold","week", "Nnode","Nedges", "diameter","mean_distance","edge_density","reciprocity","transitivity","degreeDist","degrees")
+names <- c("threshold","week", "Nnode","Nedges",
+           "diameter","mean_distance","edge_density",
+           "reciprocity","transitivity","degreeDist","degrees")
 NetDscTS <- as.data.frame(matrix(nrow = 0, ncol=11))
 colnames(NetDscTS) <- names
+
+#Look for important nodes by using node importance measures. 
+## degree, closeness, betweenness, eigenvector, percolation, page rank centralities and k-shell decomposition
+nodeImp <- as.data.frame(matrix(nrow = 0, ncol=10))
 
 ## TERGM op list
 op <- list()
 # Vpid <- unique(matrix(rbind(t(TG$visitor_city_sbst), 
 #                             t(TG$City)), ncol = 1))
+
 for( t in thresh){
   
   
@@ -196,7 +462,7 @@ for( t in thresh){
   ## Network structure descriptions overall
   NetDsc[nrow(NetDsc)+1,] <- c(t,sum(V(G2)$degree==0),gsize(G2),diameter(G2),mean_distance(G2),
                                edge_density(G2),reciprocity(G2),transitivity(G2),
-                               list(list(table(igraph::degree(G2))/sum(table(igraph::degree(G2))))),
+                          list(list(table(igraph::degree(G2))/sum(table(igraph::degree(G2))))),
                                list(list(igraph::degree(G2))))
   #degree(),strength(),closeness(),betweenness(),page_rank(),authority_score()
   
@@ -241,15 +507,29 @@ for( t in thresh){
     NetDscTS[nrow(NetDscTS)+1,]<-c(t,week,sum(V(g)$degree==0),gsize(g),diameter(g),
                                    mean_distance(g),edge_density(g),
                                    reciprocity(g),transitivity(g),
-                                   list(list(table(igraph::degree(g))/sum(table(igraph::degree(g))))),                                  
-                                   list(list(igraph::degree(G2))))
+                                (list(table(igraph::degree(g))/sum(table(igraph::degree(g))))),                                  list(list(igraph::degree(G2))))
+    
+    ## Create a dataframe for node importance measures for each week for each city
+    ### degree, closeness, betweenness, hubscore, percolation, page rank centralities and k-shell decomposition
+    
+    nodeImp <- rbind(nodeImp, 
+                     as.data.frame(cbind(t,week,
+                                         igraph::degree(g, mode = "in"),
+                                         igraph::degree(g, mode = "out"),
+                                         round(igraph::closeness(g), digits = 3),
+                                         round(igraph::betweenness(g), digits = 3),
+                                         round(igraph::hub_score(g)$vector, digits = 3),
+                                         round(igraph::page_rank(g)$vector, digits = 3),
+                                         igraph::coreness(g, mode = "in"),
+                                         igraph::coreness(g, mode= "out")
+                     )))
     
     ## Creating a network list
-    s <- TG[TG$epiweek == week,] %>%
-      subset(select = -q)%>%
-      `colnames<-`(c("from", "to", "epiweek","weight", "date")) %>%
-      as.network(vertices = data.frame(name = Vpid))
-    nwlist <- append(nwlist, list(s))
+    # s <- TG[TG$epiweek == week,] %>%
+    #   subset(select = -q)%>%
+    #   `colnames<-`(c("from", "to", "epiweek","weight", "date")) %>%
+    #   as.network(vertices = data.frame(name = Vpid))
+    # nwlist <- append(nwlist, list(s))
     i <- i+1
   }
   
@@ -265,6 +545,9 @@ for( t in thresh){
   # op[[as.character(t)]] <- summary(samp.fit.fp)
   
 }
+
+names <-c("threshold","week", "degree_in", "degree_out","closeness", "betweenness","hubscore","PageRank","k-shell-in","k-shell-out")
+colnames(nodeImp) <- names
 
 ```
 
