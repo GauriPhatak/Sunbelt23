@@ -24,7 +24,7 @@ library(bigtime)
 
 ```{r}
 dat <- read_excel(paste0(path_home(),
-                         "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/11.7.23 (1)/Combined_all_data_2023-11-08.xlsx"), 
+                         "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/1.12.24/Combined_all_data_2024-01-12.xlsx"), 
                   sheet = "COVID",
                   guess_max = 10000)
 
@@ -74,6 +74,27 @@ for (i in 1:dim(df_comp)[2]) {
 ```
 
 ```{r}
+## IMPLEMENTING THE SIMULTANEOUS CHANGEPOINT DETECTION AND VAR MODEL FITTING FOR THE TIME SERIES DATA (sHOJAIE)
+## vERIFY IN THE TIME SERIES IN QUESTION IS STATIONARY. hENCE WE ARE GOING TO CREATE ACF CHARTS FOR ALL THE IMPUTED TIME SERIES DATA. (GIVEN THAT THE TS ARE IMPUTED THEY WONT BE STATIONARY.)
+plot.new()
+
+for (ts_id in 1:dim(df_comp)[2]) {
+  acf(df_comp[,ts_id],lag.max = length(df_comp[,ts_id]),
+         xlab = "lag #", ylab = 'ACF',main=' ')
+}
+
+## based on the acf plots none of the time series are stationary.
+```
+
+
+
+```{r}
+## using sparseVar function 
+```
+
+
+
+```{r}
 ##Now we have a complete timeseries. We can divide it based on some criterion. for now I am taking chunks of size 20. Eventually this can be based on other factors such as season and lockdown etc.
 
 max  <- 30
@@ -98,7 +119,7 @@ for(fit in op){
 }
 
 ```
-
+time series analysis tutorial: https://www.economodel.com/time-series-analysis
 
 ```{r}
 #### using penalized VAR bigtime library
@@ -107,11 +128,21 @@ for (i in 1:length(df_split)) {
   k <- df_split[[i]] %>%
     subset(select = -c(split)) %>%
     scale()
-  opL1[[i]] <- sparseVAR(Y = k, p = 1,
-                         VARlseq = NULL, 
+  opL1[[i]] <- sparseVAR(Y = k,
                          VARpen = "L1" ,
                          selection = "cv")
 }
+
+
+```
+
+
+```{r}
+## find the phihat value matrices to find the p-values i.e. estimated autoregressive coefficients of VAR
+## in the above case we are using L1 penalty and not using the safegraph data at all.
+plot_cv(opL1[[1]])
+lagmatrix(fit=opL1[[1]], returnplot=TRUE)
+
 
 
 ```

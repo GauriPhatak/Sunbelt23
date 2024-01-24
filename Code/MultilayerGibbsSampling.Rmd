@@ -1,0 +1,65 @@
+---
+title: "Algorithm for Simultaneous Missing Data Imputation and Community Detection"
+output: pdf_document
+date: "2024-01-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Type of missing data
+
+Assumption: Missing at random. Lends itself to imputation problems
+
+Handling continuous data for now.
+
+## Multi layer Gibbs sampling
+
+Outer posterior: Missing data handling
+
+Inner posterior: Community detection
+
+Simplifying assumptions: 
+
+1. Single community : Only the inner layer is utilized
+2. No missing data : Only the outer layer is utilized
+
+Identify the distribution of missing data
+
+Criterion for convergence of the Gibbs sampler.
+
+Probability based community assignment
+
+Distributions of communities.
+
+Gives an idea of community assignment in relation to the missing data.
+
+Probability and missing data values can give a reason for difficulty to place nodes. Gives a confidence for different possible imputed values of the missing data and the difficulty to place the nodes.
+
+##### Steps to take:
+
+* Start with known communities and full data.Different ways to generate data. Is there correlation between communities and the data/missing data.
+    - Come up with a different ways the data can be missing. Related to the community assignment 
+* Multiple layer Gibbs sampler
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
