@@ -43,9 +43,61 @@ Probability and missing data values can give a reason for difficulty to place no
     - Come up with a different ways the data can be missing. Related to the community assignment 
 * Multiple layer Gibbs sampler
 
+TODO:
+
+1. Understanding how multilayer Gibbs sampling works.
+
+2. Create inner and outer layer based on ERGM model or Community detection. Two possible types of communities.
+  a. Communities are a categorical variable. Each node belongs to one community
+  b. Probability based communities. Can relate this to missing data. Give a confidence of community assignment based on different possible values of imputed data.
+  
+3. Two possibilities Likelihood based methods or Data imputation.
+  
+  
+## Understadning method used by thesis* for missing data imputation.
+
+a: Relies on combining FCS framework and network model.
+
+b: Not many models available for imputing missing data in networks. Especially using ERGM model.
+
+## MultiLayer Gibbs sampling:
+
+1. Gibbs sampling for missing data:
+  a. Sample from Conditional distribution instead of joint distribution.
+  
+
+2. Adding a layer to Gibbs sampling for ERGM model.
 
 
 
+### Starter code for multilevel imputation.
+
+Tracking:
+
+1. Missing data
+
+2. Communities
+
+  a. ARI compared to priginal
+  
+  b. ARI compared to previous iteration.
+
+
+
+```{r}
+
+niter= 100
+
+# network simulation with 3 groups 100 nodes and ** connectivity. Two covariates with continous data.
+
+# create missingness in simulated networks.
+## Missingness created randomly.
+
+# Impute missing values in NW using mean imputation. 
+
+# Use spectral CD algorithm to find the initial communities.
+
+```
 
 
 
