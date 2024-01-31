@@ -39,7 +39,7 @@ df$year <- year(as.Date(df$Date, format = "%m/%d/%y"))
 
 df <- df %>%
   group_by(Location, year, epiweek) %>%
-  summarise(meanlogcopies =  mean(logCopies, na.rm = TRUE)) %>%
+  dplyr::summarise(meanlogcopies =  mean(logCopies, na.rm = TRUE)) %>%
   pivot_wider(names_from = Location, values_from = meanlogcopies ) %>%
   ungroup() %>%
   arrange(year, epiweek)
@@ -88,9 +88,6 @@ for (ts_id in 1:dim(df_comp)[2]) {
 
 
 
-```{r}
-## using sparseVar function 
-```
 
 
 
@@ -132,6 +129,59 @@ for (i in 1:length(df_split)) {
                          VARpen = "L1" ,
                          selection = "cv")
 }
+
+
+```
+
+
+
+```{r}
+## using fitVAR function from sparsevar library followed by testgranger function.
+library(sparsevar)
+op_GT <- list()
+for (i in 1:length(df_split)) {
+  k <- df_split[[i]] %>%
+    subset(select = -c(split)) %>%
+    scale()
+  fit <- fitVAR(k, penalty = "ENET", method = "cv", 
+                type.measure = "mae",lambda = "lambda.1se")
+  op_GT[[i]] <- testGranger(fit, errorBandsIRF(fit, 
+                                               irf = impulseResponse(fit)))
+  
+}
+
+```
+
+```{r}
+
+##Using HDGCvar  library and HDGC_VAR_all function to test all granger causality test.
+
+library(HDGCvar)
+op_HD <- list()
+for (i in 1:length(df_split)) {
+  k <- df_split[[i]] %>%
+    subset(select = -c(split)) %>%
+    scale()
+  colnames(k) <- gsub("df_comp.", "", colnames(k))
+  op_HD[[i]] <- HDGC_VAR_all_I0(as.matrix(k))
+}
+for(i in 1:4) {
+  Plot_GC_all(
+    op_HD[[i]],
+    Stat_type = "FS_cor",
+    alpha = 0.03,
+    multip_corr = list(F),
+    directed = T,
+    main = "Network",
+    edge.arrow.size = .2,
+    vertex.size = 5,
+    vertex.color = c("lightblue"),
+    vertex.frame.color = "blue",
+    vertex.label.size=0.1
+  )
+}
+
+
 
 
 ```
