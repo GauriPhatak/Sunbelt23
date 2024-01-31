@@ -88,7 +88,8 @@ Tracking:
 
 niter= 100
 
-# network simulation with 3 groups 100 nodes and ** connectivity. Two co-variates with continuous data.
+# network simulation with 3 groups 100 nodes and connectivity defined by B vector. Co-variates defined as below.
+
 
 
 ## Network with one categorical Variables
@@ -107,7 +108,7 @@ niter= 100
 # create missingness in simulated networks.
 ## Missingness created randomly.
 
-# Impute missing values in NW using mean imputation. 
+# Impute missing values in NW using mean imputation for continous covariate. 
 
 # Use spectral CD algorithm to find the initial communities.
 
