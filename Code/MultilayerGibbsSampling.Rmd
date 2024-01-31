@@ -88,7 +88,21 @@ Tracking:
 
 niter= 100
 
-# network simulation with 3 groups 100 nodes and ** connectivity. Two covariates with continous data.
+# network simulation with 3 groups 100 nodes and ** connectivity. Two co-variates with continuous data.
+
+
+## Network with one categorical Variables
+
+### Categorical variable correlated to the assigned clusters and same number of levels.
+### Categorical variable correlated to the assigned clusters and different number of levels.(binary variable where one is correlated to two clusters and 2nd is correlated to the last cluster.)
+
+### Categorical variables not correlated to the assigned clusters and same number of levels.
+### Categorical variables not correlated to the assigned clusters and different number of levels.(binary levels with no correlation.)
+
+## Network with one continuous Variable
+
+### Continuous variable correlated to the assigned clusters and different distributions for each cluster.
+### Continuous variable correlated to the assigned clusters and same distribution for all clusters.
 
 # create missingness in simulated networks.
 ## Missingness created randomly.
@@ -96,6 +110,11 @@ niter= 100
 # Impute missing values in NW using mean imputation. 
 
 # Use spectral CD algorithm to find the initial communities.
+
+
+## Loop
+## Missingness based on mean imputation based on assigned communities.
+## Update communities based on Spectral clustering with covariates algorithm.
 
 ```
 

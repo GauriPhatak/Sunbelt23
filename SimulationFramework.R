@@ -92,8 +92,6 @@ NetworkSim <- function(N, dir=FALSE, B, C,formula, coefs){
 g.sim <- NetworkSim(N,FALSE,B,C, NULL, coefs)
 
 #Simulate a network with only 
-
-
 fit <- ergm(g.sim~nodemix('Cluster', levels = TRUE, levels2 = TRUE))
 summary(fit)
 
@@ -113,7 +111,7 @@ for(i in seq_along(Hseq)){
   g.sim <- simulate(~edges+nodematch('Cluster', diff=TRUE), 
                     coef = c(-4,Hseq[i]), 
                     seed = seed,
-                    basis=net)
+                    basis= net)
   coef(g.sim)
   #summary(g.sim)
   plot( g.sim,
