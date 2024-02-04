@@ -6,6 +6,16 @@ library(data.table)
 library(expm)
 library(wordspace)
 library(stats)
+library(tidyverse)
+library(ergm)
+library(fs)
+library(network)
+library(intergraph)
+library(tidygraph)
+library(ggraph)
+library(statnet)
+library(caret)
+
 f <- function(x, n){
   #set.seed(42)
   sample(c(x,x,sample(x, n-2*length(x), replace=TRUE)))
@@ -264,19 +274,29 @@ CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "asso
   # Step 1:
   
   ## Find Adjacency matrix for the given graph.
-  A <- as_adjacency_matrix(G)
+  A <- as.matrix(as_adjacency_matrix(G))
   
   ## find the Degree Diagonal matrix. regularized diagonal matrix here tau  =  average node degree.
   I <- diag(x = 1, nrow = length(V(G)), ncol = length(V(G)))
-  tau = mean(degree(G))
+  tau = mean(igraph::degree(G))
   if(Regularize == FALSE){tau = 0}
-  Dt <- diag(degree(G)+tau, nrow = length(V(G)))
+  Dt <- diag(igraph::degree(G)+tau, nrow = length(V(G)))
   
   ## find the -1/2 root of Matrix Dt
   
   ## Calculate the Regularized graph laplacian
   Lt <-  solve(sqrtm(Dt)) %*% A %*% solve(sqrtm(Dt))
   
+  maxs <- apply(X, 2, max)
+  mins <- apply(X, 2, min)
+  X <- scale(X, center = mins, scale = maxs - mins)
+  
+  ## Choosing alpha based on leading eigen value of both L_t %*% L_t and X %*% X_t
+  if(is.na(alpha)){
+    alpha <- eigen(Lt %*% Lt)$values[1]/ eigen(X %*% t(X))$values[1]
+    }
+  
+  print(alpha)
   if(type == "non-assortative"){
     L_alpha <-  Lt %*% Lt + alpha *(X %*% t(X))
   }
@@ -295,7 +315,7 @@ CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "asso
   # Step 2:
   ## Fnd the eigen values and vectors of the Lt matrix
   
-  X <-  eigen(L_alpha)
+  X_L <-  eigen(L_alpha)
   
   ## print the difference between the eigen values 
   #print(X$values - lead(X$values))
@@ -304,7 +324,7 @@ CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "asso
   # Step 3:
   
   #3 Normalize each row of the matrix to have unit length
-  Xt <- normalize.rows(X$vectors[,1:k]) 
+  Xt <- normalize.rows(X_L$vectors[,1:k]) 
   
   # Step 4 
   #Run kK- means algorithm on the subset of the eigen vector matrix of size nXk
@@ -508,5 +528,44 @@ CatRegImp <- function(att, attr){
   
   return(att)
 }
+
+
+
+## Required functions
+logit2prob <- function(coef) {
+  odds <- exp(coef)
+  prob <- odds / (1 + odds)
+  return(prob)
+}
+
+prob2logit <- function(x){
+  return(log(x / (1 - x)))
+}
+
+## Create a basis network
+
+NetworkSim <- function(N, dir=FALSE, B, C,formula, coefs){
+  
+  seed <- 42
+  net <- network(N, directed = dir, density= 0 )
+  net %v% 'Cluster' <- C
+  
+  coefs = c(prob2logit(B))
+  
+  if(!is.null(formula)){
+    g.sim <- simulate(as.formula(paste0("net~nodemix('Cluster',levels = TRUE,levels2 = TRUE)+", formula)), 
+                      coef = coefs,
+                      seed = seed)  
+  }
+  else{
+    g.sim <- simulate(as.formula(paste0("net~nodemix('Cluster',levels = TRUE,levels2 = TRUE)")), 
+                      coef = coefs,
+                      seed = seed)
+  }
+  
+  return(g.sim)
+  
+}
+
 
 

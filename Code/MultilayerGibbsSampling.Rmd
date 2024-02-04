@@ -6,6 +6,9 @@ date: "2024-01-24"
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+source("HelperFuncs.R")
+
 ```
 
 ## Type of missing data
@@ -89,12 +92,50 @@ Tracking:
 niter= 100
 
 # network simulation with 3 groups 100 nodes and connectivity defined by B vector. Co-variates defined as below.
+##Synthetic population parameters
+## Going to use only undirected network
+## Setting the required coefficient values
+#### Example for within cluster probability is higher than between cluster.
+k <- 3
+N <- 100
+pC = c(0.3,0.4,0.3)
+B = c(0.7,0.02,0.7,0.03,0.02,0.7)
 
+## assigning node community with probability pC for a node assigned to for each community. hence pC and has to eb of length k
+C = sample(1:k,N,replace = TRUE, prob = pC)
+coefs = c(prob2logit(B))
 
+## Simulating the basis network with clusters
+g.sim <- NetworkSim(N,FALSE,B,C, NULL, coefs)
+
+plot( g.sim,
+      edge.col = adjustcolor('black',alpha.f = 0.5),
+      #main=paste('homophily =', round(logit2prob(Hseq[i]), digits = 2)),
+      vertex.col = g.sim %v% 'Cluster')
 
 ## Network with one categorical Variables
 
 ### Categorical variable correlated to the assigned clusters and same number of levels.
+## Using LOTR books.
+cat <- c("FOTR","TT","ROTK")
+pCat <- list(c(0.6,0.2,0.2), # Cluster 1
+             c(0.2,0.6,0.2), # Cluster 2
+             c(0.2,0.2,0.6)) # Cluster 3
+## Assigning categorical data based on cluster assignments.
+## Node in cluster one thinks FOTR is the best book with probability of 0.6, TT with prob 0.1 and ROTK with prob 0.3
+g.sim %v% 'LOTR' <- NA
+j <- 1
+for (i in 1:k) {
+  bk <- g.sim %v% 'LOTR'
+  bk[which(g.sim %v% 'Cluster' == i)] <- sample(cat,
+                                                 length( which(g.sim %v% 'Cluster' == i)), 
+                                                 prob = pCat[[i]], 
+                                                 replace = TRUE)
+  g.sim %v% 'LOTR' <- bk
+
+}
+
+g.sim <- asIgraph(g.sim)
 ### Categorical variable correlated to the assigned clusters and different number of levels.(binary variable where one is correlated to two clusters and 2nd is correlated to the last cluster.)
 
 ### Categorical variables not correlated to the assigned clusters and same number of levels.
@@ -105,8 +146,58 @@ niter= 100
 ### Continuous variable correlated to the assigned clusters and different distributions for each cluster.
 ### Continuous variable correlated to the assigned clusters and same distribution for all clusters.
 
-# create missingness in simulated networks.
+
+
+# running regularized spectral clustering on the original network without any covariate information.
+origmem <- RegSpectralClust(g.sim, 3,regularize = TRUE)
+
+mclust::adjustedRandIndex(origmem, V(g.sim)$Cluster)
+
+## Covariate assisted spectral clustering 
+## Since we are using categorical data we have to perform one hot encoding.
+X <- as.matrix(V(g.sim)$LOTR)
+Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ), newdata <- X)))
+origmemCov <- CovAssistedSpecClust(G = g.sim, Xdum, 3,Regularize =TRUE, alpha =NA, type ="non-assortative")
+
+plot.igraph( g.sim,
+      edge.col = adjustcolor('black',alpha.f = 0.5),
+      vertex.color = as.factor(V(g.sim)$LOTR))
+
+plot.igraph( g.sim,
+      edge.col = adjustcolor('black',alpha.f = 0.5),
+      vertex.color = origmem)
+
+plot.igraph( g.sim,
+      edge.col = adjustcolor('black',alpha.f = 0.5),
+      vertex.color = origmemCov)
+
+plot.igraph( g.sim,
+      edge.col = adjustcolor('black',alpha.f = 0.5),
+      vertex.color = V(g.sim)$Cluster)
+
+## Check correlation between the covariates and the community generated.
+
+table(origmemCov, V(g.sim)$LOTR)
+
+table(origmemCov, V(g.sim)$Cluster)
+
+table(V(g.sim)$LOTR, V(g.sim)$Cluster)
+
+# create missingness in simulated networks
+
 ## Missingness created randomly.
+pctMsng <- c(1,5,7, 10)
+
+for(p in pctMsng){
+  
+  Midx <- sample(1:N,ceiling(p*N/100))
+  print(Midx)
+  X[Midx] <- NA
+  pmax(as.matrix(table(X,V(g.sim)$Cluster, useNA = "no")))
+  Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ), 
+                                       newdata <- X)))
+  
+}
 
 # Impute missing values in NW using mean imputation for continous covariate. 
 
@@ -116,7 +207,8 @@ niter= 100
 ## Loop
 ## Missingness based on mean imputation based on assigned communities.
 ## Update communities based on Spectral clustering with covariates algorithm.
-
+## Future:
+### Using nodecov for quatitative and nodefactor for categorical variables when I eventually use ERGM for model fitting.
 ```
 
 

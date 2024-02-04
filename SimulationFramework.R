@@ -19,8 +19,14 @@ k <- 3
 N <- 100
 pC = c(0.3,0.4,0.3)
 B = c(0.7,0.02,0.7,0.03,0.02,0.7)
+
+## assigning node community with probability pC for a node assigned to for each community. hence pC and has to eb of length k
 C = sample(1:k,N,replace = TRUE, prob = pC)
 coefs = c(prob2logit(B))
+
+## Adding node covariates to the network.
+
+## Continous covariate
 
 
 # params <- list(
@@ -65,6 +71,9 @@ NetworkSim <- function(N, dir=FALSE, B, C,formula, coefs){
   seed <- 42
   net <- network(N, directed = dir, density= 0 )
   net %v% 'Cluster' <- C
+  
+  coefs = c(prob2logit(B))
+  
  
   #form <- as.formula(paste0("net~"))
   if(!is.null(formula)){
