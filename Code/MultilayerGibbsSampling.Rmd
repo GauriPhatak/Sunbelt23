@@ -43,7 +43,7 @@ Probability and missing data values can give a reason for difficulty to place no
 ##### Steps to take:
 
 * Start with known communities and full data.Different ways to generate data. Is there correlation between communities and the data/missing data.
-    - Come up with a different ways the data can be missing. Related to the community assignment 
+- Come up with a different ways the data can be missing. Related to the community assignment 
 * Multiple layer Gibbs sampler
 
 TODO:
@@ -51,12 +51,12 @@ TODO:
 1. Understanding how multilayer Gibbs sampling works.
 
 2. Create inner and outer layer based on ERGM model or Community detection. Two possible types of communities.
-  a. Communities are a categorical variable. Each node belongs to one community
-  b. Probability based communities. Can relate this to missing data. Give a confidence of community assignment based on different possible values of imputed data.
-  
+a. Communities are a categorical variable. Each node belongs to one community
+b. Probability based communities. Can relate this to missing data. Give a confidence of community assignment based on different possible values of imputed data.
+
 3. Two possibilities Likelihood based methods or Data imputation.
-  
-  
+
+
 ## Understadning method used by thesis* for missing data imputation.
 
 a: Relies on combining FCS framework and network model.
@@ -66,8 +66,8 @@ b: Not many models available for imputing missing data in networks. Especially u
 ## MultiLayer Gibbs sampling:
 
 1. Gibbs sampling for missing data:
-  a. Sample from Conditional distribution instead of joint distribution.
-  
+a. Sample from Conditional distribution instead of joint distribution.
+
 
 2. Adding a layer to Gibbs sampling for ERGM model.
 
@@ -81,137 +81,331 @@ Tracking:
 
 2. Communities
 
-  a. ARI compared to priginal
-  
-  b. ARI compared to previous iteration.
+a. ARI compared to priginal
+
+b. ARI compared to previous iteration.
 
 
 
 ```{r}
+SimNW <- function(pC,k,N,B){
+  C = sample(1:k,N,replace = TRUE, prob = pC)
+  coefs = c(prob2logit(B))
+  
+  ## Simulating the basis network with clusters
+  g.sim <- NetworkSim(N,FALSE,B,C, NULL, coefs)
+  return(g.sim)
+}
 
-niter= 100
+AssgnCat <- function(g.sim, catName, pCat, cat){
+  g.sim %v% catName <- NA
+  j <- 1
+  for (i in 1:k) {
+    bk <- g.sim %v% catName
+    bk[which(g.sim %v% 'Cluster' == i)] <- sample(cat,
+                                                  length( which(g.sim %v% 'Cluster' == i)), 
+                                                  prob = pCat[[i]],
+                                                  replace = TRUE)
+    g.sim %v% catName <- bk
+  }
+  g.sim %v% paste0(catName,"Orig") <- g.sim %v% catName
+  g.sim <- asIgraph(g.sim)
+  return(g.sim)
+}
 
+comdet <- function(g.sim, cat){
+  # running regularized spectral clustering on the original network without any covariate information.
+  origmem <- RegSpectralClust(g.sim, 3,regularize = TRUE)
+  
+  ## Covariate assisted spectral clustering 
+  ## Since we are using categorical data we have to perform one hot encoding.
+  X <- as.matrix(cat)
+  Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ), newdata <- X)))
+  origmemCov <- CovAssistedSpecClust(G = g.sim, Xdum, 3,
+                                     Regularize =TRUE, alpha =NA,
+                                     type ="non-assortative")
+  return(data.frame(origmem = origmem, origmemCov = origmemCov))
+}
+# 
+
+## Check correlation between the covariates and the community generated.
+# 
+# table(origmemCov, V(g.sim)$LOTR)
+# 
+# table(origmemCov, V(g.sim)$Cluster)
+# 
+# table(V(g.sim)$LOTR, V(g.sim)$Cluster)
+
+# create missingness in simulated networks
+
+## Missingness created randomly.
+Mymode <- function(codes){
+  names(which.max(table(codes)))
+}
+
+
+IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
+  ## Based on notes from 8th
+  g <- g.sim
+  vtxat <- as.data.frame(vertex.attributes(g))
+  ## start with randomly assigned covariate values
+  Midx <- list()#matrix(nrow = dim(covMsng)[1],ncol =1)
+  for (i in 1:dim(covMsng)[1]) {
+    Midx[[i]] <- sample(1:N,ceiling(covMsng$p[i] *N/100))
+    ## setting random initial values to vertices 
+    g <- set_vertex_attr(g, 
+                         covMsng$name[i], 
+                         index = c(Midx[[i]]), 
+                         sample(unique(covMsng$cat[[i]]),
+                                size  = length(Midx[[i]]),
+                                replace = TRUE))
+  }
+  
+  ## assigning random communitites to begin
+  V(g)$com <- sample(1:k, size = N, replace = TRUE)
+  op <- data.frame(matrix(nrow=0,ncol = 9))
+  covARI <- data.frame(matrix(nrow = 0,ncol =1))
+  prevComLst <- coms$origmemCov
+  for (i in 1:niter){
+    
+    ## Run community detection 
+    X <- as.matrix(vertex_attr(g, covMsng$name))#as.matrix(V(g)$LOTR)
+    Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ),newdata <- X)))
+    com <- CovAssistedSpecClust(G = g, Xdum, 3,
+                                Regularize =TRUE, alpha =NA, 
+                                type ="assortative",
+                                kmeansIter = 1000)
+    V(g)$com <- com
+    
+    ## Just use neighbors within cluster for imputation. If there is a tie deal with ties randomly.
+    for(j in 1:length(Midx)){
+      oldCov <- vertex_attr(g, name = covMsng$name[j])
+      for (idx in Midx[[j]]) {
+        b <- as.data.frame(vertex.attributes(g, index = neighbors(g,idx)))
+        ## Number of neighbours wiht the same community assgnment as the missing node
+        oldcom <- sum(b$com == V(g)$com[idx])/length(b$com)
+        b <- b[b$com == V(g)$com[idx], ]
+        g <- set_vertex_attr(g, covMsng$name[j], 
+                             index = idx, 
+                             Mymode(b[[covMsng$name[j]]]))
+        ## Stopping rule: are all the neighbors in the same community
+        status <- all(vertex_attr(g,index = neighbors(g,idx))$com == V(g)$com[idx])
+        op <- rbind(op, cbind(i, 
+                              idx, 
+                              oldcom,
+                              vertex_attr(g, name = covMsng$name[j],
+                                          index = idx),
+                              oldCov[idx],
+                              vertex_attr(g.sim, name = covMsng$name[j],
+                                          index = idx),
+                              mclust::adjustedRandIndex(coms$origmemCov, 
+                                                        V(g)$com),
+                              mclust::adjustedRandIndex(prevComLst,
+                                                        V(g)$com),
+                              status))
+        prevComLst <-  V(g)$com
+      }
+      covARI <- rbind(covARI, 
+                      cbind(rep(mclust::adjustedRandIndex(
+                        vertex_attr(g, name = covMsng$name[j],index = Midx[[j]]),
+                        vertex_attr(g.sim, name = covMsng$name[j],index = Midx[[j]])) ,
+                        times = length(Midx[[j]])))
+                      )
+    }
+    
+  }
+  colnames(op) <- c("iteration","MissingId","SameComm",
+                    "ImputedLOTR","prevLOTR","AssignedLOTR",
+                    "ARI","PrevARI","neighComStat")
+  op$covARI <- covARI[,1]
+  op$iteration <- as.numeric(op$iteration)
+  op$MissingId <- as.numeric(op$MissingId)
+  
+  #op <- op[with(op,order(op[,2],op[,1])),]
+  return(list(op, g))
+}
+
+plot_combinations <- function(g.sim, coms, p){
+  plot.igraph( g.sim,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = as.factor(V(g.sim)$LOTROrig),
+               vertex.label = NA,
+               vertex.size = 5,
+               main = paste0("Imputed values :", as.character(round(mclust::adjustedRandIndex(V(g.sim)$LOTROrig,V(g.sim)$LOTR), 3)),
+                             "Pcnt missing :", p))
+  
+  plot.igraph( g.sim,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = as.factor(V(g.sim)$com),
+               vertex.label = NA,
+               vertex.size = 5,
+               main = paste0("Final Community values :", as.character(round(mclust::adjustedRandIndex(V(g.sim)$Cluster,V(g.sim)$com),3)),
+                             "Pcnt missing :",p))
+  
+  plot.igraph( g.sim,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = V(g.sim)$Cluster,
+               vertex.label = NA,
+               vertex.size = 5,
+               main=paste0("Original cluster assignment"," Pcnt missing :", p))
+  
+}
+
+## Loop
+## Missingness based on mean imputation based on assigned communities.
+## Update communities based on Spectral clustering with covariates algorithm.
+## Future:
+### Using nodecov for quantitative and nodefactor for categorical variables when I eventually use ERGM for model fitting.
+```
+
+## Categorical variables
+### Highly defined cluster - same number of levels
+
+```{r}
 # network simulation with 3 groups 100 nodes and connectivity defined by B vector. Co-variates defined as below.
 ##Synthetic population parameters
 ## Going to use only undirected network
 ## Setting the required coefficient values
 #### Example for within cluster probability is higher than between cluster.
+niter= 100
 k <- 3
 N <- 100
+## Almost equally defined clusters
 pC = c(0.3,0.4,0.3)
+## Highly defined clusters
 B = c(0.7,0.02,0.7,0.03,0.02,0.7)
-
-## assigning node community with probability pC for a node assigned to for each community. hence pC and has to eb of length k
-C = sample(1:k,N,replace = TRUE, prob = pC)
-coefs = c(prob2logit(B))
-
-## Simulating the basis network with clusters
-g.sim <- NetworkSim(N,FALSE,B,C, NULL, coefs)
-
-plot( g.sim,
-      edge.col = adjustcolor('black',alpha.f = 0.5),
-      #main=paste('homophily =', round(logit2prob(Hseq[i]), digits = 2)),
-      vertex.col = g.sim %v% 'Cluster')
-
-## Network with one categorical Variables
-
+## Simulate network
+g.sim <- SimNW(pC,k,N,B)
 ### Categorical variable correlated to the assigned clusters and same number of levels.
 ## Using LOTR books.
 cat <- c("FOTR","TT","ROTK")
 pCat <- list(c(0.6,0.2,0.2), # Cluster 1
              c(0.2,0.6,0.2), # Cluster 2
              c(0.2,0.2,0.6)) # Cluster 3
-## Assigning categorical data based on cluster assignments.
-## Node in cluster one thinks FOTR is the best book with probability of 0.6, TT with prob 0.1 and ROTK with prob 0.3
-g.sim %v% 'LOTR' <- NA
-j <- 1
-for (i in 1:k) {
-  bk <- g.sim %v% 'LOTR'
-  bk[which(g.sim %v% 'Cluster' == i)] <- sample(cat,
-                                                 length( which(g.sim %v% 'Cluster' == i)), 
-                                                 prob = pCat[[i]], 
-                                                 replace = TRUE)
-  g.sim %v% 'LOTR' <- bk
 
-}
+g.sim <- AssgnCat(g.sim, "LOTR",pCat, cat)
 
-g.sim <- asIgraph(g.sim)
-### Categorical variable correlated to the assigned clusters and different number of levels.(binary variable where one is correlated to two clusters and 2nd is correlated to the last cluster.)
+coms <- comdet(g.sim, V(g.sim)$LOTR)
 
-### Categorical variables not correlated to the assigned clusters and same number of levels.
-### Categorical variables not correlated to the assigned clusters and different number of levels.(binary levels with no correlation.)
-
-## Network with one continuous Variable
-
-### Continuous variable correlated to the assigned clusters and different distributions for each cluster.
-### Continuous variable correlated to the assigned clusters and same distribution for all clusters.
+pctMsng <- c(1,5,7,10)
 
 
-
-# running regularized spectral clustering on the original network without any covariate information.
-origmem <- RegSpectralClust(g.sim, 3,regularize = TRUE)
-
-mclust::adjustedRandIndex(origmem, V(g.sim)$Cluster)
-
-## Covariate assisted spectral clustering 
-## Since we are using categorical data we have to perform one hot encoding.
-X <- as.matrix(V(g.sim)$LOTR)
-Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ), newdata <- X)))
-origmemCov <- CovAssistedSpecClust(G = g.sim, Xdum, 3,Regularize =TRUE, alpha =NA, type ="non-assortative")
-
-plot.igraph( g.sim,
-      edge.col = adjustcolor('black',alpha.f = 0.5),
-      vertex.color = as.factor(V(g.sim)$LOTR))
-
-plot.igraph( g.sim,
-      edge.col = adjustcolor('black',alpha.f = 0.5),
-      vertex.color = origmem)
-
-plot.igraph( g.sim,
-      edge.col = adjustcolor('black',alpha.f = 0.5),
-      vertex.color = origmemCov)
-
-plot.igraph( g.sim,
-      edge.col = adjustcolor('black',alpha.f = 0.5),
-      vertex.color = V(g.sim)$Cluster)
-
-## Check correlation between the covariates and the community generated.
-
-table(origmemCov, V(g.sim)$LOTR)
-
-table(origmemCov, V(g.sim)$Cluster)
-
-table(V(g.sim)$LOTR, V(g.sim)$Cluster)
-
-# create missingness in simulated networks
-
-## Missingness created randomly.
-pctMsng <- c(1,5,7, 10)
-
-for(p in pctMsng){
-  
-  Midx <- sample(1:N,ceiling(p*N/100))
-  print(Midx)
-  X[Midx] <- NA
-  pmax(as.matrix(table(X,V(g.sim)$Cluster, useNA = "no")))
-  Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ), 
-                                       newdata <- X)))
-  
-}
-
-# Impute missing values in NW using mean imputation for continous covariate. 
-
-# Use spectral CD algorithm to find the initial communities.
-
-
-## Loop
-## Missingness based on mean imputation based on assigned communities.
-## Update communities based on Spectral clustering with covariates algorithm.
-## Future:
-### Using nodecov for quatitative and nodefactor for categorical variables when I eventually use ERGM for model fitting.
 ```
 
 
+### Highly defined cluster - more levels
+```{r}
+### Categorical variable correlated to the assigned clusters and different number of levels.(binary variable where one is correlated to two clusters and 2nd is correlated to the last cluster. Or more than one level correlated with cluster)
+### Categorical variable correlated to the assigned clusters and same number of levels.
+## Using LOTR Universe books.
+niter= 10
+k <- 3
+N <- 100
+## Almost equally defined clusters
+pC = c(0.3,0.4,0.3)
+## Highly defined clusters
+B = c(0.7,0.02,0.7,0.03,0.02,0.7)
+## Simulate network
+g.sim <- SimNW(pC,k,N,B)
+
+## setting color codes
+catcol  <- c("#B22222","#FF7F50","#FF8C00",
+             "#6B8E23","#7FFF00","#32CD32",
+             "#6495ED","#00008B","#87CEEB")
+cat <- c("FOTR","TT","ROTK","Hob","Sil", "UT","CoH","BL","FoG")
+col <- data.frame(as.matrix(cbind(catcol, cat)))
+pCat <- list(c(0.3,0.4,0.4,0.02,0.01,0.02,0.02,0.01,0.01), # Cluster 1
+             c(0.01,0.02,0.01,0.2,0.3,0.4,0.02,0.01,0.01), # Cluster 2
+             c(0.01,0.01,0.02,0.01,0.2,0.02,0.3,0.4,0.2)) # Cluster 3
+g.sim <- AssgnCat(g.sim, "LOTR",pCat, cat)
+
+g <- data.frame(as.matrix(V(g.sim)$LOTR))
+colnames(g) <- "cat"
+vtx <- left_join(g,col, by = join_by(cat== cat))
+#g.sim <- asIgraph(g.sim)
+V(g.sim)$col <- vtx$catcol
+
+## Regularized and cova assisted spectral clustering
+coms <- comdet(g.sim, V(g.sim)$LOTR)
+
+pctMsng <- c(5,7,10,20,30,40,50)
+op <- data.frame(matrix(nrow=0,ncol = 9))
+
+for(p in pctMsng){
+  covMsng <- data.frame(name = c("LOTR") ,
+                        p = p,
+                        cat = I(list(cat)))
+  op <- rbind(op , IterativeImpute(g.sim, N, coms,niter,k,covMsng))
+}
+
+op$pcnt <- rep(pctMsng, times = niter*pctMsng)
+
+```
+
+
+
+### Less defined clusters - sample number of levels
+```{r}
+
+```
+
+
+## Less defined clusters - more levels
+```{r}
+### Categorical variable correlated to the assigned clusters and different number of levels.(binary variable where one is correlated to two clusters and 2nd is correlated to the last cluster. Or more than one level correlated with cluster)
+### Categorical variable correlated to the assigned clusters and same number of levels.
+## Using LOTR Universe books.
+niter= 5
+k <- 3
+N <- 100
+## Almost equally defined clusters
+pC = c(0.3,0.4,0.3)
+## Highly defined clusters
+B = c(0.3,0.05,0.3,0.05,0.05,0.2)
+## Simulate network
+g.sim <- SimNW(pC,k,N,B)
+
+## setting color codes
+catcol  <- c("#B22222","#FF7F50","#FF8C00",
+             "#6B8E23","#7FFF00","#32CD32",
+             "#6495ED","#00008B","#87CEEB")
+cat <- c("FOTR","TT","ROTK","Hob","Sil", "UT","CoH","BL","FoG")
+col <- data.frame(as.matrix(cbind(catcol, cat)))
+pCat <- list(c(0.3,0.4,0.4,0.02,0.01,0.02,0.02,0.01,0.01), # Cluster 1
+             c(0.01,0.02,0.01,0.2,0.3,0.4,0.02,0.01,0.01), # Cluster 2
+             c(0.01,0.01,0.02,0.01,0.2,0.02,0.3,0.4,0.2)) # Cluster 3
+g.sim <- AssgnCat(g.sim, "LOTR",pCat, cat)
+
+g <- data.frame(as.matrix(V(g.sim)$LOTR))
+colnames(g) <- "cat"
+vtx <- left_join(g,col, by = join_by(cat== cat))
+#g.sim <- asIgraph(g.sim)
+V(g.sim)$col <- vtx$catcol
+
+## Regularized and cova assisted spectral clustering
+coms <- comdet(g.sim, V(g.sim)$LOTR)
+
+pctMsng <- c(5,7,10,20,30,40,50)
+op <- data.frame(matrix(nrow=0,ncol = 9))
+g.imp <- list()
+i <-  1
+for(p in pctMsng){
+  covMsng <- data.frame(name = c("LOTR") ,
+                        p = p,
+                        cat = I(list(cat)))
+  df <- IterativeImpute(g.sim, N, coms,niter,k,covMsng)
+  g.imp[[i]] <- df[[2]]
+  op <- rbind(op,df[[1]])
+  i <- i+1
+}
+op$pcnt <- rep(pctMsng, times = niter*pctMsng)
+for(i in 1:length(pctMsng)){
+  plot_combinations(g.imp[[i]], coms, pctMsng[i])
+}
+
+#op <- op[with(op,order(op[,2],op[,1],op[,11])),]
+
+```
 
 
 

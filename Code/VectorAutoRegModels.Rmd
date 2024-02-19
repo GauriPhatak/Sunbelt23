@@ -17,14 +17,20 @@ library(vars)
 library(bruceR)
 library(BigVAR)
 library(bigtime)
+library(aTSA)
+library(igraph)
+library(influential)
+library(ggrepel)
+library(NGC)
+
 ```
 
 ## Reading the wastewater data and creating epiweek calendar for it.
 
 
-```{r}
+```{r, warning=FALSE}
 dat <- read_excel(paste0(path_home(),
-                         "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/1.12.24/Combined_all_data_2024-01-12.xlsx"), 
+                         "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/2.13.24/Combined_all_data_2024-02-13.xlsx"), 
                   sheet = "COVID",
                   guess_max = 10000)
 
@@ -52,16 +58,22 @@ nas <- as.data.frame(cbind(colnames(df),(colSums(is.na(df))/dim(df)[1])*100))
 pctThrs <- 50
 df <- df %>% subset(select = which(nas[,2] < pctThrs))
 colnames(df) <- make.names(colnames(df))
-## Remvoing st.Helens , Siletz and Siletz tribe ,Ontario, Ontario Prison, 
+## Remvoing st.Helens , Siletz and Siletz tribe ,Ontario, Ontario Prison, Redmond
 
-df <- df %>% subset(select = -c(St..Helens , Siletz , Siletz.Tribe ,Ontario, Ontario.Prison))
+df <- df %>% subset(select = -c(St..Helens,Silverton, Siletz.Tribe ,Ontario, Ontario.Prison, Redmond, Port.Orford))
+
+## removing 2022 epiweek 53 
+df <- df[!(df$year == "2023" & df$epiweek == "53"),]
+
 
 ## using structTs function to remove na from the data.
 
 df_comp <- df %>%
   subset(select = -c(year,epiweek)) %>% 
   ts()
-
+df_Date <- df %>%
+  subset(select = c(year,epiweek)) %>%
+  mutate(epiwk = paste0(year,"_",epiweek))
 
 for (i in 1:dim(df_comp)[2]) {
   ts <- df_comp[,i] %>% 
@@ -80,7 +92,7 @@ plot.new()
 
 for (ts_id in 1:dim(df_comp)[2]) {
   acf(df_comp[,ts_id],lag.max = length(df_comp[,ts_id]),
-         xlab = "lag #", ylab = 'ACF',main=' ')
+      xlab = "lag #", ylab = 'ACF',main=' ')
 }
 
 ## based on the acf plots none of the time series are stationary.
@@ -94,12 +106,26 @@ for (ts_id in 1:dim(df_comp)[2]) {
 ```{r}
 ##Now we have a complete timeseries. We can divide it based on some criterion. for now I am taking chunks of size 20. Eventually this can be based on other factors such as season and lockdown etc.
 
-max  <- 30
+max  <- 25
 x <- seq_along(df_comp[,1])
 df_split <- as.data.frame(cbind(df_comp, split = ceiling(x/max))) %>%
   group_by(split) %>%
   group_split()
-  
+
+## getting starting epiweek and end epiweek
+
+df_date_split <- as.data.frame(cbind(df_Date, split = ceiling(x/max))) %>%
+  group_by(split) %>%
+  mutate(dt_range = paste0(first(epiwk),"-",last(epiwk))) %>%
+  slice(c(1)) %>%
+  ungroup()
+
+
+
+```
+
+
+```{r}
 op <- list()
 for (i in 1:length(df_split)) {
   op[[i]] <- df_split[[i]] %>%
@@ -153,15 +179,454 @@ for (i in 1:length(df_split)) {
 ```
 
 ```{r}
+### Reading the graph data for layput
+library(igraph)
+grphDat <- readRDS("GraphData.rds")
+g <- grphDat$WWgrph
+l <- cbind(V(g)$name ,as.numeric(V(g)$lat), as.numeric(V(g)$lon))
+p <- gsub("df_comp.", "", colnames(df_split[[1]]))
+p <- gsub("\\."," ",p)
+lsig <- cbind(l[match(p, l[,1]),],V(G)$name)
+lsig <- lsig[!is.na(lsig[,1]),]
+#G2 <- igraph::delete.vertices(G, c("Warm Springs", "Dallas","Rock Creek"))
+layout= cbind(as.numeric(lsig[,2]), as.numeric(lsig[,3]))
+```
+
+
+```{r, warning=FALSE}
 
 ##Using HDGCvar  library and HDGC_VAR_all function to test all granger causality test.
 
 library(HDGCvar)
 op_HD <- list()
+pVal <- list()
+nw <- list()
+alpha <- 0.05
+## Check stationarity of each data segment and make it stationary if it is not.
+
+for (m in 1:length(df_split)) {
+  k <- df_split[[m]] %>%
+    subset(select = -c(split)) %>%
+    scale()
+  k <- as.matrix(k)
+  print(paste("subpart: ",m))
+  colnames(k) <- gsub("df_comp.", "", colnames(k))
+  ## Use this to make data stationary
+  k <- as.matrix(sapply(as.data.frame(k), function(x) diff(diff(x))))
+  
+  # for (j in 1:ncol(k)) {
+  #   print(paste("subpart: ",i, "Column name:", colnames(k)[j]))
+  #   k[,j] <- diff(diff(k[,j]))
+  #   #adf.test(diff(diff(k[,j])))
+  # }
+  
+  ## Use this function for stationary data
+  op_HD[[m]] <- HDGC_VAR_all_I0(as.matrix(k))
+  
+  ## Use this when data is suspected non-stationary
+  #op_HD[[m]] <- HDGC_VAR_all(as.matrix(as.numeric(k)))
+  
+  pVal[[m]] <- as.matrix(op_HD[[m]][["tests"]][,,2,2])
+  #print("Before graph from inversion")
+  #The null hypothesis that variable X does not Granger-cause variable Y
+  # If a time series A Granger-causes another time series B, it means that past values of A provide useful information in predicting future values of B, beyond what B's own past values provide.
+  pVal[[m]] <- t(pVal[[m]])
+  pVal[[m]][pVal[[m]] < alpha] <- 1 #put =1 values < alpha
+  pVal[[m]][is.na(pVal[[m]])] <- 0 #put =0 the diagonal
+  pVal[[m]][pVal[[m]] != 1] <- 0 #put =0 values > alpha
+  #print("Before graph from adj matrix")
+  nw[[m]] = graph_from_adjacency_matrix(pVal[[m]], 
+                                        mode='directed',
+                                        diag=F,
+                                        add.rownames = TRUE )
+  V(nw[[m]])$label = rownames(pVal[[m]])
+}
+
+### Plotting the graph using igraph plot.
+nodeImpfunc <- function(nw){
+  
+  colnames <-  c("Section","Indegree","Outdegree","Betweenness",
+                 "NeighConnect_in","NeighConnect_out", 
+                 "H_Index_in","H_Index_out","Coll_inf_in","Coll_ing_out",
+                 "ivi_in","ivi_out","ivi_all","City")
+  Node_imp <- data.frame(matrix(ncol =length(colnames), nrow = 0))
+  
+  
+  for (i in 1:6) {
+    plot.igraph(nw[[i]],directed = T,
+                main = paste("subsection: ", i),#df_date_split$dt_range[i],#
+                edge.arrow.size = .2,
+                vertex.label = V(nw[[i]])$names,
+                vertex.size = 5,
+                vertex.color = c("lightblue"),
+                vertex.frame.color = "blue",
+                vertex.label.size=0.001)
+    
+    ## gathering some ndoe importance measures from all the nodes
+    #print(V(nw[[i]])$names)
+    Node_imp <- rbind(Node_imp, 
+                      cbind(i,
+                            degree(nw[[i]], mode = "in"),
+                            degree(nw[[i]], mode = "out"),
+                            round(betweenness(nw[[i]]),2),
+                            round(neighborhood.connectivity(nw[[i]], mode = "in"),2),
+                            round(neighborhood.connectivity(nw[[i]], mode = "out"),2),
+                            h_index(nw[[i]], mode= "in"),
+                            h_index(nw[[i]], mode= "out"),
+                            collective.influence(nw[[i]],mode = "in"),
+                            collective.influence(nw[[i]],mode = "out"),
+                            
+                            ### Calculating the integrated value of influence from a graph
+                            round(ivi(nw[[i]], directed = TRUE, mode = "in"),2),
+                            round(ivi(nw[[i]], directed = TRUE, mode = "out"),2),
+                            round(ivi(nw[[i]], directed = TRUE, mode = "all"),2),
+                            V(nw[[i]])$names
+                            )
+    )
+    
+  }
+  colnames(Node_imp) <- colnames
+  return(Node_imp)
+}
+```
+
+## Code for using HDGC_var_all  i.e. using non stationary data
+```{r}
+
+library(HDGCvar)
+op_HD <- list()
+pVal <- list()
+nw <- list()
+alpha <- 0.05
+## Check stationarity of each data segment and make it stationary if it is not.
+
+for (m in 1:length(df_split)) {
+  k <- df_split[[m]] %>%
+    subset(select = -c(split)) #%>%
+  #scale()
+  k <- as.matrix(k)
+  print(paste("subpart: ",m))
+  colnames(k) <- gsub("df_comp.", "", colnames(k))
+  
+  varnames <- colnames(k)
+  K <- ncol(k)
+  GCpairs <- vector("list", length = K * (K - 1))
+  ind <- 0
+  for (i in 1:K) {
+    for (j in (1:K)[-i]) {
+      ind <- ind + 1
+      GCpairs[[ind]] <- list(GCto = varnames[i], GCfrom = varnames[j])
+    }
+  }
+  
+  test_list <- lapply(GCpairs, HDGC_VAR, data = k, 
+                      p = 1, d = 0, bound = 0.5 * nrow(k),
+                      parallel = FALSE)
+  
+  
+  pVal[[m]] <- as.matrix(op_HD[[m]][["tests"]][,,2,2])
+  #print("Before graph from inversion")
+  #The null hypothesis that variable X does not Granger-cause variable Y
+  # If a time series A Granger-causes another time series B, it means that past values of A provide useful information in predicting future values of B, beyond what B's own past values provide.
+  pVal[[m]] <-t(pVal[[m]])
+  pVal[[m]][pVal[[m]] < alpha] <- 1 #put =1 values < alpha
+  pVal[[m]][is.na(pVal[[m]])] <- 0 #put =0 the diagonal
+  pVal[[m]][pVal[[m]] != 1] <- 0 #put =0 values > alpha
+  #print("Before graph from adj matrix")
+  nw[[m]] = graph_from_adjacency_matrix(pVal[[m]], 
+                                        mode='directed',
+                                        diag=F,
+                                        add.rownames = TRUE )
+  V(nw[[m]])$label = rownames(pVal[[m]])
+}
+
+
+```
+
+
+
+```{r}
+
+p <- list()
+for(i in 1:6) {
+  p[[i]] <- Plot_GC_all(
+    op_HD[[i]],
+    Stat_type = "FS_cor",
+    alpha = 0.01,
+    multip_corr = list(F),
+    directed = T,
+    main = df_date_split$dt_range[i],#paste("subsection: ", i),
+    edge.arrow.size = .2,
+    vertex.size = 5,
+    vertex.color = c("lightblue"),
+    vertex.frame.color = "blue",
+    vertex.label.size=0.001
+  )
+}
+
+```
+
+
+```{r}
+## Plotting node importance measures
+
+y_var <- colnames(Node_imp)[2:13]
+p <- list()
+i <- 1
+for(var in y_var){
+  #print(var)
+  
+  p[[i]] <- ggplot(data = Node_imp, aes(x = DateRange, y = as.numeric(.data[[var]])))+
+    geom_point()+
+    #geom_label(data= . %>% 
+    #             group_by(Section) %>% 
+    #             filter(as.numeric(.data[[var]]) == max(as.double(.data[[var]]))),
+    #           aes(label = City))+
+    theme_minimal() + 
+    theme( axis.text.x = element_text(angle = 45, vjust = 1, hjust=0.3),
+           panel.grid.major=element_line(colour="gray92"),
+           panel.grid.minor=element_line(colour="gray92"))+
+    ylab(var)
+  #p[[i]]
+  i<- i+1
+}
+
+n <- 1
+Node_imp %>%
+  group_by( DateRange) %>%
+  mutate(min_rank = dense_rank(as.numeric(Outdegree)), 
+         max_rank = dense_rank(-as.numeric(Outdegree))) %>%
+  mutate(label = ifelse(min_rank <= n | max_rank <= n, City, '')) %>%
+  ggplot(aes(x = DateRange, y = as.numeric(Outdegree)))+
+  geom_point()+
+  geom_line(aes(group= City, color=City))+
+  geom_text_repel(aes(label = label), hjust = 0, nudge_x = 0.15, label.size =0.1)+
+  #geom_label_repel(hjust=0, vjust=0)
+  theme_minimal() + 
+  theme( axis.text.x = element_text(angle = 45, vjust = 0, hjust=0.3),
+         panel.grid.major=element_line(colour="gray92"),
+         panel.grid.minor=element_line(colour="gray92"))+
+  ylab("Out Degree")
+
+Node_imp %>%
+  group_by( DateRange) %>%
+  mutate(min_rank = dense_rank(as.numeric(Indegree)), 
+         max_rank = dense_rank(-as.numeric(Indegree))) %>%
+  mutate(label = ifelse(min_rank <= n | max_rank <= n, City, '')) %>%
+  ggplot(aes(x = DateRange, y = as.numeric(Indegree)))+
+  geom_point()+
+  geom_line(aes(group= City, color=City))+
+  geom_text_repel(aes(label = label), hjust = 0, nudge_x = 0.15, label.size =0.1)+
+  #geom_label_repel(hjust=0, vjust=0)
+  theme_minimal() + 
+  theme( axis.text.x = element_text(angle = 45, vjust = 0, hjust=0.3),
+         panel.grid.major=element_line(colour="gray92"),
+         panel.grid.minor=element_line(colour="gray92"))+
+  ylab("In Degree")
+#library(gridExtra)
+#grid.arrange(p[[1]], p[[2]],p[[3]],p[[4]], nrow = 2)
+#for(i in 1:6){
+#  p[[i]]
+#}
+Node_imp %>%
+  group_by( DateRange) %>%
+  mutate(min_rank = dense_rank(as.numeric(ivi_out)), 
+         max_rank = dense_rank(-as.numeric(ivi_out))) %>%
+  mutate(label = ifelse(min_rank <= n | max_rank <= n, City, '')) %>%
+  ggplot(aes(x = DateRange, y = as.numeric(ivi_out)))+
+  geom_point()+
+  #geom_line(aes(group= City, color=City))+
+  geom_text_repel(aes(label = label), hjust = 0, nudge_x = 0.15)+
+  #geom_label_repel(hjust=0, vjust=0)
+  theme_minimal() + 
+  theme( axis.text.x = element_text(angle = 45, vjust = 0, hjust=0.3),
+         panel.grid.major=element_line(colour="gray92"),
+         panel.grid.minor=element_line(colour="gray92"))+
+  ylab("ivi out")
+
+Node_imp %>%
+  group_by( DateRange) %>%
+  mutate(min_rank = dense_rank(as.numeric(ivi_in)), 
+         max_rank = dense_rank(-as.numeric(ivi_in))) %>%
+  mutate(label = ifelse(min_rank <= n | max_rank <= n, City, '')) %>%
+  ggplot(aes(x = DateRange, y = as.numeric(ivi_in)))+
+  geom_point()+
+  #geom_line(aes(group= City, color=City))+
+  geom_text_repel(aes(label = label), hjust = 0, nudge_x = 0.15)+
+  #geom_label_repel(hjust=0, vjust=0)
+  theme_minimal() + 
+  theme( axis.text.x = element_text(angle = 45, vjust = 0, hjust=0.3),
+         panel.grid.major=element_line(colour="gray92"),
+         panel.grid.minor=element_line(colour="gray92"))+
+  ylab("ivi in")
+
+Node_imp %>%
+  group_by( DateRange) %>%
+  mutate(min_rank = dense_rank(as.numeric(ivi_all)), 
+         max_rank = dense_rank(-as.numeric(ivi_all))) %>%
+  mutate(label = ifelse(min_rank <= n | max_rank <= n, City, '')) %>%
+  ggplot(aes(x = DateRange, y = as.numeric(ivi_all)))+
+  geom_point()+
+  #geom_line(aes(group= City, color=City))+
+  geom_text_repel(aes(label = label), hjust = 0, nudge_x = 0.15)+
+  #geom_label_repel(hjust=0, vjust=0)
+  theme_minimal() + 
+  theme( axis.text.x = element_text(angle = 45, vjust = 0, hjust=0.3),
+         panel.grid.major=element_line(colour="gray92"),
+         panel.grid.minor=element_line(colour="gray92"))+
+  ylab("ivi all")
+
+
+```
+## Installing ngc packages and trying it out
+
+```{r}
+#install.packages("devtools")
+#devtools::install_github("khzhang/ngc", build_vignettes=T)
+```
+
+
+## Regular LASSO implementation
+
+```{r, warning=FALSE}
+d <- 2
+niter <- 1
+#dag <- list()
+#ring <- list()
+edgeIxComp <- as.data.frame(matrix(nrow = 0, ncol = 5))
+LassoVar <- function(df_split, d, retFit = FALSE){
+  edgeIx <- as.data.frame(matrix(nrow = 0, ncol = 4))
+  if(retFit ==TRUE){
+    grphs <- list()
+  }
+  for (m in 1:6) {
+    
+    k <- df_split[[m]] %>%
+      subset(select = -c(split)) #%>%
+    #scale()
+    k <- as.matrix(k)
+    colnames(k) <- gsub("df_comp.", "", colnames(k))
+    cityNames <- colnames(k)
+    
+    #k <- as.matrix(sapply(as.data.frame(k), function(x) diff(x)))
+    k <- t(k)
+    if(any(is.na(k))){
+      print("k has missing values")
+    }
+    fit1 = ngc(k, d=d)
+    edge <- which(fit1$estMat != 0, arr.ind = T)
+    edgeIx <- rbind(edgeIx, cbind(m, (edge)))
+    # plot.igraph(fit1$dag, 
+    #             edge.arrow.size = .2,
+    #             vertex.size = 5,
+    #             vertex.color = c("lightblue"),
+    #             vertex.frame.color = "blue",
+    #             vertex.label= NA)
+    # plot.igraph(fit1$ring,
+    #             edge.arrow.size = .2,
+    #             vertex.size = 5,
+    #             vertex.color = c("lightblue"),
+    #             vertex.frame.color = "blue",
+    #             vertex.label= NA)
+    if(retFit == TRUE){
+      V(fit1$ring)$names <- cityNames
+      grphs[[m]] <- fit1$ring
+      
+    }
+    #plot.ngc(fit1, ngc.type = "dag")
+    #plot.ngc(fit1, ngc.type = "granger")
+    
+  }
+  
+  ## assigning the city names back to the numbered locations
+  edgeIx <- as.data.frame(edgeIx)
+  colnames(edgeIx) <- c("group","to", "from","lag")
+  cityNames <- as.data.frame(cbind(cityNames, 1:29))
+  colnames(cityNames) <- c("cityNames","Id")
+  cityNames$Id <- as.integer(cityNames$Id)
+  grphdf <- left_join(edgeIx, cityNames, by = join_by( to == Id))
+  grphdf <- left_join(grphdf, cityNames, by=  join_by(from == Id))
+  
+  grphdf <- grphdf[,c(1,4,5,6)]
+  colnames(grphdf) <- c("group","lag","to","from")
+  
+  if(retFit == TRUE){
+    return(list(grphdf, grphs))
+  }
+  return(grphdf)
+}
+
+for(j in 1:niter){
+  edgeIxComp <- rbind(edgeIxComp, cbind(j,LassoVar(df_split, d)))
+}
+#(vars <- all.vars(body(ngc)[-1], functions =TRUE)) 
+
+```
+
+
+
+```{r, warning=FALSE, fig.width=14, fig.height=10}
+#### Check if the number of edges generated by the networks are the same at each stage
+
+#cnt <- edgeIxComp %>% count(j, group)
+## not exactly but similar number of edges
+## Compare the fit of the networks and see if they seem to be derived from the same model.
+## Can use centrality measures to compare node specific and edge/pair specific values 
+
+op <- LassoVar(df_split, d, retFit = TRUE)
+
+G <- op[[2]]
+nodeImp <- nodeImpfunc(G)
+
+## creating network based on lat lon of the locations
+
+grphDat <- readRDS("GraphData.rds")
+g <- grphDat$WWgrph
+l <- data.frame(names = make.names(V(g)$name) , lat = as.numeric(V(g)$lat), lon = as.numeric(V(g)$lon))
+## adding missing cities
+l <- data.frame(rbind(as.matrix(l),rbind(c("Rock.Creek",-122.8808,45.5554),c("Dallas",-123.3170,44.9193),c("Sunriver",-121.4334,43.8694))))
+nameVal <- data.frame(names = V(G[[2]])$names)
+layout <- left_join(nameVal, l, join_by(names == names))
+## Setting labels for the nodes that have highest outdegree and indegree with different color code
+
+for (var in colnames(nodeImp)[-c(1, length(colnames(nodeImp)))]) {
+  gbg <- nodeImp %>% 
+  group_by(Section) %>%
+  subset(select = c(Section, get(var), City))%>%
+  mutate(min_rank = dense_rank(as.numeric(get(var))), 
+         max_rank = dense_rank(-as.numeric(get(var)))) %>%
+  mutate(label = ifelse( max_rank <= 2, City, NA)) %>%#min_rank <= 1 |
+  mutate(color = case_when(
+  #  min_rank <= 1 ~ "red",
+    max_rank <= 2 ~ "lightblue"
+  ))
+
+for(i in 1:6){
+  V(G[[i]])$label = gbg$label[gbg$Section == i]
+  V(G[[i]])$color = gbg$color[gbg$Section == i]
+  plot.igraph(simplify(G[[i]]),directed = T,
+              main = paste("Time Series: ", i,"Node measure", var),#df_date_split$dt_range[i],#
+              edge.arrow.size = 0.2,
+              layout = cbind(as.numeric(layout$lat), as.numeric(layout$lon)),
+              vertex.label = V(G[[i]])$label,
+              vertex.size = 5,
+              vertex.color = V(G[[i]])$color,
+              vertex.frame.color = "blue",
+              vertex.label.size=0.001)
+  
+}
+
+}
+
+```
+
+
+```{r}
 for (i in 1:length(df_split)) {
   k <- df_split[[i]] %>%
     subset(select = -c(split)) %>%
     scale()
+  
   colnames(k) <- gsub("df_comp.", "", colnames(k))
   op_HD[[i]] <- HDGC_VAR_all_I0(as.matrix(k))
 }
@@ -234,24 +699,24 @@ pal <- c("#F0E442", "#E69F00", "#D55E00", "#000000",  "#56B4E9", "#009E73" , "#0
 ############## Creating plots by health region.
 
 for(var in c(1,2,3,5,6,7,9)){
-
- print( df_HR  %>% filter(complete.cases(.)) %>%
-     filter(Health.Region == var) %>%
-     ggplot()+ #df[df$Health.Region == var & !is.na(df$epiweek),])+
-    geom_point(aes(y = meanlogcopies, 
-                  x = factor(epiweek),
-                  color = factor(year), size = factor(size), group = 1)) +
-      scale_size_discrete(range = c(1, 2))+
-      guides(size = FALSE, color = guide_legend(title = "Year"))+
-      #scale_size(range = c(0,0.5))+
-      geom_line(aes(y = meanlogcopies, 
-                  x = epiweek,
-                  color = factor(year))) +
-      scale_colour_manual(values = pal)+
-      ggtitle(paste("Comparison of of SARS-CoV-2 trend by Epiweek between years for Health Region", var, sep = " "))+ 
-      xlab("Epidemiological Week")+
-      ylab(paste("Average log copies/L for HR",var, sep = " "))+
-      theme_minimal() + theme( axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), panel.grid.major=element_line(colour="gray92"),panel.grid.minor=element_line(colour="gray92")))
+  
+  print( df_HR  %>% filter(complete.cases(.)) %>%
+           filter(Health.Region == var) %>%
+           ggplot()+ #df[df$Health.Region == var & !is.na(df$epiweek),])+
+           geom_point(aes(y = meanlogcopies, 
+                          x = factor(epiweek),
+                          color = factor(year), size = factor(size), group = 1)) +
+           scale_size_discrete(range = c(1, 2))+
+           guides(size = FALSE, color = guide_legend(title = "Year"))+
+           #scale_size(range = c(0,0.5))+
+           geom_line(aes(y = meanlogcopies, 
+                         x = epiweek,
+                         color = factor(year))) +
+           scale_colour_manual(values = pal)+
+           ggtitle(paste("Comparison of of SARS-CoV-2 trend by Epiweek between years for Health Region", var, sep = " "))+ 
+           xlab("Epidemiological Week")+
+           ylab(paste("Average log copies/L for HR",var, sep = " "))+
+           theme_minimal() + theme( axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), panel.grid.major=element_line(colour="gray92"),panel.grid.minor=element_line(colour="gray92")))
 }
 
 df_county <- merge(df, rank, by = "Location", all.x = TRUE) 
@@ -266,18 +731,18 @@ for(var in c(1,2,3,5,6,7,9)){
           filter(year == 2023, Health.Region == var) %>%
           ggplot()+
           geom_point(aes(y = meanlogcopies, 
-                  x = factor(epiweek),
-                  color = factor(County))) +
-      guides(size = FALSE, color = guide_legend(title = "County"))+
-      #scale_size(range = c(0,0.5))+
-      geom_line(aes(y = meanlogcopies, 
-                  x = factor(epiweek),
-                  color = factor(County), group = County)) +
-      scale_colour_manual(values = pal)+
-      ggtitle(paste("Comparison of of SARS-CoV-2 trend by Epiweek between counties for Health Region", var, sep = " "))+ 
-      xlab("Epidemiological Week")+
-      ylab(paste("Average log copies/L for HR",var, sep = " "))+
-      theme_minimal() + theme( axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), panel.grid.major=element_line(colour="gray92"),panel.grid.minor=element_line(colour="gray92")))
+                         x = factor(epiweek),
+                         color = factor(County))) +
+          guides(size = FALSE, color = guide_legend(title = "County"))+
+          #scale_size(range = c(0,0.5))+
+          geom_line(aes(y = meanlogcopies, 
+                        x = factor(epiweek),
+                        color = factor(County), group = County)) +
+          scale_colour_manual(values = pal)+
+          ggtitle(paste("Comparison of of SARS-CoV-2 trend by Epiweek between counties for Health Region", var, sep = " "))+ 
+          xlab("Epidemiological Week")+
+          ylab(paste("Average log copies/L for HR",var, sep = " "))+
+          theme_minimal() + theme( axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), panel.grid.major=element_line(colour="gray92"),panel.grid.minor=element_line(colour="gray92")))
 }
 
 ############# Create a plpots by location
@@ -294,18 +759,18 @@ for(c in unique(df$County)){
           filter(year == 2023, County == c) %>%
           ggplot()+
           geom_point(aes(y = meanlogcopies, 
-                  x = factor(epiweek),
-                  color = factor(Location))) +
-      guides(size = FALSE, color = guide_legend(title = "Location"))+
-      #scale_size(range = c(0,0.5))+
-      geom_line(aes(y = meanlogcopies, 
-                  x = factor(epiweek),
-                  color = factor(Location), group = Location)) +
-      scale_colour_manual(values = pal)+
-      ggtitle(paste("Comparison of of SARS-CoV-2 trend by Epiweek between locations in", c,"County", sep = " "))+ 
-      xlab("Epidemiological Week")+
-      ylab(paste("Average log copies/L for",c,"County", sep = " "))+
-      theme_minimal() + theme( axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), panel.grid.major=element_line(colour="gray92"),panel.grid.minor=element_line(colour="gray92")))
+                         x = factor(epiweek),
+                         color = factor(Location))) +
+          guides(size = FALSE, color = guide_legend(title = "Location"))+
+          #scale_size(range = c(0,0.5))+
+          geom_line(aes(y = meanlogcopies, 
+                        x = factor(epiweek),
+                        color = factor(Location), group = Location)) +
+          scale_colour_manual(values = pal)+
+          ggtitle(paste("Comparison of of SARS-CoV-2 trend by Epiweek between locations in", c,"County", sep = " "))+ 
+          xlab("Epidemiological Week")+
+          ylab(paste("Average log copies/L for",c,"County", sep = " "))+
+          theme_minimal() + theme( axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), panel.grid.major=element_line(colour="gray92"),panel.grid.minor=element_line(colour="gray92")))
 }
 
 

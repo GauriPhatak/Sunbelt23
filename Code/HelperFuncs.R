@@ -296,7 +296,7 @@ CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "asso
     alpha <- eigen(Lt %*% Lt)$values[1]/ eigen(X %*% t(X))$values[1]
     }
   
-  print(alpha)
+  #print(alpha)
   if(type == "non-assortative"){
     L_alpha <-  Lt %*% Lt + alpha *(X %*% t(X))
   }
