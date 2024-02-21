@@ -15,7 +15,7 @@ library(tidygraph)
 library(ggraph)
 library(statnet)
 library(caret)
-
+library(ggnet)
 f <- function(x, n){
   #set.seed(42)
   sample(c(x,x,sample(x, n-2*length(x), replace=TRUE)))
@@ -569,3 +569,175 @@ NetworkSim <- function(N, dir=FALSE, B, C,formula, coefs){
 
 
 
+SimNW <- function(pC,k,N,B){
+  C = sample(1:k,N,replace = TRUE, prob = pC)
+  coefs = c(prob2logit(B))
+  
+  ## Simulating the basis network with clusters
+  g.sim <- NetworkSim(N,FALSE,B,C, NULL, coefs)
+  return(g.sim)
+}
+
+AssgnCat <- function(g.sim, catName, pCat, cat){
+  g.sim %v% catName <- NA
+  j <- 1
+  for (i in 1:k) {
+    bk <- g.sim %v% catName
+    bk[which(g.sim %v% 'Cluster' == i)] <- sample(cat,
+                                                  length( which(g.sim %v% 'Cluster' == i)), 
+                                                  prob = pCat[[i]],
+                                                  replace = TRUE)
+    g.sim %v% catName <- bk
+  }
+  g.sim %v% paste0(catName,"Orig") <- g.sim %v% catName
+  g.sim <- asIgraph(g.sim)
+  return(g.sim)
+}
+
+comdet <- function(g.sim, cat){
+  # running regularized spectral clustering on the original network without any covariate information.
+  origmem <- RegSpectralClust(g.sim, 3,regularize = TRUE)
+  
+  ## Covariate assisted spectral clustering 
+  ## Since we are using categorical data we have to perform one hot encoding.
+  X <- as.matrix(cat)
+  Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ), newdata <- X)))
+  origmemCov <- CovAssistedSpecClust(G = g.sim, Xdum, 3,
+                                     Regularize =TRUE, alpha =NA,
+                                     type ="non-assortative")
+  return(data.frame(origmem = origmem, origmemCov = origmemCov))
+}
+# 
+
+## Check correlation between the covariates and the community generated.
+# 
+# table(origmemCov, V(g.sim)$LOTR)
+# 
+# table(origmemCov, V(g.sim)$Cluster)
+# 
+# table(V(g.sim)$LOTR, V(g.sim)$Cluster)
+
+# create missingness in simulated networks
+
+## Missingness created randomly.
+Mymode <- function(codes){
+  names(which.max(table(codes)))
+}
+
+
+IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
+  ## Based on notes from 8th
+  g <- g.sim
+  vtxat <- as.data.frame(vertex.attributes(g))
+  ## start with randomly assigned covariate values
+  Midx <- list()#matrix(nrow = dim(covMsng)[1],ncol =1)
+  for (i in 1:dim(covMsng)[1]) {
+    Midx[[i]] <- sample(1:N,ceiling(covMsng$p[i] *N/100))
+    ## setting random initial values to vertices 
+    g <- set_vertex_attr(g, 
+                         covMsng$name[i], 
+                         index = c(Midx[[i]]), 
+                         sample(unique(covMsng$cat[[i]]),
+                                size  = length(Midx[[i]]),
+                                replace = TRUE))
+  }
+  
+  ## assigning random communitites to begin
+  V(g)$com <- sample(1:k, size = N, replace = TRUE)
+  op <- data.frame(matrix(nrow=0,ncol = 9))
+  covARI <- data.frame(matrix(nrow = 0,ncol =1))
+  prevComLst <- coms$origmemCov
+  for (i in 1:niter){
+    
+    ## Run community detection 
+    X <- as.matrix(vertex_attr(g, covMsng$name))#as.matrix(V(g)$LOTR)
+    Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ),newdata <- X)))
+    com <- CovAssistedSpecClust(G = g, Xdum, 3,
+                                Regularize =TRUE, alpha =NA, 
+                                type ="assortative",
+                                kmeansIter = 1000)
+    V(g)$com <- com
+    
+    ## Just use neighbors within cluster for imputation. If there is a tie deal with ties randomly.
+    for(j in 1:length(Midx)){
+      oldCov <- vertex_attr(g, name = covMsng$name[j])
+      for (idx in Midx[[j]]) {
+        b <- as.data.frame(vertex.attributes(g, index = neighbors(g,idx)))
+        ## Number of neighbours wiht the same community assgnment as the missing node
+        oldcom <- sum(b$com == V(g)$com[idx])/length(b$com)
+        b <- b[b$com == V(g)$com[idx], ]
+        g <- set_vertex_attr(g, covMsng$name[j], 
+                             index = idx, 
+                             Mymode(b[[covMsng$name[j]]]))
+        ## Stopping rule: are all the neighbors in the same community
+        status <- all(vertex_attr(g,index = neighbors(g,idx))$com == V(g)$com[idx])
+        op <- rbind(op, cbind(i, 
+                              idx, 
+                              oldcom,
+                              vertex_attr(g, name = covMsng$name[j],
+                                          index = idx),
+                              oldCov[idx],
+                              vertex_attr(g.sim, name = covMsng$name[j],
+                                          index = idx),
+                              mclust::adjustedRandIndex(coms$origmemCov, 
+                                                        V(g)$com),
+                              mclust::adjustedRandIndex(prevComLst,
+                                                        V(g)$com),
+                              status))
+        prevComLst <-  V(g)$com
+      }
+      v <- mclust::adjustedRandIndex(vertex_attr(g, name = covMsng$name[j],
+                                                 index = Midx[[j]]),
+                                     vertex_attr(g.sim, name = covMsng$name[j],
+                                                 index = Midx[[j]]))
+      covARI <- rbind(covARI, 
+                      cbind(rep(v ,
+                                times = length(Midx[[j]])))
+      )
+    }
+    
+  }
+  colnames(op) <- c("iteration","MissingId","SameComm",
+                    "ImputedLOTR","prevLOTR","AssignedLOTR",
+                    "ARI","PrevARI","neighComStat")
+  op$covARI <- covARI[,1]
+  op$iteration <- as.numeric(op$iteration)
+  op$MissingId <- as.numeric(op$MissingId)
+  
+  #op <- op[with(op,order(op[,2],op[,1])),]
+  return(list(op, g))
+}
+
+plot_combinations <- function(g.sim, coms, p){
+  plot.igraph( g.sim,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = as.factor(V(g.sim)$LOTROrig),
+               vertex.label = NA,
+               vertex.size = 5,
+               main = paste0("Imputed values :", as.character(round(mclust::adjustedRandIndex(V(g.sim)$LOTROrig,V(g.sim)$LOTR), 3)),
+                             "Pcnt missing :", p))
+  
+  plot.igraph( g.sim,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = as.factor(V(g.sim)$com),
+               vertex.label = NA,
+               vertex.size = 5,
+               main = paste0("Final Community values :", as.character(round(mclust::adjustedRandIndex(V(g.sim)$Cluster,V(g.sim)$com),3)),
+                             "Pcnt missing :",p))
+  
+  plot.igraph( g.sim,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = V(g.sim)$Cluster,
+               vertex.label = NA,
+               vertex.size = 5,
+               main=paste0("Original cluster assignment"," Pcnt missing :", p))
+  plot.igraph( g.sim,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = coms$origmem,
+               vertex.label = NA,
+               vertex.size = 5,
+               main=paste0("Reg spectral clustering w/o cov ",
+                           as.character(round(mclust::adjustedRandIndex(V(g.sim)$Cluster,coms$origmem),3)),
+                           " Pcnt missing :", p))
+  
+}
