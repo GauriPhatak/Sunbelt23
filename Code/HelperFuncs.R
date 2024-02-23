@@ -16,6 +16,7 @@ library(ggraph)
 library(statnet)
 library(caret)
 library(ggnet)
+library(stringr)
 f <- function(x, n){
   #set.seed(42)
   sample(c(x,x,sample(x, n-2*length(x), replace=TRUE)))
@@ -546,7 +547,7 @@ prob2logit <- function(x){
 
 NetworkSim <- function(N, dir=FALSE, B, C,formula, coefs){
   
-  seed <- 42
+  #seed <- 42
   net <- network(N, directed = dir, density= 0 )
   net %v% 'Cluster' <- C
   
@@ -554,13 +555,13 @@ NetworkSim <- function(N, dir=FALSE, B, C,formula, coefs){
   
   if(!is.null(formula)){
     g.sim <- simulate(as.formula(paste0("net~nodemix('Cluster',levels = TRUE,levels2 = TRUE)+", formula)), 
-                      coef = coefs,
-                      seed = seed)  
+                      coef = coefs)#,
+                      #seed = seed)  
   }
   else{
     g.sim <- simulate(as.formula(paste0("net~nodemix('Cluster',levels = TRUE,levels2 = TRUE)")), 
-                      coef = coefs,
-                      seed = seed)
+                      coef = coefs)#,
+                      #seed = seed)
   }
   
   return(g.sim)
@@ -578,7 +579,7 @@ SimNW <- function(pC,k,N,B){
   return(g.sim)
 }
 
-AssgnCat <- function(g.sim, catName, pCat, cat){
+AssgnCat <- function(g.sim, catName, pCat, cat,k){
   g.sim %v% catName <- NA
   j <- 1
   for (i in 1:k) {
@@ -644,7 +645,7 @@ IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
   
   ## assigning random communitites to begin
   V(g)$com <- sample(1:k, size = N, replace = TRUE)
-  op <- data.frame(matrix(nrow=0,ncol = 9))
+  op <- data.frame(matrix(nrow=0,ncol = 10))
   covARI <- data.frame(matrix(nrow = 0,ncol =1))
   prevComLst <- coms$origmemCov
   for (i in 1:niter){
@@ -683,6 +684,7 @@ IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
                                                         V(g)$com),
                               mclust::adjustedRandIndex(prevComLst,
                                                         V(g)$com),
+                              vtxat$Cluster[as.numeric(idx)],
                               status))
         prevComLst <-  V(g)$com
       }
@@ -699,7 +701,7 @@ IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
   }
   colnames(op) <- c("iteration","MissingId","SameComm",
                     "ImputedLOTR","prevLOTR","AssignedLOTR",
-                    "ARI","PrevARI","neighComStat")
+                    "ARI","PrevARI","Cluster","neighComStat")
   op$covARI <- covARI[,1]
   op$iteration <- as.numeric(op$iteration)
   op$MissingId <- as.numeric(op$MissingId)

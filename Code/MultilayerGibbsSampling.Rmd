@@ -206,9 +206,9 @@ IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
         prevComLst <-  V(g)$com
       }
       v <- mclust::adjustedRandIndex(vertex_attr(g, name = covMsng$name[j],
-                                                       index = Midx[[j]]),
-                                           vertex_attr(g.sim, name = covMsng$name[j],
-                                                       index = Midx[[j]]))
+                                                 index = Midx[[j]]),
+                                     vertex_attr(g.sim, name = covMsng$name[j],
+                                                 index = Midx[[j]]))
       covARI <- rbind(covARI, 
                       cbind(rep(v ,
                                 times = length(Midx[[j]])))
@@ -372,13 +372,13 @@ for(i in 1:length(pctMsng)){
 ### Categorical variable correlated to the assigned clusters and same number of levels.
 ## Using LOTR Universe books.
 niter= 5
-superiter <- 1000
+superiter <- 1
 k <- 3
 N <- 100
 ## Almost equally defined clusters
 pC = c(0.3,0.4,0.3)
 ## Highly defined clusters
-B = c(0.3,0.1,0.3,0.05,0.1,0.2)
+B = c(0.3,0.01,0.3,0.05,0.01,0.2)
 ## setting color codes
 catcol  <- c("#B22222","#FF7F50","#FF8C00",
              "#6B8E23","#7FFF00","#32CD32",
@@ -392,15 +392,13 @@ pCat <- list(c(0.3,0.4,0.4,0.02,0.01,0.02,0.02,0.01,0.01), # Cluster 1
 c1 <- c("FOTR|TT|ROTK")
 c2 <- c("Hob|Sil|UT")
 c3 <- c("CoH|BL|FoG")
-
-opLD <- data.frame(matrix(nrow =0 , ncol = 14))
+clusts <- c(c1,c2,c3)
+opLD <- data.frame(matrix(nrow =0 , ncol = 15))
 
 for(val in 1:superiter){
   ## Simulate network
-g.sim <- SimNW(pC,k,N,B)
-
-
-  g.sim <- AssgnCat(g.sim, "LOTR",pCat, cat)
+  g.sim <- SimNW(pC,k,N,B)
+  g.sim <- AssgnCat(g.sim, "LOTR",pCat, cat,k)
   
   g <- data.frame(as.matrix(V(g.sim)$LOTR))
   colnames(g) <- "cat"
@@ -426,10 +424,15 @@ g.sim <- SimNW(pC,k,N,B)
   }
   
   op$pcnt <- rep(pctMsng, times = niter*pctMsng)
-  op$sameClust <- NA
+  op$whichClust <- NA
+  op$whichClust <- FALSE
   for(i in 1:dim(op)[1]){
     str <- c(op[i,4], op[i,6])
     op$sameClust[i] <- all(sapply(str, grepl, c1)) | all(sapply(str, grepl, c2)) | all(sapply(str, grepl, c3))
+    
+    if(as.numeric(which(str_detect(op$AssignedLOTR[i], clusts) == TRUE,arr.ind = TRUE)) == as.numeric(op$Cluster[i])){
+      op$whichClust[i] <- TRUE
+    }
     
   }
   
@@ -438,21 +441,221 @@ g.sim <- SimNW(pC,k,N,B)
   print(val)
   
 }
-propCorClust <- opLD %>%
-    group_by(iteration, pcnt,superiter) %>%
-    dplyr::summarise(prop = sum(sameClust)/n())
-# for(i in 1:length(pctMsng)){
-#   plot_combinations(g.imp[[i]], coms, pctMsng[i])
-# }
+# propCorClust <- opLD %>%
+#     group_by(iteration, pcnt,superiter) %>%
+#     dplyr::summarise(propImputed = sum(sameClust)/n(),
+#                      propAssigned = sum(whichClust)/n())
+for(i in 1:length(pctMsng)){
+  plot_combinations(g.imp[[i]], coms, pctMsng[i])
+}
+op <- op[with(op,order(op[,2],op[,1],op[,11])),]
 
-#op <- op[with(op,order(op[,2],op[,1],op[,11])),]
+```
+
+
+```{r}
+## creating plots based on the grouped proportional correct cluster data
+
+#TopLD <- opLD
+#TpropCorClust <- propCorClust
+
+  TpropCorClust %>%
+    filter(iteration == 5) %>%
+    ggplot()+
+    geom_bar(aes(x = propImputed, fill =as.factor(pcnt))) +
+    ggtitle("Proportion of imputed values in the same category cluster")+
+    facet_wrap(vars(color = as.factor(pcnt)), ncol =2, scales='free_y')+
+    guides(fill = FALSE)+
+    theme_minimal()+
+    theme(panel.border=element_rect(fill=NA, colour="grey40"))
+
+  TpropCorClust %>%
+    filter(iteration == 5) %>%
+    ggplot()+
+    geom_bar(aes(x = propAssigned, fill =as.factor(pcnt))) +
+    ggtitle("Proportion of imputed values in the same category cluster")+
+    facet_wrap(vars(color = as.factor(pcnt)), ncol =2, scales='free_y')+
+    guides(fill = FALSE)+
+    theme_minimal()+
+    theme(panel.border=element_rect(fill=NA, colour="grey40"))
+  
+  
+  TpropCorClust$diff <- TpropCorClust$propAssigned - TpropCorClust$propImputed
+  TpropCorClust %>%
+    filter(iteration == 5) %>%
+    ggplot()+
+    geom_histogram(aes(x = diff,fill =as.factor(pcnt))) +
+    geom_vline(aes(xintercept = 0.0))+
+    ggtitle("difference in proportions Assigned - Imputed")+
+    facet_wrap(vars(as.factor(pcnt)), ncol =2, scales='free')+
+    guides(fill = FALSE)+
+    theme_minimal()+
+    theme(panel.border=element_rect(fill=NA, colour="grey40"))
+  
+  TpropCorClust %>%
+    filter(iteration == 5) %>%
+    ggplot()+
+    geom_point(aes(x = propAssigned , y=propImputed, fill =as.factor(pcnt))) +
+    ggtitle("Imputed vs Assigned proportion value")+
+    facet_wrap(vars(color = as.factor(pcnt)), ncol =2, scales='free')+
+    guides(fill = FALSE)+
+    theme_minimal()+
+    theme(panel.border=element_rect(fill=NA, colour="grey40"))
+
+  TpropCorClust %>%
+    filter(iteration == 5) %>%
+    group_by(pcnt) %>%
+    dplyr::summarise(prop = sum(diff<0)/n())
+
+
+
+```
+
+
+## Uneven cluster i.e two large one small cluster size.
+
+```{r}
+### Categorical variable correlated to the assigned clusters and different number of levels.(binary variable where one is correlated to two clusters and 2nd is correlated to the last cluster. Or more than one level correlated with cluster)
+### Categorical variable correlated to the assigned clusters and same number of levels.
+## Using LOTR Universe books.
+niter= 5
+superiter <- 1
+k <- 3
+N <- 100
+## cluster sizes
+pC = c(0.1,0.5,0.4)
+## cluster edge definition
+B = c(0.3,0.1,0.2,0.05,0.1,0.2)
+## setting color codes
+catcol  <- c("#B22222","#FF7F50","#FF8C00",
+             "#6B8E23","#7FFF00","#32CD32",
+             "#6495ED","#00008B","#87CEEB")
+cat <- c("FOTR","TT","ROTK","Hob","Sil", "UT","CoH","BL","FoG")
+col <- data.frame(as.matrix(cbind(catcol, cat)))
+pCat <- list(c(0.3,0.4,0.4,0.02,0.01,0.02,0.02,0.01,0.01), # Cluster 1
+             c(0.01,0.02,0.01,0.2,0.3,0.4,0.02,0.01,0.01), # Cluster 2
+             c(0.01,0.01,0.02,0.01,0.2,0.02,0.3,0.4,0.2)) # Cluster 3
+
+c1 <- c("FOTR|TT|ROTK")
+c2 <- c("Hob|Sil|UT")
+c3 <- c("CoH|BL|FoG")
+clusts <- c(c1,c2,c3)
+opLD <- data.frame(matrix(nrow =0 , ncol = 15))
+
+for(val in 1:superiter){
+  ## Simulate network
+  g.sim <- SimNW(pC,k,N,B)
+  g.sim <- AssgnCat(g.sim, "LOTR",pCat, cat,k)
+  
+  g <- data.frame(as.matrix(V(g.sim)$LOTR))
+  colnames(g) <- "cat"
+  vtx <- left_join(g,col, by = join_by(cat== cat))
+  #g.sim <- asIgraph(g.sim)
+  V(g.sim)$col <- vtx$catcol
+  
+  ## Regularized and cova assisted spectral clustering
+  coms <- comdet(g.sim, V(g.sim)$LOTR)
+  
+  pctMsng <- c(5,7,10,20,30,40,50)
+  op <- data.frame(matrix(nrow=0,ncol = 9))
+  g.imp <- list()
+  i <-  1
+  for(p in pctMsng){
+    covMsng <- data.frame(name = c("LOTR") ,
+                          p = p,
+                          cat = I(list(cat)))
+    df <- IterativeImpute(g.sim, N, coms,niter,k,covMsng)
+    g.imp[[i]] <- df[[2]]
+    op <- rbind(op,df[[1]])
+    i <- i+1
+  }
+  
+  op$pcnt <- rep(pctMsng, times = niter*pctMsng)
+  op$whichClust <- NA
+  op$whichClust <- FALSE
+  for(i in 1:dim(op)[1]){
+    str <- c(op[i,4], op[i,6])
+    op$sameClust[i] <- all(sapply(str, grepl, c1)) | all(sapply(str, grepl, c2)) | all(sapply(str, grepl, c3))
+    
+    if(as.numeric(which(str_detect(op$AssignedLOTR[i], clusts) == TRUE,arr.ind = TRUE)) == as.numeric(op$Cluster[i])){
+      op$whichClust[i] <- TRUE
+    }
+  }
+  op$superiter <- val
+  opLD <- rbind(opLD,op)
+  #print(val)
+  
+}
+
+for(i in 1:length(pctMsng)){
+  plot_combinations(g.imp[[i]], coms, pctMsng[i])
+}
+propCorClust <- opLD %>%
+  group_by(iteration, pcnt,superiter) %>%
+  dplyr::summarise(propImputed = sum(sameClust)/n(),
+                   propAssigned = sum(whichClust)/n())
+
+
 
 ```
 
 
 
+```{r}
+## creating plots based on the grouped proportional correct cluster data
+
+#TopLD <- opLD
+#TpropCorClust <- propCorClust
+
+  propCorClust %>%
+    filter(iteration == 5) %>%
+    ggplot()+
+    geom_bar(aes(x = propImputed, fill =as.factor(pcnt))) +
+    ggtitle("Proportion of imputed values in the same category cluster")+
+    facet_wrap(vars(color = as.factor(pcnt)), ncol =2, scales='free')+
+    guides(fill = FALSE)+
+    theme_minimal()+
+    theme(panel.border=element_rect(fill=NA, colour="grey40"))
+  propCorClust %>%
+    filter(iteration == 5) %>%
+    ggplot()+
+    geom_bar(aes(x = propAssigned, fill =as.factor(pcnt))) +
+    ggtitle("Proportion of imputed values in the same category cluster")+
+    facet_wrap(vars(color = as.factor(pcnt)), ncol =2, scales='free')+
+    guides(fill = FALSE)+
+    theme_minimal()+
+    theme(panel.border=element_rect(fill=NA, colour="grey40"))
+  
+  
+  propCorClust$diff <- propCorClust$propAssigned - propCorClust$propImputed
+  propCorClust %>%
+    filter(iteration == 5) %>%
+    ggplot()+
+    geom_histogram(aes(x = diff,fill =as.factor(pcnt))) +
+    geom_vline(aes(xintercept = 0.0))+
+    ggtitle("difference in proportions Assigned - Imputed")+
+    facet_wrap(vars(as.factor(pcnt)), ncol =2, scales='free')+
+    guides(fill = FALSE)+
+    theme_minimal()+
+    theme(panel.border=element_rect(fill=NA, colour="grey40"))
+  
+  propCorClust %>%
+    filter(iteration == 5) %>%
+    ggplot()+
+    geom_point(aes(x = propAssigned , y=propImputed, fill =as.factor(pcnt))) +
+    ggtitle("Imputed vs Assigned proportion value")+
+    facet_wrap(vars(color = as.factor(pcnt)), ncol =2, scales='free')+
+    guides(fill = FALSE)+
+    theme_minimal()+
+    theme(panel.border=element_rect(fill=NA, colour="grey40"))
+
+  propCorClust %>%
+    filter(iteration == 5) %>%
+    group_by(pcnt) %>%
+    dplyr::summarise(prop = sum(diff<0)/n())
 
 
+```
 
 
 
