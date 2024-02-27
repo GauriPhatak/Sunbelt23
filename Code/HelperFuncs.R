@@ -551,7 +551,7 @@ NetworkSim <- function(N, dir=FALSE, B, C,formula, coefs){
   net <- network(N, directed = dir, density= 0 )
   net %v% 'Cluster' <- C
   
-  coefs = c(prob2logit(B))
+  #coefs = c(prob2logit(B))
   
   if(!is.null(formula)){
     g.sim <- simulate(as.formula(paste0("net~nodemix('Cluster',levels = TRUE,levels2 = TRUE)+", formula)), 
@@ -570,12 +570,12 @@ NetworkSim <- function(N, dir=FALSE, B, C,formula, coefs){
 
 
 
-SimNW <- function(pC,k,N,B){
+SimNW <- function(pC,k,N,B, formula){
   C = sample(1:k,N,replace = TRUE, prob = pC)
   coefs = c(prob2logit(B))
   
   ## Simulating the basis network with clusters
-  g.sim <- NetworkSim(N,FALSE,B,C, NULL, coefs)
+  g.sim <- NetworkSim(N,FALSE,B,C,formula, coefs)
   return(g.sim)
 }
 
@@ -692,14 +692,12 @@ IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
                                                  index = Midx[[j]]),
                                      vertex_attr(g.sim, name = covMsng$name[j],
                                                  index = Midx[[j]]))
-      covARI <- rbind(covARI, 
-                      cbind(rep(v ,
-                                times = length(Midx[[j]])))
-      )
+      
+      covARI <- rbind(covARI,cbind(rep(v ,times = length(Midx[[j]]))))
     }
     
   }
-  colnames(op) <- c("iteration","MissingId","SameComm",
+  colnames(op) <- c("iteration","MissingId","PropSameComm",
                     "ImputedLOTR","prevLOTR","AssignedLOTR",
                     "ARI","PrevARI","Cluster","neighComStat")
   op$covARI <- covARI[,1]
@@ -711,35 +709,36 @@ IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
 }
 
 plot_combinations <- function(g.sim, coms, p){
+  
+  par(mfrow=c(2,2))
+  
   plot.igraph( g.sim,
                edge.col = adjustcolor('black',alpha.f = 0.5),
                vertex.color = as.factor(V(g.sim)$LOTROrig),
                vertex.label = NA,
                vertex.size = 5,
-               main = paste0("Imputed values :", as.character(round(mclust::adjustedRandIndex(V(g.sim)$LOTROrig,V(g.sim)$LOTR), 3)),
-                             "Pcnt missing :", p))
+               main = "Imputed categories")
   
   plot.igraph( g.sim,
                edge.col = adjustcolor('black',alpha.f = 0.5),
                vertex.color = as.factor(V(g.sim)$com),
                vertex.label = NA,
                vertex.size = 5,
-               main = paste0("Final Community values :", as.character(round(mclust::adjustedRandIndex(V(g.sim)$Cluster,V(g.sim)$com),3)),
-                             "Pcnt missing :",p))
+               main = paste0("Final Community values :", as.character(round(mclust::adjustedRandIndex(V(g.sim)$Cluster,V(g.sim)$com),3))))
   
   plot.igraph( g.sim,
                edge.col = adjustcolor('black',alpha.f = 0.5),
                vertex.color = V(g.sim)$Cluster,
                vertex.label = NA,
                vertex.size = 5,
-               main=paste0("Original cluster assignment"," Pcnt missing :", p))
+               main=paste0("Original cluster assignment"))
   plot.igraph( g.sim,
                edge.col = adjustcolor('black',alpha.f = 0.5),
                vertex.color = coms$origmem,
                vertex.label = NA,
                vertex.size = 5,
                main=paste0("Reg spectral clustering w/o cov ",
-                           as.character(round(mclust::adjustedRandIndex(V(g.sim)$Cluster,coms$origmem),3)),
-                           " Pcnt missing :", p))
+                           as.character(round(mclust::adjustedRandIndex(V(g.sim)$Cluster,coms$origmem),3))))
+  mtext(paste0("Percent missing ", p))
   
 }

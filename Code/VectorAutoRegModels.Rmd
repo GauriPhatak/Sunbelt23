@@ -22,7 +22,7 @@ library(igraph)
 library(influential)
 library(ggrepel)
 library(NGC)
-
+source("HelperFuncs.R")
 ```
 
 ## Reading the wastewater data and creating epiweek calendar for it.
@@ -594,6 +594,8 @@ for (var in colnames(nodeImp)[-c(1, length(colnames(nodeImp)))]) {
     max_rank <= 2 ~ "lightblue"
   ))
 
+  par(mfrow=c(3,2))
+
 for(i in 1:6){
   V(G[[i]])$label = gbg$label[gbg$Section == i]
   V(G[[i]])$color = gbg$color[gbg$Section == i]
@@ -611,6 +613,8 @@ for(i in 1:6){
 }
 
 }
+
+
 
 ## Outdegree: Outgoing edges of each node
 ## Closeness: Closeness centrality measures how many steps is required to access every other vertex from a given vertex.

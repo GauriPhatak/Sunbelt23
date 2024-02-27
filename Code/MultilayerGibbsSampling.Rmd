@@ -397,7 +397,7 @@ opLD <- data.frame(matrix(nrow =0 , ncol = 15))
 
 for(val in 1:superiter){
   ## Simulate network
-  g.sim <- SimNW(pC,k,N,B)
+  g.sim <- SimNW(pC,k,N,B, NULL)
   g.sim <- AssgnCat(g.sim, "LOTR",pCat, cat,k)
   
   g <- data.frame(as.matrix(V(g.sim)$LOTR))
@@ -544,7 +544,7 @@ opLD <- data.frame(matrix(nrow =0 , ncol = 15))
 
 for(val in 1:superiter){
   ## Simulate network
-  g.sim <- SimNW(pC,k,N,B)
+  g.sim <- SimNW(pC,k,N,B, formula = NULL)
   g.sim <- AssgnCat(g.sim, "LOTR",pCat, cat,k)
   
   g <- data.frame(as.matrix(V(g.sim)$LOTR))
@@ -620,7 +620,7 @@ propCorClust <- opLD %>%
     filter(iteration == 5) %>%
     ggplot()+
     geom_bar(aes(x = propAssigned, fill =as.factor(pcnt))) +
-    ggtitle("Proportion of imputed values in the same category cluster")+
+    ggtitle("Proportion of assigned values in the same category cluster")+
     facet_wrap(vars(color = as.factor(pcnt)), ncol =2, scales='free')+
     guides(fill = FALSE)+
     theme_minimal()+
@@ -656,6 +656,400 @@ propCorClust <- opLD %>%
 
 
 ```
+
+```{r}
+
+## Trying out nodemix 
+## We have to create a network using both node and cluster assignment
+## trying this out using the LOTR example
+niter= 5
+k <- 3
+N <- 100
+## Almost equally defined clusters
+pC = c(0.3,0.4,0.3)
+## Highly defined clusters
+B = c(0.5,0.01,0.4,0.01,0.01,0.4)
+## setting color codes
+catcol  <- c("#B22222","#FF7F50","#FF8C00",
+             "#6B8E23","#7FFF00","#32CD32",
+             "#6495ED","#00008B","#87CEEB")
+cat <- c("FOTR","TT","ROTK","Hob","Sil", "UT","CoH","BL","FoG")
+col <- data.frame(as.matrix(cbind(catcol, cat)))
+pCat <- list(c(0.3,0.4,0.4,0.01,0.01,0.01,0.01,0.01,0.01), # Cluster 1
+             c(0.01,0.01,0.01,0.2,0.3,0.4,0.01,0.01,0.01), # Cluster 2
+             c(0.01,0.01,0.01,0.01,0.01,0.01,0.3,0.4,0.2)) # Cluster 3
+
+c1 <- c("FOTR|TT|ROTK")
+c2 <- c("Hob|Sil|UT")
+c3 <- c("CoH|BL|FoG")
+g.sim <- SimNW(pC,k,N,B, NULL)
+g.sim <- AssgnCat(g.sim, "LOTR",pCat, cat,k)
+
+plot.igraph(g.sim,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = 0,
+               vertex.label = NA,
+               vertex.size = 5)
+g.sim <- intergraph::asNetwork(g.sim)
+# fit <- ergm(g.sim ~ nodemix(c("Cluster"),levels = TRUE,levels2 = TRUE)+
+#               nodemix(c("LOTR"),levels = TRUE,levels2 = TRUE))
+
+ #fit <- ergm(g.sim ~ nodemix("Cluster", levels=TRUE, levels2 = TRUE) + nodefactor(c("LOTR"), levels = TRUE): nodefactor(c("Cluster"), levels = TRUE))
+# 
+fit <- ergm(g.sim ~ nodemix("Cluster", levels = TRUE, levels2 =TRUE) + nodefactor(c("LOTR"), levels = TRUE):nodefactor(c("Cluster"), levels = TRUE))
+#fit <- ergm(g.sim ~ nodefactor(c("Cluster"), levels=TRUE): nodefactor(c("LOTR"), levels=TRUE))
+# fit <- ergm(g.sim ~ nodemix(c("LOTR")))
+# 
+# fit <- ergm(g.sim ~ nodemix("Cluster", levels=TRUE, levels2 = TRUE))
+gbg <- data.frame(round(logit2prob(fit$coefficients), 3))
+gbg <- data.frame(mix  = rownames(gbg),
+                  probs = gbg[,1] ,
+                  coefs = fit$coefficients)
+
+# gbg <- gbg %>% 
+#   separate_wider_delim(mix,delim = ".",
+#                        names=c(NA,NA,"B1","B2"))
+# 
+# gbg <- gbg %>% 
+#   separate_wider_delim(mix,delim = ":",
+#                        names=c("Clust","Book")) %>%
+#   separate(Clust, c(NA,NA,"Clust")) %>%
+#   separate(Book, c(NA,NA,"Book"))
+
+g.simf <- simulate(fit, nsim = 10)
+for (i in 1:10) {
+  g <- asIgraph(g.simf[[i]])
+      par(mfrow=c(1,2))
+
+  plot.igraph(g,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = as.factor(V(g)$LOTR),
+               vertex.label = NA,
+               vertex.size = 5)
+  plot.igraph(g,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = as.factor(V(g)$Cluster),
+               vertex.label = NA,
+               vertex.size = 5)
+}
+
+
+summary(fit)
+
+```
+
+```{r}
+## lets add a base edge probability
+be <- 0.05
+## probability of an edge based on a cluster
+B = c(0.7,0.4,0.7,0.4,0.4,0.7)
+
+cat <- c("FOTR","TT","ROTK","Hob","Sil", "UT","CoH","BL","FoG")
+pCat <- c(0.4,0.4,0.4,0.05,0.05,0.05,0.05,0.05,0.05,
+          0.05,0.05,0.05,0.4,0.4,0.4,0.05,0.05,0.05,
+          0.05,0.05,0.05,0.05,0.05,0.05,0.4,0.4,0.4)# Cluster 3
+#pCat <- rep(0.4, 3*length(cat))
+pCat <- data.frame(cat =cat,clust = rep(c("1","2","3"), each = length(cat)), pCat  = pCat) 
+pCat <- pCat[with(pCat, order(clust, cat)),]
+
+
+#coefs <- prob2logit(c(B, pCat$pCat))
+#coefs <- prob2logit(pCat$pCat)
+coefs <- prob2logit(c(B,pCat$pCat))
+nw <- network(100, directed = FALSE, density= 0)
+
+idx <- sample(1:27,size=100, replace = TRUE, prob = pCat$pCat)
+
+nw %v% "Cluster" <- pCat$clust[idx]#sample(c("1","2","3"), 100, replace = TRUE)
+nw %v% "LOTR" <- pCat$cat[idx]#sample(cat, 100,replace= TRUE)
+g <- asIgraph(nw)
+  par(mfrow=c(1,2))
+  plot.igraph(g,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = as.factor(V(g)$LOTR),
+               vertex.label = NA,
+               vertex.size = 5)
+
+  plot.igraph(g,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = as.factor(V(g)$Cluster),
+               vertex.label = NA,
+               vertex.size = 5)
+g.simf <- simulate(nw ~ nodemix("Cluster", levels = TRUE, levels2 =TRUE)+nodefactor(c("LOTR"), levels=TRUE): nodefactor(c("Cluster"), levels=TRUE), 
+#g.simf <- simulate(nw~ nodefactor(c("LOTR"), levels=TRUE): nodefactor(c("Cluster"), levels=TRUE), 
+#g.simf <- simulate(nw~ edges+nodefactor(c("LOTR"), levels=TRUE): nodefactor(c("Cluster"), levels=TRUE), 
+#g.simf <- simulate(nw~ edges+nodefactor(c("LOTR"), levels=TRUE)+ nodefactor(c("Cluster"), levels=TRUE),
+                     #basis = nw,
+                   nsim = 10,
+                   coef = coefs)#prob2logit(c(be, rep(0.4,9), c(0.3,0.4,0.4))))
+                   #control=control.simulate( MCMC.burnin=10000, MCMC.interval=100))
+fit <- ergm(g.simf[[1]] ~ nodemix("Cluster", levels = TRUE, levels2 =TRUE)+nodefactor(c("LOTR"), levels=TRUE): nodefactor(c("Cluster"), levels=TRUE))
+#fit <- ergm(g.simf[[1]] ~ nodefactor(c("LOTR"), levels=TRUE): nodefactor(c("Cluster"), levels=TRUE))
+#fit <- ergm(g.simf[[1]] ~ edges+nodefactor(c("LOTR"), levels=TRUE): nodefactor(c("Cluster"), levels=TRUE))
+#fit <- ergm(g.simf[[1]] ~ edges+nodefactor(c("LOTR"), levels=TRUE)+ nodefactor(c("Cluster"), levels=TRUE))
+gbg <- data.frame(round(logit2prob(fit$coefficients), 3))
+gbg <- data.frame(mix  = rownames(gbg),
+                  probs = gbg[,1] ,
+                  origCoefs  = coefs,
+                  coefs = fit$coefficients)
+
+
+for (i in 1:10) {
+  g <- asIgraph(g.simf[[i]])
+  par(mfrow=c(1,2))
+  plot.igraph(g,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = as.factor(V(g)$LOTR),
+               vertex.label = NA,
+               vertex.size = 5)
+
+  plot.igraph(g,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = as.factor(V(g)$Cluster),
+               vertex.label = NA,
+               vertex.size = 5)
+}
+
+
+
+```
+
+
+```{r, warning=FALSE}
+
+## Create a network with pre determined probabilities of categories and cluster assignment
+## Fit an ERGM model to that network.
+## Simulate networks based on that fit.
+
+niter= 5
+k <- 3
+N <- 100
+## Almost equally defined clusters
+p = c(0.3,0.4,0.3)
+## Highly defined clusters
+B = c(0.6,0.05,0.6,0.05,0.05,0.6)
+## setting color codes
+catcol  <- c("#B22222","#FF7F50","#FF8C00",
+             "#6B8E23","#7FFF00","#32CD32",
+             "#6495ED","#00008B","#87CEEB")
+cat <- c("FOTR","TT","ROTK","Hob","Sil", "UT","CoH","BL","FoG")
+col <- data.frame(as.matrix(cbind(catcol, cat)))
+pC <- list(c(0.04,0.02,0.04,rep(-1.5,6)), # Cluster 1
+             c(rep(-1.5,3),0.03,0.02,0.04,rep(-2.5,3)), # Cluster 2
+             c(rep(-1.5,6),0.03,0.04,0.02)) # Cluster 3
+c1 <- c("FOTR|TT|ROTK")
+c2 <- c("Hob|Sil|UT")
+c3 <- c("CoH|BL|FoG")
+clusts <- c(c1,c2,c3)
+cat <- sort(cat, decreasing = TRUE)
+combi <- data.frame(rbind(t(combn(cat,2, simplify = TRUE)), cbind(cat,cat)))
+combi$prob <- 0
+for(i in 1:length(combi$cat)){
+  if( which(str_detect(combi[i,1], clusts) == TRUE,arr.ind = TRUE) == which(str_detect(combi[i,2], clusts) == TRUE,arr.ind = TRUE)){
+    if(combi[i,1] == combi[i,2]){
+      combi$prob[i] = 0.6
+    }
+    else{
+      combi$prob[i] = 0.3
+    }
+  }
+  else{
+    combi$prob[i] = 0.1
+  }
+}
+colnames(combi) <- c("cat1","cat2","prob")
+combi <- combi[with(combi, order(cat1, cat2)),]
+pCat <- data.frame(cat =cat,clust = rep(c("1","2","3"), each = length(cat)), pCat  = unlist(pC)) 
+pCat <- pCat[with(pCat, order(clust, cat)),]
+
+C = sample(1:k,N,replace = TRUE, prob = p)
+net <- network(N, directed = FALSE, density= 0 )
+
+net %v% 'Cluster' <- C
+
+for (i in 1:k) {
+    bk <- net %v% "LOTR"
+    bk[which(net %v% 'Cluster' == i)] <- sample(cat,
+                                                  length( which(net %v% 'Cluster' == i)), 
+                                                  prob =logit2prob(pC[[i]]),
+                                                  replace = TRUE)
+    net %v% "LOTR" <- bk
+}
+
+############## plotting initial network
+g <- asIgraph(net)
+par(mfrow=c(1,3))
+plot.igraph(g,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = 0,
+               vertex.label = NA,
+               vertex.size = 5)
+plot.igraph(g,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = as.factor(V(g)$LOTR),
+               vertex.label = NA,
+               vertex.size = 5)
+plot.igraph(g,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = as.factor(V(g)$Cluster),
+               vertex.label = NA,
+               vertex.size = 5)
+
+g.sim <- net#intergraph::asNetwork(g.sim)
+
+g.simf <- simulate(g.sim ~ nodemix("Cluster", levels = TRUE, levels2 = TRUE) + nodemix(c("LOTR"), levels=TRUE, levels2 = TRUE),
+                   nsim = 10,
+                   coef = prob2logit(c(B, combi$prob)),
+                   control=control.simulate( MCMC.burnin=10000, MCMC.interval=1000))
+
+op <- logit2prob(summary(g.simf[[1]] ~ nodemix(c("Cluster"), levels=TRUE, levels2 = TRUE)+nodemix(c("LOTR"), levels=TRUE, levels2 = TRUE)))#nodefactor(c("LOTR"), levels=TRUE): nodefactor(c("Cluster"), levels=TRUE))
+
+for (i in 1:10) {
+  fit <- ergm(g.simf[[i]] ~ nodemix(c("Cluster"), levels=TRUE, levels2 = TRUE)+ nodemix(c("LOTR"), levels=TRUE, levels2 = TRUE))
+  op <- cbind(op,logit2prob(fit$coefficients))
+  g <- asIgraph(g.simf[[i]])
+  par(mfrow=c(1,2))
+  plot.igraph(g,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = as.factor(V(g)$LOTR),
+               vertex.label = NA,
+               vertex.size = 5)
+
+  plot.igraph(g,
+               edge.col = adjustcolor('black',alpha.f = 0.5),
+               vertex.color = as.factor(V(g)$Cluster),
+               vertex.label = NA,
+               vertex.size = 5)
+}
+op <- data.frame(op)
+op$names <- rownames(op)
+op <- op %>%
+  separate(names, c(NA,NA,"c1","c2"))
+
+```
+
+```{r, warning=FALSE,fig.height = 10, fig.width = 10}
+
+niter= 5
+k <- 3
+N <- 100
+## Almost equally defined clusters
+p = c(0.3,0.4,0.3)
+## Highly defined clusters
+B = c(0.6,0.05,0.6,0.05,0.05,0.6)
+## setting color codes
+catcol  <- c("#B22222","#FF7F50","#FF8C00",
+             "#6B8E23","#7FFF00","#32CD32",
+             "#6495ED","#00008B","#87CEEB")
+cat <- c("FOTR","TT","ROTK","Hob","Sil", "UT","CoH","BL","FoG")
+col <- data.frame(as.matrix(cbind(catcol, cat)))
+pC <- list(c(0.04,0.04,0.04,rep(-2.5,6)), # Cluster 1
+             c(rep(-2.5,3),0.04,0.04,0.04,rep(-2.5,3)), # Cluster 2
+             c(rep(-2.5,6),0.04,0.04,0.04)) # Cluster 3
+c1 <- c("FOTR|TT|ROTK")
+c2 <- c("Hob|Sil|UT")
+c3 <- c("CoH|BL|FoG")
+clusts <- c(c1,c2,c3)
+cat <- sort(cat, decreasing = TRUE)
+combi <- data.frame(rbind(t(combn(cat,2, simplify = TRUE)), cbind(cat,cat)))
+combi$prob <- 0
+for(i in 1:length(combi$cat)){
+  if( which(str_detect(combi[i,1], clusts) == TRUE,arr.ind = TRUE) == which(str_detect(combi[i,2], clusts) == TRUE,arr.ind = TRUE)){
+    if(combi[i,1] == combi[i,2]){
+      combi$prob[i] = 0.6
+    }
+    else{
+      combi$prob[i] = 0.3
+    }
+  }
+  else{
+    combi$prob[i] = 0.1
+  }
+}
+colnames(combi) <- c("cat1","cat2","prob")
+combi <- combi[with(combi, order(cat1, cat2)),]
+pCat <- data.frame(cat =cat,clust = rep(c("1","2","3"), each = length(cat)), pCat  = unlist(pC)) 
+pCat <- pCat[with(pCat, order(clust, cat)),]
+
+superiter <- 1000
+opLD <- data.frame(matrix(nrow =0 , ncol = 15))
+
+for(val in 1:superiter){
+  ## Simulate network
+  #g.sim <- SimNW(pC,k,N,B, formula = NULL)
+  #g.sim <- AssgnCat(g.sim, "LOTR",pCat, cat,k)
+  
+C = sample(1:k,N,replace = TRUE, prob = p)
+net <- network(N, directed = FALSE, density= 0 )
+
+net %v% 'Cluster' <- C
+
+for (i in 1:k) {
+    bk <- net %v% "LOTR"
+    bk[which(net %v% 'Cluster' == i)] <- sample(cat,
+                                                  length( which(net %v% 'Cluster' == i)), 
+                                                  prob =logit2prob(pC[[i]]),
+                                                  replace = TRUE)
+    net %v% "LOTR" <- bk
+}
+g.sim <- net
+g.sim <- simulate(g.sim ~ nodemix("Cluster", levels = TRUE, levels2 = TRUE) + nodemix(c("LOTR"), levels=TRUE, levels2 = TRUE),
+                   nsim = 1,
+                   coef = prob2logit(c(B, combi$prob)),
+                   control=control.simulate( MCMC.burnin=10000, MCMC.interval=1000))
+
+g.sim <- asIgraph(g.sim)
+V(g.sim)$LOTROrig <- V(g.sim)$LOTR
+  g <- data.frame(as.matrix(V(g.sim)$LOTR))
+  colnames(g) <- "cat"
+  vtx <- left_join(g,col, by = join_by(cat== cat))
+  #g.sim <- asIgraph(g.sim)
+  V(g.sim)$col <- vtx$catcol
+  
+  ## Regularized and cova assisted spectral clustering
+  coms <- comdet(g.sim, V(g.sim)$LOTR)
+  
+  pctMsng <- c(5,7,10,20,30,40,50)
+  op <- data.frame(matrix(nrow=0,ncol = 9))
+  g.imp <- list()
+  i <-  1
+  for(pt in pctMsng){
+    covMsng <- data.frame(name = c("LOTR") ,
+                          p = pt,
+                          cat = I(list(cat)))
+    df <- IterativeImpute(g.sim, N, coms,niter,k,covMsng)
+    g.imp[[i]] <- df[[2]]
+    op <- rbind(op,df[[1]])
+    i <- i+1
+  }
+  
+  op$pcnt <- rep(pctMsng, times = niter*pctMsng)
+  op$whichClust <- NA
+  op$whichClust <- FALSE
+  for(i in 1:dim(op)[1]){
+    str <- c(op[i,4], op[i,6])
+    op$sameClust[i] <- all(sapply(str, grepl, c1)) | all(sapply(str, grepl, c2)) | all(sapply(str, grepl, c3))
+    
+    if(as.numeric(which(str_detect(op$AssignedLOTR[i], clusts) == TRUE,arr.ind = TRUE)) == as.numeric(op$Cluster[i])){
+      op$whichClust[i] <- TRUE
+    }
+  }
+  op$superiter <- val
+  opLD <- rbind(opLD,op)
+  print(val)
+
+}
+
+for(i in 1:length(pctMsng)){
+  plot_combinations(g.imp[[i]], coms, pctMsng[i])
+}
+propCorClust <- opLD %>%
+  group_by(iteration, pcnt,superiter) %>%
+  dplyr::summarise(propImputed = sum(sameClust)/n(),
+                   propAssigned = sum(whichClust)/n())
+
+```
+
 
 
 
