@@ -737,3 +737,11 @@ plot_combinations <- function(g.sim, coms, p){
   mtext(paste0("Percent missing ", p))
   
 }
+
+CntEdges <- function(g) {
+  ends <- as_edgelist(g)
+  e1 <- V(g)[ends[,1]]$LOTR
+  e2 <- V(g)[ends[,2]]$LOTR
+  endcolors <- t(apply(cbind(e1, e2), 1, sort))
+  return(table(endcolors[,1], endcolors[,2]))
+}

@@ -1544,6 +1544,8 @@ for(val in 1:superiter){
 #summary(fit_C)
 #summary(fit_B)
 ```
+
+
 ```{r}
 
 IC %>% 
