@@ -216,17 +216,6 @@ DataSetup <- function(v,n,pm, bs, type, thresh, maxIter, nRandStarts = 1){
 
 RegSpectralClust <-  function(G, k, regularize = TRUE ){
   
-  
-## Sample graph for debugging
-  # k =3
-  # G <- sample_sbm(n = 90, 
-  #                 pref.matrix=matrix(c(0.8,0.01,0.02,0.01,0.7,0.01,0.02,0.01,0.8),
-  #                                    nrow = 3),
-  #                 block.sizes=90*c(2/5,2/5,1/5), 
-  #                 directed = FALSE)
-  # plot(G)
-  # 
-  
 # Step 1:
   
 ## Find Adjacency matrix for the given graph.
@@ -270,7 +259,7 @@ RegSpectralClust <-  function(G, k, regularize = TRUE ){
 }
 
 
-CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "assortative", kmeansIter = 100){
+CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "assortative", kmeansIter = 100, retAlpha =FALSE){
   
   # Step 1:
   
@@ -332,6 +321,9 @@ CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "asso
   
   op <- kmeans(Xt,k,iter.max = kmeansIter)
   
+  if(retAlpha == TRUE){
+    return(list(op$cluster, alpha))
+  }
   return(op$cluster)
 }
 
@@ -656,7 +648,10 @@ IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
     com <- CovAssistedSpecClust(G = g, Xdum, 3,
                                 Regularize =TRUE, alpha =NA, 
                                 type ="assortative",
-                                kmeansIter = 1000)
+                                kmeansIter = 1000,
+                                retAlpha = TRUE)
+    alpha <- com [[2]]
+    com <- com[[1]]
     V(g)$com <- com
     
     ## Just use neighbors within cluster for imputation. If there is a tie deal with ties randomly.
@@ -703,7 +698,7 @@ IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
   op$covARI <- covARI[,1]
   op$iteration <- as.numeric(op$iteration)
   op$MissingId <- as.numeric(op$MissingId)
-  
+  op$alpha <- alpha
   #op <- op[with(op,order(op[,2],op[,1])),]
   return(list(op, g))
 }
