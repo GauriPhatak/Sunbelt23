@@ -1,4 +1,4 @@
-source("HelperFuncs.R")
+source("/nfs/stak/users/phatakg/ResearchCode/Sunbelt23/Code/HelperFuncs.R")
 
 
 ## Number of clusters
@@ -57,7 +57,7 @@ combi <- combi[with(combi, order(cat1, cat2)),]
 pCat <- data.frame(cat =cat,clust = rep(c("1","2","3"), each = length(cat)), pCat  = unlist(pC)) 
 pCat <- pCat[with(pCat, order(clust, cat)),]
 
-superiter <- 500
+superiter <- 1000
 pctMsng <- c(5,7,10,20,30,40,50)
 op <- data.frame(matrix(nrow=0,ncol = 9))
 
@@ -193,6 +193,11 @@ for(val in 1:superiter){
                       control=control.simulate( MCMC.burnin=10000, MCMC.interval=1000))
   
 }
+
+
+saveRDS(list(op,comDetVals,CovARI,edgeDF,degVal,IC),"Output.rds")
+
+
 
 #summary(fit_C_B)
 #summary(fit_C)

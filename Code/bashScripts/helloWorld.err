@@ -1,0 +1,548 @@
+
+Attaching package: ‘igraph’
+
+The following objects are masked from ‘package:stats’:
+
+    decompose, spectrum
+
+The following object is masked from ‘package:base’:
+
+    union
+
+── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+✔ dplyr     1.1.4     ✔ readr     2.1.5
+✔ forcats   1.0.0     ✔ stringr   1.5.1
+✔ ggplot2   3.5.0     ✔ tibble    3.2.1
+✔ lubridate 1.9.3     ✔ tidyr     1.3.1
+✔ purrr     1.0.2     
+── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+✖ lubridate::%--%()      masks igraph::%--%()
+✖ dplyr::as_data_frame() masks tibble::as_data_frame(), igraph::as_data_frame()
+✖ purrr::compose()       masks igraph::compose()
+✖ tidyr::crossing()      masks igraph::crossing()
+✖ dplyr::filter()        masks stats::filter()
+✖ dplyr::lag()           masks stats::lag()
+✖ purrr::simplify()      masks igraph::simplify()
+ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
+Loading required package: network
+
+‘network’ 1.18.2 (2023-12-04), part of the Statnet Project
+* ‘news(package="network")’ for changes since last version
+* ‘citation("network")’ for citation information
+* ‘https://statnet.org’ for help, support, and other information
+
+
+Attaching package: ‘network’
+
+The following objects are masked from ‘package:igraph’:
+
+    %c%, %s%, add.edges, add.vertices, delete.edges, delete.vertices,
+    get.edge.attribute, get.edges, get.vertex.attribute, is.bipartite,
+    is.directed, list.edge.attributes, list.vertex.attributes,
+    set.edge.attribute, set.vertex.attribute
+
+
+Attaching package: ‘data.table’
+
+The following objects are masked from ‘package:lubridate’:
+
+    hour, isoweek, mday, minute, month, quarter, second, wday, week,
+    yday, year
+
+The following objects are masked from ‘package:dplyr’:
+
+    between, first, last
+
+The following object is masked from ‘package:purrr’:
+
+    transpose
+
+Loading required package: Matrix
+
+Attaching package: ‘Matrix’
+
+The following objects are masked from ‘package:tidyr’:
+
+    expand, pack, unpack
+
+
+Attaching package: ‘expm’
+
+The following object is masked from ‘package:Matrix’:
+
+    expm
+
+
+‘ergm’ 4.6.0 (2023-12-17), part of the Statnet Project
+* ‘news(package="ergm")’ for changes since last version
+* ‘citation("ergm")’ for citation information
+* ‘https://statnet.org’ for help, support, and other information
+
+‘ergm’ 4 is a major update that introduces some backwards-incompatible
+changes. Please type ‘news(package="ergm")’ for a list of major
+changes.
+
+
+Attaching package: ‘fs’
+
+The following object is masked from ‘package:igraph’:
+
+    path
+
+Loading required package: lattice
+
+Attaching package: ‘caret’
+
+The following object is masked from ‘package:purrr’:
+
+    lift
+
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.ROTK.ROTK’ and ‘mix.LOTR.ROTK.TT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.ROTK.ROTK’ and ‘mix.LOTR.ROTK.TT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.Hob.ROTK’ and ‘mix.LOTR.UT.UT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.FoG.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.ROTK.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.CoH.FoG’ and ‘mix.LOTR.FOTR.Sil’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.FoG.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.ROTK.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.CoH.FoG’ and ‘mix.LOTR.FOTR.Sil’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.FoG.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.ROTK.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.UT.UT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.Cluster.2.3, mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.BL.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.Hob.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.Sil.TT, mix.LOTR.TT.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.Hob.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.CoH.FoG’, ‘mix.LOTR.FoG.FoG’, and ‘mix.LOTR.Hob.ROTK’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.Cluster.2.3, mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.BL.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.Hob.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.Sil.TT, mix.LOTR.TT.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.Hob.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.CoH.FoG’, ‘mix.LOTR.FoG.FoG’, and ‘mix.LOTR.Hob.ROTK’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.Cluster.2.3 are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.BL.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.Hob.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.Sil.TT, mix.LOTR.TT.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.Hob.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.Hob.ROTK’, ‘mix.LOTR.BL.Sil’, and ‘mix.LOTR.UT.UT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.Cluster.1.3, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.BL.BL’, ‘mix.LOTR.FoG.FoG’, ‘mix.LOTR.ROTK.ROTK’, and ‘mix.LOTR.Sil.Sil’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.Cluster.1.3, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.BL.BL’, ‘mix.LOTR.FoG.FoG’, ‘mix.LOTR.ROTK.ROTK’, and ‘mix.LOTR.Sil.Sil’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.Cluster.1.3 are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.UT.UT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.BL.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.Hob.TT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.Hob.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.BL.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.Hob.TT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.Hob.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.BL.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.Hob.TT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.Hob.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.CoH.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.ROTK.TT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.FOTR.Sil’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.CoH.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.ROTK.TT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.FOTR.Sil’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.CoH.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.ROTK.TT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.UT.UT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.Cluster.2.3, mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.Hob.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FOTR.UT, mix.LOTR.Hob.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.BL.BL’, ‘mix.LOTR.ROTK.ROTK’, and ‘mix.LOTR.ROTK.TT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.Cluster.2.3, mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.Hob.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FOTR.UT, mix.LOTR.Hob.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.BL.BL’, ‘mix.LOTR.ROTK.ROTK’, and ‘mix.LOTR.ROTK.TT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.Cluster.2.3 are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.Hob.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FOTR.UT, mix.LOTR.Hob.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.FoG.ROTK’, ‘mix.LOTR.FoG.UT’, and ‘mix.LOTR.UT.UT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.FOTR.FOTR, mix.LOTR.BL.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.CoH.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.BL.BL’ and ‘mix.LOTR.CoH.FoG’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.FOTR.FOTR, mix.LOTR.BL.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.CoH.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.BL.BL’ and ‘mix.LOTR.CoH.FoG’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.FOTR.FOTR, mix.LOTR.BL.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.CoH.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.UT.UT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.CoH.CoH, mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.CoH.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.CoH.FoG’ and ‘mix.LOTR.FoG.Sil’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.CoH.CoH, mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.CoH.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.CoH.FoG’ and ‘mix.LOTR.FoG.Sil’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.CoH.CoH, mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.CoH.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.Hob.ROTK’, ‘mix.LOTR.FoG.UT’, and ‘mix.LOTR.UT.UT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.BL.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.BL.BL’ and ‘mix.LOTR.CoH.FoG’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.BL.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.BL.BL’, ‘mix.LOTR.CoH.FoG’, and ‘mix.LOTR.CoH.ROTK’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.BL.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.Hob.ROTK’ and ‘mix.LOTR.UT.UT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.Cluster.2.3, mix.LOTR.BL.CoH, mix.LOTR.BL.FoG, mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.Hob.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.CoH.FoG’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.Cluster.2.3, mix.LOTR.BL.CoH, mix.LOTR.BL.FoG, mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.Hob.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.CoH.FoG’ and ‘mix.LOTR.FoG.FoG’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.Cluster.2.3 are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.CoH, mix.LOTR.BL.FoG, mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.Hob.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.FOTR.TT’ and ‘mix.LOTR.UT.UT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.FoG.Hob, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.Sil.TT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.FoG.Hob, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.Sil.TT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.FoG.Hob, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.FOTR.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.Sil.TT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.Hob.ROTK’ and ‘mix.LOTR.UT.UT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.CoH.FoG, mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.Sil.TT, mix.LOTR.CoH.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.FoG.FoG’ and ‘mix.LOTR.Sil.Sil’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.CoH.FoG, mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.Sil.TT, mix.LOTR.CoH.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.FoG.FoG’ and ‘mix.LOTR.Sil.Sil’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.CoH.FoG, mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.CoH.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.Sil.TT, mix.LOTR.CoH.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.FoG.UT’ and ‘mix.LOTR.UT.UT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.Hob.Sil, mix.LOTR.BL.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.BL.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.BL.BL’ and ‘mix.LOTR.ROTK.ROTK’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.Hob.Sil, mix.LOTR.BL.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.BL.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.BL.BL’ and ‘mix.LOTR.ROTK.ROTK’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.BL.FOTR, mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.FOTR.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.BL.Sil, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.Hob.Sil, mix.LOTR.BL.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.ROTK.TT, mix.LOTR.BL.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, and mix.LOTR.ROTK.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.UT.UT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.CoH.CoH’, ‘mix.LOTR.CoH.FoG’, and ‘mix.LOTR.ROTK.ROTK’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.CoH.CoH’, ‘mix.LOTR.CoH.FoG’, and ‘mix.LOTR.ROTK.ROTK’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Evaluating log-likelihood at the estimate. 
+Observed statistic(s) mix.LOTR.CoH.FOTR, mix.LOTR.FoG.FOTR, mix.LOTR.BL.Hob, mix.LOTR.CoH.Hob, mix.LOTR.FoG.Hob, mix.LOTR.BL.ROTK, mix.LOTR.CoH.ROTK, mix.LOTR.FoG.ROTK, mix.LOTR.Hob.ROTK, mix.LOTR.CoH.Sil, mix.LOTR.FoG.Sil, mix.LOTR.FOTR.Sil, mix.LOTR.ROTK.Sil, mix.LOTR.BL.TT, mix.LOTR.FoG.TT, mix.LOTR.Hob.TT, mix.LOTR.Sil.TT, mix.LOTR.BL.UT, mix.LOTR.CoH.UT, mix.LOTR.FoG.UT, mix.LOTR.FOTR.UT, mix.LOTR.ROTK.UT, and mix.LOTR.TT.UT are at their smallest attainable values. Their coefficients will be fixed at -Inf.
+Starting maximum pseudolikelihood estimation (MPLE):
+Obtaining the responsible dyads.
+Evaluating the predictor and response matrix.
+Maximizing the pseudolikelihood.
+Finished MPLE.
+Warning: Model statistics ‘mix.LOTR.UT.UT’ are not varying. This may indicate that the observed data occupies an extreme point in the sample space or that the estimation has reached a dead-end configuration.
+Evaluating log-likelihood at the estimate. 
