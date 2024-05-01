@@ -668,7 +668,7 @@ IterativeImputeQual <- function(g.sim,N,coms,niter, k,covMsng, Midx, impType = "
   }
   ## assigning random communitites to begin
   V(g)$com <- sample(1:k, size = N, replace = TRUE)
-  prevComLst <- coms$origmemCov
+  prevComLst <- V(g)$com#coms$origmemCov
 
   gOrig<- g
 
@@ -777,11 +777,7 @@ IterativeImputeQual <- function(g.sim,N,coms,niter, k,covMsng, Midx, impType = "
         prevComLst <-  V(g)$com
         }
 
-        if(impT == "SimulRegression"){
-        ## Using quantitative value and qualitative value as response alternatively.
-        ## Using cluster assignment and the covariates alternatively as explanatory variables.
-        ## Goal is to impute the continuous variable and categorical variable alternatively.
-        }
+        
         v <- mclust::adjustedRandIndex(vertex_attr(g, name = covMsng$name[j],
                                                   index = Midx[[j]]),
                                       vertex_attr(g.sim, name = covMsng$name[j],
@@ -821,7 +817,7 @@ IterativeImputeCont <- function(g.sim,N,coms,niter, k,covMsng, Midx, impType = "
   #}
   ## assigning random communitites to begin
   V(g)$com <- sample(1:k, size = N, replace = TRUE)
-  prevComLst <- coms$origmemCov
+  prevComLst <- V(g)$com#coms$origmemCov
 
   gOrig<- g
 
@@ -967,8 +963,8 @@ IterativeImputeCont <- function(g.sim,N,coms,niter, k,covMsng, Midx, impType = "
 IterativeImputeSimul <- function(g.sim,N,coms,niter, k, MidxCat, MidxCon, impType = "Simul"){
   g <- g.sim
   vtxat <- as.data.frame(vertex.attributes(g))
-  print("first print")
-  print(MidxCon)
+  #print("first print")
+  #print(MidxCon)
   ## start with randomly assigned covariate values
   ## setting random initial continuous values to vertices 
   rep <- as.numeric(unlist(sample(vtxat$Continuous,
@@ -979,35 +975,27 @@ IterativeImputeSimul <- function(g.sim,N,coms,niter, k, MidxCat, MidxCon, impTyp
                        index = as.numeric(MidxCon), 
                        value= rep)
   ##Setting random initial values for Categorical variable
-  print("2nd print")
+  #print("2nd print")
   g <- set_vertex_attr(g, 
                        "Categories", 
                        index = c(MidxCat), 
                        sample(unique(vtxat$Categories),
                               size  = length(MidxCat),
                               replace = TRUE))
+
   ## assigning random communitites to begin
   V(g)$com <- sample(1:k, size = N, replace = TRUE)
-  prevComLst <- coms$origmemCov
-
-  gOrig<- g
+  prevComLst <- V(g)$com#coms$origmemCov
 
   op <- matrix(nrow=0,ncol = 12)
   covARI <- data.frame(matrix(nrow = 0,ncol =2))
-
-  ##Assigning random communitites to begin
-  V(g)$com <- sample(1:k, size = N, replace = TRUE)
-  prevComLst <- coms$origmemCov
-
   gOrig<- g
-
-  op <- matrix(nrow=0,ncol = 12)
   #covARI <- data.frame(matrix(nrow = 0,ncol =2))
   for(impT in impType){
     g <- gOrig
     for (i in 1:niter){
     ## Run community detection 
-      X <- as.matrix(vertex_attr(g, "Categories"))#as.matrix(V(g)$LOTR)
+      X <- as.matrix(vertex_attr(g, "Categories"))
       Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ),newdata <- X)))
       Xdum <- cbind(Xdum, V(g)$Continuous)
       ## USe the eigen values from known network only to find alpha.
@@ -1017,12 +1005,10 @@ IterativeImputeSimul <- function(g.sim,N,coms,niter, k, MidxCat, MidxCon, impTyp
                                   kmeansIter = 1000,
                                   retAlpha = TRUE)
       alpha <- com [[2]]
-      #print(paste0("AlphaVal:", alpha))
       com <- com[[1]]
       V(g)$com <- com
-     ## Just use neighbors within cluster for imputation. If there is a tie deal with ties randomly.
-        oldCov <- c(vertex_attr(g, name = "Continuous"),
-                    vertex_attr(g, name = "Categories"))
+        oldCov <- c(vertex_attr(g, name = "Continuous",index = unlist(MidxCon)),
+                    vertex_attr(g, name = "Categories",index = unlist(MidxCat)))
         if(impT == "MeanMode"){
           
         }
@@ -1035,11 +1021,10 @@ IterativeImputeSimul <- function(g.sim,N,coms,niter, k, MidxCat, MidxCon, impTyp
           dat$cont <- as.numeric(dat$cont)
           topred <- dat[MidxCon,]
           totrain <- dat[-c(MidxCon),]
-          fit_quant <- lm(cont ~., data=totrain)
+          fit <- lm(cont ~., data=totrain)
 
           ## Predict the values of missing continuous data.
-          pred <- predict(fit_quant, newdata = topred[, -1])
-          print("third print")
+          pred <- predict(fit, newdata = topred[, -1])
           g <- set_vertex_attr(g, "Continuous", 
                                 index = MidxCon, 
                                 as.numeric(unlist(pred)))
@@ -1051,17 +1036,16 @@ IterativeImputeSimul <- function(g.sim,N,coms,niter, k, MidxCat, MidxCon, impTyp
           dat$cont <- as.numeric(dat$cont)
           topred <- dat[MidxCat,]
           totrain <- dat[-c(MidxCat),]
-          fit_quant <- multinom(cat ~., data=totrain)
+          fit <- multinom(cat ~., data=totrain)
 
           ## Predict the values of missing categorical variable.
-          pred <- predict(fit_quant, newdata = topred[, -1], type ="class")
-          print("4th print")
+          pred <- predict(fit, newdata = topred[, -1], type ="class")
           g <- set_vertex_attr(g, "Categories", 
                                index = MidxCat, 
                                as.character(unlist(pred)))
 
-        ## check if all the neighbours for each missing node are in the same community
-        Midx <- c(MidxCon, MidxCat)
+          ## check if all the neighbours for each missing node are in the same community
+          Midx <- c(MidxCon, MidxCat)
           status <- rep(NA, length(Midx))
           comStat <- 1
           for(idx in Midx){
@@ -1075,7 +1059,7 @@ IterativeImputeSimul <- function(g.sim,N,coms,niter, k, MidxCat, MidxCon, impTyp
                                               index = unlist(MidxCon)),
                                     vertex_attr(g, name = "Categories",
                                               index = unlist(MidxCat))),
-                                  oldCov[Midx],
+                                  oldCov,
                                   c(vertex_attr(g.sim, name = "Continuous",
                                               index = unlist(MidxCon)),
                                     vertex_attr(g.sim, name = "Categories",
@@ -1089,15 +1073,14 @@ IterativeImputeSimul <- function(g.sim,N,coms,niter, k, MidxCat, MidxCon, impTyp
                                   alpha,
                                   impT))
          prevComLst <-  V(g)$com
-
         }
         vcat <- mclust::adjustedRandIndex(vertex_attr(g, name = "Categories",
                                                   index = MidxCat),
-                                       vertex_attr(g.sim, name = "Categories",
+                                          vertex_attr(g.sim, name = "Categories",
                                                   index = MidxCat))
         vcon <- mclust::adjustedRandIndex(vertex_attr(g, name = "Continuous",
                                                   index = MidxCon),
-                                       vertex_attr(g.sim, name = "Continuous",
+                                          vertex_attr(g.sim, name = "Continuous",
                                                   index = MidxCon))
         covARI <- rbind(covARI,
                         c(rep(vcon ,times = length(MidxCon)),

@@ -3,15 +3,97 @@ source("/nfs/stak/users/phatakg/ResearchCode/Sunbelt23/Code/HelperFuncs.R")
 
 ## Number of clusters
 k <- 3
-
-## Probability of a node belonging to a cluster. This defines the size of the clusters.
-p = c(0.3,0.3,0.3)
-
 ## Define the number of nodes 
 N <- 100
+simvec <- c(2,5)#c(1,2,3,4,5,6)
 
+for(simVal in simvec){
+
+  sim =simVal
+
+############ Simulation type 1 equal cluster sizes, high probability of edge connection wihtin clusterand book group ################# 
+if(sim ==1){
+## Probability of a node belonging to a cluster. This defines the size of the clusters.
+p = c(0.3,0.3,0.3)
 ## Define the probabilty of connection i.e. edge between nodes belonging to different/same cluster.
-B = c(0.2,0.05,0.2,0.05,0.05,0.2)
+B = c(0.5,0.05,0.5,0.05,0.05,0.5)
+## Assigning probability of a book from a particular cluster being assigned to the node. 
+pC <- list(c(rep(0.7,3),rep(0.2,6)), # Cluster 1
+           c(rep(0.2,3),rep(0.7, 3),rep(0.2,3)), # Cluster 2
+           c(rep(0.2,6),rep(0.7,3))) # Cluster 3
+## Probability of connecting based on book assignment
+BkProb <- c(0.5,0.2,0.1)
+}
+
+############ Simulation type 2 equal cluster sizes, lower probability of edge connection within cluster and higher within book group ################# 
+if(sim ==2){
+## Probability of a node belonging to a cluster. This defines the size of the clusters.
+p = c(0.3,0.3,0.3)
+## Define the probabilty of connection i.e. edge between nodes belonging to different/same cluster.
+B = c(0.1,0.05,0.1,0.05,0.05,0.1)
+## Assigning probability of a book from a particular cluster being assigned to the node. 
+pC <- list(c(rep(0.7,3),rep(0.2,6)), # Cluster 1
+           c(rep(0.2,3),rep(0.7, 3),rep(0.2,3)), # Cluster 2
+           c(rep(0.2,6),rep(0.7,3))) # Cluster 3
+## Probability of connecting based on book assignment
+BkProb <- c(0.5,0.2,0.1)
+}
+
+############ Simulation type 3 equal cluster sizes, lower probability of edge connection within cluster and lower within book group ################# 
+if(sim ==3){
+## Probability of a node belonging to a cluster. This defines the size of the clusters.
+p = c(0.3,0.3,0.3)
+## Define the probabilty of connection i.e. edge between nodes belonging to different/same cluster.
+B = c(0.1,0.05,0.1,0.05,0.05,0.1)
+## Assigning probability of a book from a particular cluster being assigned to the node. 
+pC <- list(c(rep(0.7,3),rep(0.2,6)), # Cluster 1
+           c(rep(0.2,3),rep(0.7, 3),rep(0.2,3)), # Cluster 2
+           c(rep(0.2,6),rep(0.7,3))) # Cluster 3
+## Probability of connecting based on book assignment
+BkProb <- c(0.5,0.1,0.05)
+}
+
+############ Simulation type 4 unequal cluster sizes, high probability of edge connection wihtin clusterand book group ################# 
+if(sim ==4){
+## Probability of a node belonging to a cluster. This defines the size of the clusters.
+p = c(0.6,0.2,0.2)
+## Define the probabilty of connection i.e. edge between nodes belonging to different/same cluster.
+B = c(0.5,0.05,0.5,0.05,0.05,0.5)
+## Assigning probability of a book from a particular cluster being assigned to the node. 
+pC <- list(c(rep(0.7,3),rep(0.2,6)), # Cluster 1
+           c(rep(0.2,3),rep(0.7, 3),rep(0.2,3)), # Cluster 2
+           c(rep(0.2,6),rep(0.7,3))) # Cluster 3
+## Probability of connecting based on book assignment
+BkProb <- c(0.5,0.2,0.1)
+}
+
+############ Simulation type 5 unequal cluster sizes, lower probability of edge connection within cluster and higher within book group ################# 
+if(sim ==5){
+## Probability of a node belonging to a cluster. This defines the size of the clusters.
+p = c(0.6,0.2,0.2)
+## Define the probabilty of connection i.e. edge between nodes belonging to different/same cluster.
+B = c(0.1,0.05,0.1,0.05,0.05,0.1)
+## Assigning probability of a book from a particular cluster being assigned to the node. 
+pC <- list(c(rep(0.7,3),rep(0.2,6)), # Cluster 1
+           c(rep(0.2,3),rep(0.7, 3),rep(0.2,3)), # Cluster 2
+           c(rep(0.2,6),rep(0.7,3))) # Cluster 3
+## Probability of connecting based on book assignment
+BkProb <- c(0.5,0.2,0.1)
+}
+
+############ Simulation type 6 unequal cluster sizes, lower probability of edge connection within cluster and lower within book group ################# 
+if(sim ==6){
+## Probability of a node belonging to a cluster. This defines the size of the clusters.
+p = c(0.6,0.2,0.2)
+## Define the probabilty of connection i.e. edge between nodes belonging to different/same cluster.
+B = c(0.1,0.05,0.1,0.05,0.05,0.1)
+## Assigning probability of a book from a particular cluster being assigned to the node. 
+pC <- list(c(rep(0.7,3),rep(0.2,6)), # Cluster 1
+           c(rep(0.2,3),rep(0.7, 3),rep(0.2,3)), # Cluster 2
+           c(rep(0.2,6),rep(0.7,3))) # Cluster 3
+## Probability of connecting based on book assignment
+BkProb <- c(0.5,0.1,0.05)
+}
 
 ## Setting up a category for LOTR book universe
 cat <- c("FOTR","TT","ROTK","Hob","Sil", "UT","CoH","BL","FoG")
@@ -22,10 +104,7 @@ catcol  <- c("#B22222","#FF7F50","#FF8C00",
 ## Assigning book to color
 col <- data.frame(as.matrix(cbind(catcol, cat)))
 
-## Assigning probability of a book from a particular cluster being assigned to the node. 
-pC <- list(c(rep(0.5,3),rep(0.02,6)), # Cluster 1
-           c(rep(0.02,3),rep(0.5, 3),rep(0.02,3)), # Cluster 2
-           c(rep(0.02,6),rep(0.5,3))) # Cluster 3
+
 
 ## Creating book group. Books that have higer probability of connection.
 c1 <- c("FOTR|TT|ROTK")
@@ -35,22 +114,23 @@ clusts <- c(c1,c2,c3)
 
 ## Here we assign probability of a connection between two nodes with particular book values. Higher probability of nodes within the same group. Lower for intergroup connection. 
 ## Define dataframe for mapping probability to book combinations
+origcat <- cat
 cat <- sort(cat, decreasing = TRUE)
 combi <- data.frame(rbind(t(combn(cat,2, simplify = TRUE)), cbind(cat,cat)))
 combi$prob <- 0
-for(i in 1:length(combi$cat)){
-  if( which(str_detect(combi[i,1], clusts) == TRUE,arr.ind = TRUE) == which(str_detect(combi[i,2], clusts) == TRUE,arr.ind = TRUE)){
-    if(combi[i,1] == combi[i,2]){
-      combi$prob[i] = 0.3
+  for(i in 1:length(combi$cat)){
+    if( which(str_detect(combi[i,1], clusts) == TRUE,arr.ind = TRUE) == which(str_detect(combi[i,2], clusts) == TRUE,arr.ind = TRUE)){
+      if(combi[i,1] == combi[i,2]){
+        combi$prob[i] = BkProb[1]
+      }
+      else{
+        combi$prob[i] = BkProb[2]
+      }
     }
     else{
-      combi$prob[i] = 0.15
+      combi$prob[i] = BkProb[3]
     }
   }
-  else{
-    combi$prob[i] = 0.02
-  }
-}
 colnames(combi) <- c("cat1","cat2","prob")
 combi <- combi[with(combi, order(cat1, cat2)),]
 
@@ -59,20 +139,25 @@ pCat <- pCat[with(pCat, order(clust, cat)),]
 
 superiter <- 1000
 pctMsng <- c(5,7,10,20,30,40,50)
-op <- data.frame(matrix(nrow=0,ncol = 9))
+op <- data.frame(matrix(nrow=0,ncol = 11))
 
 opLD <- data.frame(matrix(nrow =0 , ncol = 15))
 comDetVals <- data.frame(matrix(nrow = 0, ncol = 5))
 CovARI <- data.frame(matrix(nrow = 0, ncol = 3))
-edgeDF <- data.frame(matrix(nrow= 0 ,ncol = 5))
-degVal <- data.frame(matrix(nrow = 0, ncol = 6))
+edgeDF <- data.frame(matrix(nrow= 0 ,ncol = 6))
+degVal <- data.frame(matrix(nrow = 0, ncol = 7))
 IC <- data.frame(matrix(nrow = 0, ncol = 7))
-
+clust9 <- data.frame(matrix(nrow = 0, ncol = 3))
+#NWchar <- data.frame(matrix(nrow = 0, ncol = 3))
 for(val in 1:superiter){
-  print(val)
+  print(paste0(sim,"-",val))
   ## Create random assignments for assigning clusters with probability vector p
-  C = sample(1:k,N,replace = TRUE, prob = p)
-  
+  C <- 0
+  while(length(table(C)) < k){
+      C = sample(1:k,N,replace = TRUE, prob = p)
+      print(table(C))
+  }
+
   ## Create an empty network i.e. no cluster assignments or category assignments or edges
   net <- network(N, directed = FALSE, density= 0 )
   
@@ -83,7 +168,7 @@ for(val in 1:superiter){
   bk <- NA
   for (i in 1:k) {
     #bk <- net %v% "LOTR"
-    bk[which(as.numeric(net %v% 'Cluster') == i)] <- sample(x = cat,
+    bk[which(as.numeric(net %v% 'Cluster') == i)] <- sample(x = origcat,
                                                             size = length(which(as.numeric(net %v% 'Cluster') == i)), 
                                                             prob = pC[[i]],
                                                             replace = TRUE)
@@ -116,23 +201,32 @@ for(val in 1:superiter){
   
   ## This function return a table of number of edges between the different books
   g.sim_C_B <- asIgraph(g.sim_C_B)
-  M <- CntEdges(g.sim_C_B)
-  edgeDF <- rbind(edgeDF,
-                  data.frame(NumEdges = as.numeric(M[!lower.tri(M)][order(row(M)[!lower.tri(row(M))])]),
-                             Cat1 = rep(rownames(M), times = nrow(M))[!lower.tri(M)][order(row(M)[!lower.tri(row(M))])],
-                             Cat2 = rep(rownames(M), each = nrow(M))[!lower.tri(M)][order(row(M)[!lower.tri(row(M))])],
-                             val))
-  
+
+## List all the network characteristics 
+## create a dataframe of all the node characterictics.
+## Cluster assignment, book assignment. Add groupby.
+#nwChardf <- data.frame(clust = V(g.sim_C_B)$Cluster)
+
+  M <- as.data.frame(CntEdges(g.sim_C_B))
+  edgeDF <- rbind(edgeDF,cbind(M[M$Freq !=0,],val))
+  # M <- CntEdges(g.sim_C_B)
+  # edgeDF <- rbind(edgeDF,
+  #                 data.frame(NumEdges = as.numeric(M[!lower.tri(M)][order(row(M)[!lower.tri(row(M))])]),
+  #                            Cat1 = rep(rownames(M), times = nrow(M))[!lower.tri(M)][order(row(M)[!lower.tri(row(M))])],
+  #                            Cat2 = rep(rownames(M), each = nrow(M))[!lower.tri(M)][order(row(M)[!lower.tri(row(M))])],
+  #                            val))
   
   ## This function find the empirical mean and variance of the degrees for different titles.
   degVal <- rbind(degVal,
                   c(data.frame(degree = igraph::degree(g.sim_C_B), 
-                               cat = V(g.sim_C_B)$LOTR) %>%
-                      group_by(cat) %>%
+                               cat = V(g.sim_C_B)$LOTR,
+                               cluster = V(g.sim_C_B)$Cluster) %>%
+                      group_by(cat,cluster) %>%
                       summarise(meanDeg = mean(degree),
                                 min = min(degree),
                                 max = max(degree),
                                 var = var(degree),
+                                count = n(),
                                 val)))
   
   g <- asNetwork(g.sim_C_B)
@@ -160,45 +254,43 @@ for(val in 1:superiter){
                                      retAlpha = TRUE)
   CovARI <- rbind(CovARI, c(mclust::adjustedRandIndex(V(g.sim_C_B)$Cluster, origmemCov[[1]]),
                             origmemCov[[2]]))
-  
-  for(pt in pctMsng){
-    covMsng <- data.frame(name = c("LOTR") ,
-                          p = pt,
-                          cat = I(list(V(g.sim_C_B)$LOTR)))
-    coms <- comdet(g.sim_C_B, V(g.sim_C_B)$LOTR)
-    df <- IterativeImpute(g.sim_C_B, N, coms,val,k,covMsng)
-    #g.imp[[i]] <- df[[2]]
-    
-    ## keeping track of community detection values for percentage missing
-    # comDetVals <- rbind(comDetVals,
-    #                     c(val,pt,round(mclust::adjustedRandIndex(V(g.imp[[i]])$Cluster,V(g.imp[[i]])$com),3), 
-    #                       round(mclust::adjustedRandIndex(V(g.imp[[i]])$Cluster,coms$origmem),3)))
-    # 
-    op <- rbind(op,df[[1]])
-    #i <- i+1
-  }
+  # g.imp <- list()
+  # for(pt in pctMsng){
+  #  covMsng <- data.frame(name = c("LOTR") ,
+  #                        p = pt,
+  #                        cat = I(list(V(g.sim_C_B)$LOTR)))
+  #  coms <- comdet(g.sim_C_B, V(g.sim_C_B)$LOTR)
+  #  df <- IterativeImpute(g.sim_C_B, N, coms,val,k,covMsng)
+  #  g.imp[[i]] <- df[[2]]
+  #   # keeping track of community detection values for percentage missing
+  #  comDetVals <- rbind(comDetVals,
+  #                      c(val,pt,round(mclust::adjustedRandIndex(V(g.imp[[i]])$Cluster,V(g.imp[[i]])$com),3), 
+  #                      round(mclust::adjustedRandIndex(V(g.imp[[i]])$Cluster,coms$origmem),3))
+  #                      )
+  #  op <- rbind(op,cbind(df[[1]], pt))
+  #   i <- i+1
+  # }
   
   
   ## Use the probability of connection values defined earlier for only cluster for fitting the data. 
-  g.sim_C <- simulate(g.sim ~ nodemix("Cluster", levels = TRUE, levels2 = TRUE),
-                      nsim = 1,
-                      coef = prob2logit(c(B)),
-                      control=control.simulate( MCMC.burnin=10000, MCMC.interval=1000))
+  # g.sim_C <- simulate(g.sim ~ nodemix("Cluster", levels = TRUE, levels2 = TRUE),
+  #                     nsim = 1,
+  #                     coef = prob2logit(c(B)),
+  #                     control=control.simulate( MCMC.burnin=10000, MCMC.interval=1000))
   
   
   ## Use the probability of connection values defined earlier for only category for fitting the data. 
-  g.sim_B <- simulate(g.sim ~ nodemix(c("LOTR"), levels=TRUE, levels2 = TRUE),
-                      nsim = 1,
-                      coef = prob2logit(c(combi$prob)),
-                      control=control.simulate( MCMC.burnin=10000, MCMC.interval=1000))
-  
+  # g.sim_B <- simulate(g.sim ~ nodemix(c("LOTR"), levels=TRUE, levels2 = TRUE),
+  #                     nsim = 1,
+  #                     coef = prob2logit(c(combi$prob)),
+  #                     control=control.simulate( MCMC.burnin=10000, MCMC.interval=1000))
+  ## Checking the clusterings for 9 communities.
+  clust9 <- rbind(clust9 , cbind(RegSpectralClust(g.sim_C_B,9), V(g.sim_C_B)$Cluster, rep(val, N)))
 }
 
-
-saveRDS(list(op,comDetVals,CovARI,edgeDF,degVal,IC),"Output.rds")
-
-
-
+#colnames(edgeDF) <- c("Cat1","Cat2","NumEdges","val")
+saveRDS(list(op,comDetVals,CovARI,edgeDF,degVal,IC),paste0("OutputWO",as.character(sim),".rds"))
+}
 #summary(fit_C_B)
 #summary(fit_C)
 #summary(fit_B)

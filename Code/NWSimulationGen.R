@@ -214,7 +214,7 @@ ends <- as_edgelist(g)
         Midx <- a[-car]
         coms <- comdet(g.sim_C_B, V(g.sim_C_B)$Categories, as.numeric(V(g.sim_C_B)$Continuous))
         imptype = c("Mean","QuantRegression")
-        df <- IterativeImputeCont(g.sim_C_B, N, coms,niter,k,MidxCat,MidxCon, imptype)
+        df <- IterativeImputeCont(g.sim_C_B, N, coms,niter,k,covMsng,Midx, imptype)
         g.imp[[i]] <- df[[2]] ###******MAYBE NEED TO ADD REGRESSION OUTPUT AS WELL******###
         # keeping track of community detection values for percentage missing
         comDetVals <- rbind(comDetVals,
