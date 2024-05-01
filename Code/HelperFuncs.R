@@ -14,6 +14,7 @@ library(intergraph)
 #library(tidygraph)
 #library(ggraph)
 #library(statnet)
+library(nnet)
 library(caret)
 #library(ggnet)
 library(stringr)
@@ -258,6 +259,29 @@ RegSpectralClust <-  function(G, k, regularize = TRUE ){
   
 }
 
+findAlpha <- function(G, X, Regularize=TRUE){
+## Find Adjacency matrix for the given graph.
+  A <- as.matrix(as_adjacency_matrix(G))
+  
+  ## find the Degree Diagonal matrix. regularized diagonal matrix here tau  =  average node degree.
+  I <- diag(x = 1, nrow = length(V(G)), ncol = length(V(G)))
+  tau = mean(igraph::degree(G))
+  if(Regularize == FALSE){tau = 0}
+  Dt <- diag(igraph::degree(G)+tau, nrow = length(V(G)))
+  
+  ## find the -1/2 root of Matrix Dt
+  
+  ## Calculate the Regularized graph laplacian
+  Lt <-  solve(sqrtm(Dt)) %*% A %*% solve(sqrtm(Dt))
+  
+  maxs <- apply(X, 2, max)
+  mins <- apply(X, 2, min)
+  X <- scale(X, center = mins, scale = maxs - mins)
+  
+  ## Choosing alpha based on leading eigen value of both L_t %*% L_t and X %*% X_t
+  return(eigen(Lt %*% Lt)$values[1]/ eigen(X %*% t(X))$values[1])
+
+}
 
 CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "assortative", kmeansIter = 100, retAlpha =FALSE){
   
@@ -319,7 +343,7 @@ CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "asso
   # Step 4 
   #Run kK- means algorithm on the subset of the eigen vector matrix of size nXk
   
-  op <- kmeans(Xt,k,iter.max = kmeansIter)
+  op <- kmeans(Xt,k,iter.max = kmeansIter, nstart = 10)
   
   if(retAlpha == TRUE){
     return(list(op$cluster, alpha))
@@ -587,7 +611,7 @@ AssgnCat <- function(g.sim, catName, pCat, cat,k){
   return(g.sim)
 }
 
-comdet <- function(g.sim, cat){
+comdet <- function(g.sim, cat, cont = NULL){
   # running regularized spectral clustering on the original network without any covariate information.
   origmem <- RegSpectralClust(g.sim, 3,regularize = TRUE)
   
@@ -595,6 +619,9 @@ comdet <- function(g.sim, cat){
   ## Since we are using categorical data we have to perform one hot encoding.
   X <- as.matrix(cat)
   Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ), newdata <- X)))
+  if(length(cont) > 0){
+    Xdum <- cbind(Xdum, cont)
+  }
   origmemCov <- CovAssistedSpecClust(G = g.sim, Xdum, 3,
                                      Regularize =TRUE, alpha =NA,
                                      type ="non-assortative")
@@ -617,15 +644,20 @@ Mymode <- function(codes){
   names(which.max(table(codes)))
 }
 
+Mymean <- function(contVar){
+  return(mean(contVar,na.rm =TRUE ))
+}
 
-IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
-  ## Based on notes from 8th
+standardize <- function(x){return((x-min(x))/(max(x)-min(x)))}
+
+IterativeImputeQual <- function(g.sim,N,coms,niter, k,covMsng, Midx, impType = "Mode"){
+  #print(covMsng$name[[1]])
+     ## Based on notes from 8th
+  j <- 1
   g <- g.sim
   vtxat <- as.data.frame(vertex.attributes(g))
   ## start with randomly assigned covariate values
-  Midx <- list()#matrix(nrow = dim(covMsng)[1],ncol =1)
   for (i in 1:dim(covMsng)[1]) {
-    Midx[[i]] <- sample(1:N,ceiling(covMsng$p[i] *N/100))
     ## setting random initial values to vertices 
     g <- set_vertex_attr(g, 
                          covMsng$name[i], 
@@ -634,72 +666,454 @@ IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
                                 size  = length(Midx[[i]]),
                                 replace = TRUE))
   }
-  
   ## assigning random communitites to begin
   V(g)$com <- sample(1:k, size = N, replace = TRUE)
-  op <- data.frame(matrix(nrow=0,ncol = 10))
-  covARI <- data.frame(matrix(nrow = 0,ncol =1))
   prevComLst <- coms$origmemCov
-  for (i in 1:niter){
-    
+
+  gOrig<- g
+
+  op <- matrix(nrow=0,ncol = 12)#data.frame(matrix(nrow=0,ncol = 12))
+  covARI <- data.frame(matrix(nrow = 0,ncol =2))
+  for(impT in impType){
+    g <- gOrig
+    for (i in 1:niter){
     ## Run community detection 
-    X <- as.matrix(vertex_attr(g, covMsng$name))#as.matrix(V(g)$LOTR)
-    Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ),newdata <- X)))
-    com <- CovAssistedSpecClust(G = g, Xdum, 3,
-                                Regularize =TRUE, alpha =NA, 
-                                type ="assortative",
-                                kmeansIter = 1000,
-                                retAlpha = TRUE)
-    alpha <- com [[2]]
-    com <- com[[1]]
-    V(g)$com <- com
+      X <- as.matrix(vertex_attr(g, covMsng$name))#as.matrix(V(g)$LOTR)
+      Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ),newdata <- X)))
+      #if(impT == "MultRegression"){
+      Xdum <- cbind(Xdum, as.numeric(V(g)$Continuous))
+      #}
+
+      ## USe the eigen values from known network only to find alpha.
+      #print(Midx[[1]])
+      #alphaComp <- findAlpha(g, Xdum[!(1:length(vtxat[,1])) %in% Midx[[1]],], Regularize =TRUE)
+      com <- CovAssistedSpecClust(G = g, Xdum, 3,
+                                  Regularize =TRUE, alpha =NA, 
+                                  type ="assortative",
+                                  kmeansIter = 1000,
+                                  retAlpha = TRUE)
+      alpha <- com [[2]]
+      #print(paste0("AlphaVal:", alpha))
+      com <- com[[1]]
+      V(g)$com <- com
     
-    ## Just use neighbors within cluster for imputation. If there is a tie deal with ties randomly.
-    for(j in 1:length(Midx)){
-      oldCov <- vertex_attr(g, name = covMsng$name[j])
-      for (idx in Midx[[j]]) {
-        b <- as.data.frame(vertex.attributes(g, index = neighbors(g,idx)))
-        ## Number of neighbours wiht the same community assgnment as the missing node
-        oldcom <- sum(b$com == V(g)$com[idx])/length(b$com)
-        b <- b[b$com == V(g)$com[idx], ]
-        g <- set_vertex_attr(g, covMsng$name[j], 
-                             index = idx, 
-                             Mymode(b[[covMsng$name[j]]]))
-        ## Stopping rule: are all the neighbors in the same community
-        status <- all(vertex_attr(g,index = neighbors(g,idx))$com == V(g)$com[idx])
-        op <- rbind(op, cbind(i, 
-                              idx, 
-                              oldcom,
-                              vertex_attr(g, name = covMsng$name[j],
-                                          index = idx),
-                              oldCov[idx],
-                              vertex_attr(g.sim, name = covMsng$name[j],
-                                          index = idx),
-                              mclust::adjustedRandIndex(coms$origmemCov, 
-                                                        V(g)$com),
-                              mclust::adjustedRandIndex(prevComLst,
-                                                        V(g)$com),
-                              vtxat$Cluster[as.numeric(idx)],
-                              status))
+      ## Just use neighbors within cluster for imputation. If there is a tie deal with ties randomly.
+      #for(j in 1:length(Midx)){
+        oldCov <- vertex_attr(g, name = covMsng$name[j])
+        if(impT == "Mode"){
+          for (idx in Midx[[j]]) {
+
+            b <- as.data.frame(vertex.attributes(g, index = neighbors(g,idx)))
+            ## Number of neighbours with the same community assignment as the missing node
+            oldcom <- sum(b$com == V(g)$com[idx])/length(b$com)
+            b <- b[b$com == V(g)$com[idx], ]
+            g <- set_vertex_attr(g, covMsng$name[j], 
+                                index = idx, 
+                                Mymode(b[[covMsng$name[j]]]))
+                                ## Stopping rule: are all the neighbors in the same community
+            status <- all(vertex_attr(g,index = neighbors(g,idx))$com == V(g)$com[idx])
+            op <- rbind(op, cbind(i, 
+                                  idx, 
+                                  oldcom,
+                                  vertex_attr(g, name = covMsng$name[j],
+                                              index = idx),
+                                  oldCov[idx],
+                                  vertex_attr(g.sim, name = covMsng$name[j],
+                                              index = idx),
+                                  mclust::adjustedRandIndex(coms$origmemCov, 
+                                                            V(g)$com),
+                                  mclust::adjustedRandIndex(prevComLst,
+                                                            V(g)$com),
+                                  vtxat$Cluster[as.numeric(idx)],
+                                  status, 
+                                  alpha,
+                                  impT))
+            prevComLst <-  V(g)$com
+          }
+        }
+        if(impT == "MultRegression"){
+          # Use the multinomial value as response. So categories are the response and continuous variable is the explanatory variable
+          ## Subsetting the index values that are missing
+          ## using both the cluster assignment and the continuous variable in multinomial regression.
+          ## converting the community detection to dummy variables
+          #dat <- as.matrix(as.factor(V(g)$com))
+          #3dat <- as.matrix(data.frame(predict(dummyVars("~.", data = dat ),newdata <- dat)))
+          #colnames(Xdum) <- as.character(1:k)
+          dat <- data.frame(cbind(cat = unlist(as.character(V(g)$Categories)), 
+                                  cont = standardize(vtxat$Continuous), 
+                                  com = as.factor(V(g)$com)))
+          #data.frame(cbind(cat = vtxat$Categories, cont = vtxat$Continuous, Xdum))
+          dat$cont <- as.numeric(dat$cont)
+          topred <- dat[(1:length(vtxat[,1])) %in% Midx[[j]],]
+          totrain <- dat[!(1:length(vtxat[,1])) %in% Midx[[j]],]
+          fit_multi <- multinom(cat ~., data =totrain)
+          predClass <- predict(fit_multi, newdata = topred[, -1], type= "class")
+          g <- set_vertex_attr(g, covMsng$name[j], 
+                                index = unlist(Midx[[j]]), 
+                                unlist(as.character(predClass)))
+          ## check if all the neighbours for each missing node are in the same community
+          status <- rep(NA, length(Midx[[j]]))
+          comStat <- 1
+          for(idx in Midx[[j]]){
+          status[comStat] = all(vertex_attr(g,index = neighbors(g,idx))$com == V(g)$com[idx])
+          comStat <- comStat+1
+          }
+          op <- rbind(op, cbind(i, 
+                                  Midx[[j]], 
+                                  1,
+                                  vertex_attr(g, name = covMsng$name[j],
+                                              index = unlist(Midx[[j]])),
+                                  oldCov[Midx[[j]]],
+                                  vertex_attr(g.sim, name = covMsng$name[j],
+                                              index = unlist(Midx[[j]])),
+                                  mclust::adjustedRandIndex(coms$origmemCov, 
+                                                            V(g)$com),
+                                  mclust::adjustedRandIndex(prevComLst,
+                                                            V(g)$com),
+                                  vtxat$Cluster[as.numeric(Midx[[j]])],
+                                  status,
+                                  alpha,
+                                  impT))
         prevComLst <-  V(g)$com
-      }
-      v <- mclust::adjustedRandIndex(vertex_attr(g, name = covMsng$name[j],
-                                                 index = Midx[[j]]),
-                                     vertex_attr(g.sim, name = covMsng$name[j],
-                                                 index = Midx[[j]]))
-      
-      covARI <- rbind(covARI,cbind(rep(v ,times = length(Midx[[j]]))))
+        }
+
+        if(impT == "SimulRegression"){
+        ## Using quantitative value and qualitative value as response alternatively.
+        ## Using cluster assignment and the covariates alternatively as explanatory variables.
+        ## Goal is to impute the continuous variable and categorical variable alternatively.
+        }
+        v <- mclust::adjustedRandIndex(vertex_attr(g, name = covMsng$name[j],
+                                                  index = Midx[[j]]),
+                                      vertex_attr(g.sim, name = covMsng$name[j],
+                                                  index = Midx[[j]]))
+        covARI <- rbind(covARI,cbind(rep(v ,times = length(Midx[[j]]))))
+      #}
     }
-    
   }
+
+  op <- as.data.frame(op)
   colnames(op) <- c("iteration","MissingId","PropSameComm",
-                    "ImputedLOTR","prevLOTR","AssignedLOTR",
-                    "ARI","PrevARI","Cluster","neighComStat")
+                    "Imputed","prev","Assigned",
+                    "ARI","PrevARI","Cluster","neighComStat","alpha","ImpType")
   op$covARI <- covARI[,1]
   op$iteration <- as.numeric(op$iteration)
   op$MissingId <- as.numeric(op$MissingId)
-  op$alpha <- alpha
-  #op <- op[with(op,order(op[,2],op[,1])),]
+  #op$alpha <- alpha
+  return(list(op, g))
+}
+
+IterativeImputeCont <- function(g.sim,N,coms,niter, k,covMsng, Midx, impType = "Mean"){
+  # j <- 1
+  g <- g.sim
+  vtxat <- as.data.frame(vertex.attributes(g))
+  ## start with randomly assigned covariate values
+  #print("first")
+  rep <- as.numeric(unlist(sample(vtxat$Continuous,#[(1:length(vtxat[,1])) %in% Midx],
+                                    size  = length(Midx),
+                                    replace = TRUE)))
+  #print(unlist(Midx[[1]]))
+  #for (i in 1:dim(covMsng)[1]) {
+    ## setting random initial values to vertices 
+  g <- set_vertex_attr(g, 
+                       covMsng$name[1], 
+                       index = as.numeric(Midx), 
+                       rep)
+  #}
+  ## assigning random communitites to begin
+  V(g)$com <- sample(1:k, size = N, replace = TRUE)
+  prevComLst <- coms$origmemCov
+
+  gOrig<- g
+
+  op <- matrix(nrow=0,ncol = 12)
+  covARI <- data.frame(matrix(nrow = 0,ncol =2))
+  for(impT in impType){
+    #print(impT)
+    g <- gOrig
+    for (i in 1:niter){
+    ## Run community detection 
+      X <- as.matrix(vertex_attr(g, "Categories"))#as.matrix(V(g)$LOTR)
+      Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ),newdata <- X)))
+      #if(impT == "MultRegression"){
+      Xdum <- cbind(Xdum, V(g)$Continuous)
+      #}
+      ## USe the eigen values from known network only to find alpha.
+      #print(Midx[[1]])
+      #alphaComp <- findAlpha(g, Xdum[!(1:length(vtxat[,1])) %in% Midx[[1]],], Regularize =TRUE)
+      #print(Xdum)
+      com <- CovAssistedSpecClust(G = g, Xdum, 3,
+                                  Regularize =TRUE, alpha =NA, 
+                                  type ="assortative",
+                                  kmeansIter = 1000,
+                                  retAlpha = TRUE)
+      alpha <- com [[2]]
+      #print(paste0("AlphaVal:", alpha))
+      com <- com[[1]]
+      V(g)$com <- com
+     ## Just use neighbors within cluster for imputation. If there is a tie deal with ties randomly.
+      #for(j in 1:length(Midx)){
+        #print(length(Midx[[1]]))
+
+        #Midx[[j]] <- as.numeric(Midx[[j]])
+        oldCov <- vertex_attr(g, name = covMsng$name[1])
+        if(impT == "Mean"){
+          #print("mean")
+          for (idx in Midx) {
+
+            b <- as.data.frame(vertex.attributes(g, index = neighbors(g,idx)))
+            ## Number of neighbours with the same community assignment as the missing node
+            oldcom <- sum(b$com == V(g)$com[idx])/length(b$com)
+            #print("new idx")
+            #print(V(g)$com[idx])
+            #print(sum(b$com == V(g)$com[idx]))
+            #print(length(b$com))
+            bnew <- b[b$com == V(g)$com[idx], ]
+            mn <- Mymean(as.numeric(bnew$Continuous))
+            #print(mn)
+            if(sum(b$com == V(g)$com[idx]) == 0){
+              mn <- Mymean(as.numeric(V(g)$Continuous))
+            }
+            #print("2nd")
+            #print(Mymean(as.numeric(b$Continuous)))
+            #print(b)
+            g <- set_vertex_attr(g, "Continuous", 
+                                index = idx, 
+                                mn)
+                                ## Stopping rule: are all the neighbors in the same community
+            status <- all(vertex.attributes(g,index = neighbors(g,idx))$com == V(g)$com[idx])
+            op <- rbind(op, cbind(i, 
+                                  idx, 
+                                  oldcom,
+                                  vertex_attr(g, name = covMsng$name[1],
+                                              index = idx),
+                                  oldCov[idx],
+                                  vertex_attr(g.sim, name = covMsng$name[1],
+                                              index = idx),
+                                  mclust::adjustedRandIndex(coms$origmemCov, 
+                                                            V(g)$com),
+                                  mclust::adjustedRandIndex(prevComLst,
+                                                            V(g)$com),
+                                  vtxat$Cluster[as.numeric(idx)],
+                                  status, 
+                                  alpha,
+                                  impT))
+            prevComLst <-  V(g)$com
+          }
+        }
+        if(impT == "QuantRegression"){
+          # Use the multinomial value as response. So categories are the response and continuous variable is the explanatory variable
+          ## Subsetting the index values that are missing
+          ## using both the cluster assignment and the continuous variable in multinomial regression.
+          ## converting the community detection to dummy variables
+          dat <- data.frame(cbind(cont = V(g)$Continuous, 
+                                  cat = V(g)$Categories, 
+                                  com = as.factor(V(g)$com)))
+          dat$cont <- as.numeric(dat$cont)
+          topred <- dat[Midx,]#topred <- dat[(1:length(vtxat[,1])) %in% Midx[[1]],]
+          totrain <- dat[-c(Midx),]#totrain <- dat[!((1:length(vtxat[,1])) %in% Midx[[1]]),]
+          fit_quant <- lm(cont ~., data=totrain)
+          pred <- predict(fit_quant, newdata = topred[, -1])
+          g <- set_vertex_attr(g, "Continuous", 
+                                index = Midx, 
+                                as.numeric(unlist(pred)))
+          ## check if all the neighbours for each missing node are in the same community
+          status <- rep(NA, length(Midx))
+          comStat <- 1
+          for(idx in Midx){
+          status[comStat] = all(vertex.attributes(g,index = neighbors(g,idx))$com == V(g)$com[idx])
+          comStat <- comStat+1
+          }
+          op <- rbind(op, cbind(i, 
+                                  Midx, 
+                                  1,
+                                  vertex_attr(g, name = covMsng$name[1],
+                                              index = unlist(Midx)),
+                                  oldCov[Midx],
+                                  vertex_attr(g.sim, name = covMsng$name[1],
+                                              index = unlist(Midx)),
+                                  mclust::adjustedRandIndex(coms$origmemCov, 
+                                                            V(g)$com),
+                                  mclust::adjustedRandIndex(prevComLst,
+                                                            V(g)$com),
+                                  vtxat$Cluster[as.numeric(Midx)],
+                                  status,
+                                  alpha,
+                                  impT))
+         prevComLst <-  V(g)$com
+        }
+
+        v <- mclust::adjustedRandIndex(vertex_attr(g, name = covMsng$name[1],
+                                                  index = Midx),
+                                       vertex_attr(g.sim, name = covMsng$name[1],
+                                                  index = Midx))
+        covARI <- rbind(covARI,
+                        cbind(rep(v ,times = length(Midx))))
+      #}
+    }
+  }
+
+  op <- as.data.frame(op)
+  colnames(op) <- c("iteration","MissingId","PropSameComm",
+                    "Imputed","prev","Assigned",
+                    "ARI","PrevARI","Cluster","neighComStat","alpha","ImpType")
+  op$covARI <- covARI[,1]
+  op$iteration <- as.numeric(op$iteration)
+  op$MissingId <- as.numeric(op$MissingId)
+  #op$alpha <- alpha
+  return(list(op, g))
+}
+
+
+IterativeImputeSimul <- function(g.sim,N,coms,niter, k, MidxCat, MidxCon, impType = "Simul"){
+  g <- g.sim
+  vtxat <- as.data.frame(vertex.attributes(g))
+  print("first print")
+  print(MidxCon)
+  ## start with randomly assigned covariate values
+  ## setting random initial continuous values to vertices 
+  rep <- as.numeric(unlist(sample(vtxat$Continuous,
+                                  size  = length(MidxCon),
+                                  replace = TRUE)))
+  g <- set_vertex_attr(graph= g, 
+                       name ="Continuous", 
+                       index = as.numeric(MidxCon), 
+                       value= rep)
+  ##Setting random initial values for Categorical variable
+  print("2nd print")
+  g <- set_vertex_attr(g, 
+                       "Categories", 
+                       index = c(MidxCat), 
+                       sample(unique(vtxat$Categories),
+                              size  = length(MidxCat),
+                              replace = TRUE))
+  ## assigning random communitites to begin
+  V(g)$com <- sample(1:k, size = N, replace = TRUE)
+  prevComLst <- coms$origmemCov
+
+  gOrig<- g
+
+  op <- matrix(nrow=0,ncol = 12)
+  covARI <- data.frame(matrix(nrow = 0,ncol =2))
+
+  ##Assigning random communitites to begin
+  V(g)$com <- sample(1:k, size = N, replace = TRUE)
+  prevComLst <- coms$origmemCov
+
+  gOrig<- g
+
+  op <- matrix(nrow=0,ncol = 12)
+  #covARI <- data.frame(matrix(nrow = 0,ncol =2))
+  for(impT in impType){
+    g <- gOrig
+    for (i in 1:niter){
+    ## Run community detection 
+      X <- as.matrix(vertex_attr(g, "Categories"))#as.matrix(V(g)$LOTR)
+      Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ),newdata <- X)))
+      Xdum <- cbind(Xdum, V(g)$Continuous)
+      ## USe the eigen values from known network only to find alpha.
+      com <- CovAssistedSpecClust(G = g, Xdum, 3,
+                                  Regularize =TRUE, alpha =NA, 
+                                  type ="assortative",
+                                  kmeansIter = 1000,
+                                  retAlpha = TRUE)
+      alpha <- com [[2]]
+      #print(paste0("AlphaVal:", alpha))
+      com <- com[[1]]
+      V(g)$com <- com
+     ## Just use neighbors within cluster for imputation. If there is a tie deal with ties randomly.
+        oldCov <- c(vertex_attr(g, name = "Continuous"),
+                    vertex_attr(g, name = "Categories"))
+        if(impT == "MeanMode"){
+          
+        }
+        if(impT == "SimulReg"){
+
+          ## Perform the regression to impute continuous variable.
+          dat <- data.frame(cbind(cont = V(g)$Continuous, 
+                                  cat = V(g)$Categories, 
+                                  com = as.factor(V(g)$com)))
+          dat$cont <- as.numeric(dat$cont)
+          topred <- dat[MidxCon,]
+          totrain <- dat[-c(MidxCon),]
+          fit_quant <- lm(cont ~., data=totrain)
+
+          ## Predict the values of missing continuous data.
+          pred <- predict(fit_quant, newdata = topred[, -1])
+          print("third print")
+          g <- set_vertex_attr(g, "Continuous", 
+                                index = MidxCon, 
+                                as.numeric(unlist(pred)))
+
+          ## Perform multinomial regression to impute categorical variable.
+          dat <- data.frame(cbind(cat = V(g)$Categories, 
+                                  cont = V(g)$Continuous, 
+                                  com = as.factor(V(g)$com)))
+          dat$cont <- as.numeric(dat$cont)
+          topred <- dat[MidxCat,]
+          totrain <- dat[-c(MidxCat),]
+          fit_quant <- multinom(cat ~., data=totrain)
+
+          ## Predict the values of missing categorical variable.
+          pred <- predict(fit_quant, newdata = topred[, -1], type ="class")
+          print("4th print")
+          g <- set_vertex_attr(g, "Categories", 
+                               index = MidxCat, 
+                               as.character(unlist(pred)))
+
+        ## check if all the neighbours for each missing node are in the same community
+        Midx <- c(MidxCon, MidxCat)
+          status <- rep(NA, length(Midx))
+          comStat <- 1
+          for(idx in Midx){
+          status[comStat] = all(vertex.attributes(g,index = neighbors(g,idx))$com == V(g)$com[idx])
+          comStat <- comStat+1
+          }
+          op <- rbind(op, cbind(i, 
+                                  Midx, 
+                                  1,
+                                  c(vertex_attr(g, name = "Continuous",
+                                              index = unlist(MidxCon)),
+                                    vertex_attr(g, name = "Categories",
+                                              index = unlist(MidxCat))),
+                                  oldCov[Midx],
+                                  c(vertex_attr(g.sim, name = "Continuous",
+                                              index = unlist(MidxCon)),
+                                    vertex_attr(g.sim, name = "Categories",
+                                              index = unlist(MidxCat))),
+                                  mclust::adjustedRandIndex(coms$origmemCov, 
+                                                            V(g)$com),
+                                  mclust::adjustedRandIndex(prevComLst,
+                                                            V(g)$com),
+                                  vtxat$Cluster[as.numeric(Midx)],
+                                  status,
+                                  alpha,
+                                  impT))
+         prevComLst <-  V(g)$com
+
+        }
+        vcat <- mclust::adjustedRandIndex(vertex_attr(g, name = "Categories",
+                                                  index = MidxCat),
+                                       vertex_attr(g.sim, name = "Categories",
+                                                  index = MidxCat))
+        vcon <- mclust::adjustedRandIndex(vertex_attr(g, name = "Continuous",
+                                                  index = MidxCon),
+                                       vertex_attr(g.sim, name = "Continuous",
+                                                  index = MidxCon))
+        covARI <- rbind(covARI,
+                        c(rep(vcon ,times = length(MidxCon)),
+                          rep(vcat ,times = length(MidxCat))))
+      #}
+    }
+  }
+
+  op <- as.data.frame(op)
+  colnames(op) <- c("iteration","MissingId","PropSameComm",
+                    "Imputed","prev","Assigned",
+                    "ARI","PrevARI","Cluster","neighComStat","alpha","ImpType")
+  op$covARI <- covARI[,1]
+  op$iteration <- as.numeric(op$iteration)
+  op$MissingId <- as.numeric(op$MissingId)
+  #op$alpha <- alpha
   return(list(op, g))
 }
 
@@ -742,6 +1156,8 @@ CntEdges <- function(g) {
   ends <- as_edgelist(g)
   e1 <- V(g)[ends[,1]]$LOTR
   e2 <- V(g)[ends[,2]]$LOTR
-  endcolors <- t(apply(cbind(e1, e2), 1, sort))
-  return(table(endcolors[,1], endcolors[,2]))
+  c1 <- V(g)[ends[,1]]$Cluster
+  c2 <- V(g)[ends[,2]]$Cluster
+  endcolors <- t(apply(cbind(e1, e2, c1,c2), 1, sort))
+  return(table(endcolors[,1], endcolors[,2], endcolors[,3],endcolors[,4]))
 }
