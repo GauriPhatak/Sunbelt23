@@ -1055,12 +1055,13 @@ RandomMissingnessSimul  <- function(N, cat, pt){
   return(list(MidxCon, MidxCat))
 }
 
-ClusterMissingness <- function(p, N, cat, pt, clust){
-  print(paste("The missing value ",pt))
+ClusterMissingness <- function(p, N, cat, pt, clust, type){
+  ##print(paste("The missing value ",pt))
   prop <-  ceiling(p*pt/2)
-  print(prop)
-  df <- data.frame(c = as.character(clust), idx = 1:N, cat  = cat)
-  split <- stratified(df, 'cat', c("Dachshund" = prop[1],
+  #print(prop)
+  if(type == "Category"){
+    df <- data.frame(c = as.character(clust), idx = 1:N, cat  = cat)
+  split <- stratified(df, c('cat'), c("Dachshund" = prop[1],
                                    "Saluki" = prop[2],
                                    "Labrador"= prop[3],
                                    "FlatCoat"= prop[4],
@@ -1068,12 +1069,25 @@ ClusterMissingness <- function(p, N, cat, pt, clust){
   #c("1" = prop[1],"2" = prop[2],"3" =prop[3]))
   ##ix  <-  caret::createDataPartition(as.factor(split$cat), p = 0.5, list = FALSE)
   MidxCon <- split$idx #split[ix,]$idx
-  split <- stratified(df[-MidxCon,], 'cat', c("Dachshund" = prop[1],
+  split <- stratified(df[-MidxCon,], c('cat'), c("Dachshund" = prop[1],
                                    "Saluki" = prop[2],
                                    "Labrador"= prop[3],
                                    "FlatCoat"= prop[4],
                                    "LhasaApso"= prop[5]))
   MidxCat <- split$idx
+  } else if (type == "Cluster") {
+     df <- data.frame(c = as.character(clust), idx = 1:N, cat  = cat)
+  split <- stratified(df, c('c'), c("1" = prop[1],
+                                   "2" = prop[2],
+                                   "3"= prop[3]))
+  MidxCon <- split$idx
+  split <- stratified(df[-MidxCon,], c('c'), 
+                                   c("1" = prop[1],
+                                   "2" = prop[2],
+                                   "3"= prop[3]))
+  MidxCat <- split$idx
+  }
+  
   return(list(MidxCat, MidxCon))
 }
 

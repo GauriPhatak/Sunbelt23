@@ -35,14 +35,30 @@ normCenters <- list(list(mean = c(15,10,5), var = c(1,1,1)), list(mean = c(7,6,5
 
 ## Setting values for cluster dependent missingness
 #Missing type
-mt <- "Cluster"#"Random" #
-propmsng <- list(c(0.3,0.3,0.3),
-                 c(0.25,0.25,0.2,0.2,0.1),#c(0.4,0.3,0.3), 
-                 c(0.2,0.2,0.6))
+#mt <- "Cluster"#"Random"#"Random" #
+#typeMissCol <- "Cluster"
+#propmsng <- c(0.25,0.25,0.5)
+
+missingnessType <-  data.frame(type = c("C","C","C","Cat","Cat","Cat","Cat","Cat","Ran"),
+                               which = c("1","2","3","1","2","3","4","5","R"),
+                                pcnt = 1:9)
+
+pcntV <- list(c(0.5,0.25,0.25), c(0.25,0.5,0.25),c(0.25,0.25,0.5),
+              c(0.25,0.1875,0.1875,0.1875,0.1875), 
+              c(0.1875,0.25,0.1875,0.1875,0.1875),
+              c(0.1875,0.1875,0.25,0.1875,0.1875),
+              c(0.1875,0.1875,0.1875,0.25,0.1875),
+              c(0.1875,0.1875,0.1875,0.1875,0.25), 
+              c(0))
+
 
 simgrid <- expand.grid(clusters = clusters, ClustEdgeP = clustEdgeP, 
                        catProb = catProb, catEdgeP = catEdgeP, 
                        normCoef = normCoef, normCenters = normCenters)
+#print(dim(missingnessType))
+simgrid <- cbind(simgrid, rep(row.names(simgrid), each = dim(missingnessType)[1])) #simgrid.loc[simgrid.index.repeat(dim(missingnessType)[1])]
+simgrid <- cbind(simgrid, missingnessType)
+#print(simgrid)
 
 simvec <- as.integer(gsub("[\r\n]", "",args[1]))
 print(paste0("the simulation number ", simvec))
@@ -61,7 +77,21 @@ for(sim in simvec){
   normCoef = unlist(simnum[[5]])
   ## Setting distributions for the continuous covariate value
   pCont <- data.frame(cbind(mean = c(simnum[[6]][[1]]$mean), var = c(simnum[[6]][[1]]$var)))
+  ## Setting the missingness type parameters
+  if(simnum[[8]] == "C"){
+    mt  = "Cluster"
+    typeMissCol <- "Cluster"
 
+  } else if (simnum[[8]] == "Cat") {
+    mt = "Cluster"
+    typeMissCol <- "Category"
+  } else if(simnum[[8]] == "Ran"){
+    mt = "Random"
+    typeMissCol <- "Random"
+  }
+#print(as.numeric(simnum[[10]]))
+  propmsng <- pcntV[[ as.numeric(simnum[[10]]) ]]
+#print(propmsng)
   ## Creating the dataframe with category combinations
   combi <- data.frame(rbind(t(combn(sort(cat, decreasing =FALSE),2, simplify = TRUE)), cbind(cat,cat)))
 
@@ -253,10 +283,16 @@ for(sim in simvec){
           # ## Setting missing data for Continuous variable. Here we are sampling from indicies that are not Categorical variable
           # MidxCat <- sample(car, ceiling((pt/(2*N))*100), replace = FALSE)
           if(mt == "Random"){
-            Midx <- RandomMissingness(N,V(g.sim_C_B)$Categories,pt)
+            Midx <- RandomMissingnessSimul(N,
+                                           V(g.sim_C_B)$Categories,
+                                           pt)
           } else if (mt == "Cluster") {
-            Midx <- ClusterMissingness(propmsng[[2]], N, V(g.sim_C_B)$Categories, pt, C)
-            #print(Midx)
+            Midx <- ClusterMissingness(propmsng, 
+                                       N, 
+                                       V(g.sim_C_B)$Categories, 
+                                       pt, 
+                                       V(g.sim_C_B)$Cluster,
+                                       typeMissCol)
           }
           MidxCon <- unlist(Midx[[1]])
           MidxCat <- unlist(Midx[[2]])
@@ -275,6 +311,5 @@ for(sim in simvec){
     }
     clust9 <- rbind(clust9 , cbind(RegSpectralClust(g.sim_C_B,9), V(g.sim_C_B)$Cluster, rep(val, N)))
   }
-
-saveRDS(list(op,comDetVals,CovARI,edgeDF,degVal,IC),paste0(w,"U",sim,".rds"))
+saveRDS(list(op,comDetVals,CovARI,edgeDF,degVal,IC),paste0(w,simnum[[8]],simnum[[9]],"_",sim,".rds"))
 }
