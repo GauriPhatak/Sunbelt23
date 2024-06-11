@@ -1,0 +1,495 @@
+---
+title: "ChangePointSimulation"
+output: pdf_document
+date: "2024-04-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(mcp)
+library(changepoint)
+library(strucchange)
+library(readxl)
+library(RColorBrewer)
+library(imputeTS)
+```
+
+## Creating a dataset of timeseries with shifted change points.
+
+Simulation code based on: https://lindeloev.github.io/mcp/articles/packages.html
+
+```{r}
+# Simulate
+set.seed(42)  # I always use 42; no fiddling
+## Length of time series
+nTS <-  150
+## Number of time series
+N <- 4
+## Number of change points for each time series
+nc <- 3
+## Set an offset for for change point in time series. the change point idx keeps increasing for consecutive time series.
+ofst <- 8
+## Set offset at 20, 55, 75
+StOfst <- c(20,45,30,55)
+
+df = data.frame(
+  x = 1:nTS
+)
+k <- 0
+for (i in 1:N) {
+  df[[paste0("y",i)]] = c(rnorm(StOfst[1]+k*ofst, 4),
+                          rnorm(StOfst[2], 0),
+                          rnorm(StOfst[3], 4),
+                          rnorm(StOfst[4]-k*ofst, 0))
+  k <- k+1
+}
+# Plot it
+#plot(df)
+#abline(v = c(20,65,95), col="red")
+df_mat <- as.matrix(df[,-1])
+df <- df %>%
+  pivot_longer(!x)
+df %>%
+  ggplot(aes(x = x, y = value))+
+  geom_point()+
+  geom_vline(xintercept = c(20, 65, 95), color = "red")+
+  geom_vline(xintercept = c(20+ofst, 65+ofst, 95+ofst), color = "blue", linetype = "dashed")+
+  geom_vline(xintercept = c(20+ofst*2, 65+ofst*2, 95+ofst*2), color = "green", linetype = "dashed")+
+  geom_vline(xintercept = c(20+ofst*3, 65+ofst*3, 95+ofst*3), color = "yellow4", linetype = "dashed")+
+  theme_minimal()+
+  facet_wrap(~name)
+
+```
+
+## Fit different models to the wastewater data. See which model works the best and use the changepoint method that works the best for that model.
+
+
+## Now trying out different types of changepoint detection algorithms
+
+### Trying the change point package using cpt.mean i.e. mean shift model
+```{r}
+cpt.mean(t(df_mat), method ="PELT", Q = 4)
+```
+
+
+### Using efp package
+
+```{r}
+op_efp <- efp(df_mat[,1] ~1, type = "OLS-CUSUM")
+plot(op_efp)
+
+bp_str <-breakpoints(df_mat[,1] ~ 1)
+breakpoints(bp_str, breaks = 3)
+plot(bp_str)
+
+```
+
+
+```{r}
+model = list(
+  value ~ 1,          # intercept + slope
+  1 + (1|name) ~ x
+  # joined slope, varying by id
+)
+#ex = mcp_example("varying")
+fit = mcp(model, df)
+plot(fit, facet_by = "name")
+
+```
+## Creating missingness in the data and fitting the change point models used above.
+
+```{r}
+## creating a dataframe for missing data
+df_miss <- df_mat
+
+## Number of missing data in time series
+n_miss <- 10
+
+for(i in 1:N){
+  ## set random locations for the missing data.
+  n_miss_rand <- sample(x = 1:nTS, size = n_miss)
+  
+  ## Setting the indices to NA for missing data
+  df_miss[n_miss_rand,i] <- NA
+  
+  ### OLS CUSUM changepoint det with missing data
+  op_efp <- efp(df_miss[,i] ~1, type = "OLS-CUSUM")
+  plot(op_efp)
+  
+  bp_str <-breakpoints(df_miss[,i] ~ 1)
+  print(breakpoints(bp_str, breaks = 3))
+  plot(bp_str)
+}
+
+```
+
+## Trying out the above with the wastewater data
+
+### Reading the wastewater data 
+
+```{r}
+dat <- read_excel(paste0(path_home(),
+                         "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/5.17.24/Combined_all_data_2024-05-17.xlsx"), 
+                  sheet = "COVID",
+                  guess_max = 10000)
+
+df <- dat  %>% 
+  filter(Study == "OHA") %>% 
+  subset(select = c(Date, logCopies, Location, County, Target, Site))
+
+epiweek <- epitools::as.week(df$Date, format  = "%m/%d/%y")
+df$epiweek <- as.numeric(epiweek$week)
+df$epimonth <- month(as.Date(df$Date, format = "%m/%d/%y"))
+df$year <- year(as.Date(df$Date, format = "%m/%d/%y"))
+
+df <- df %>%
+  group_by(Location, year, epiweek) %>%
+  dplyr::summarise(meanlogcopies =  mean(logCopies, na.rm = TRUE),
+                   Date = first(Date)) %>%
+  ungroup() %>%
+  group_by(year,epiweek)%>%
+  dplyr::mutate(Date = first(Date)) %>%
+  pivot_wider(names_from = Location, values_from = c(meanlogcopies, -Date) ) %>%
+  ungroup() %>%
+  arrange(year, epiweek)
+
+## Find locations that have more than 50% missing values.
+
+nas <- data.frame(names= colnames(df),
+                  val = as.numeric(colSums(is.na(df))/dim(df)[1])*100)
+
+## removing locations that have more than 50% missing values
+pctThrs <- 50
+df <- df %>% subset(select = which(nas[,2] < pctThrs))
+colnames(df) <- make.names(colnames(df))
+## Remvoing st.Helens , Siletz and Siletz tribe ,Ontario, Ontario Prison, Redmond
+
+df <- df %>% subset(select = -c(St..Helens,Silverton, Siletz.Tribe ,Ontario, Ontario.Prison, Redmond, Siletz, Port.Orford))
+
+## removing 2022 epiweek 53 
+df <- df[!(df$year == "2024" & df$epiweek == "53"),]
+
+```
+
+
+## Trying out the change point detection method above ols-cusum : First 24 time series with loweest rate of missing values
+
+```{r}
+## Find locations that have more than 50% missing values.
+Nval <- 25
+Nbrk <- 4
+nas <- data.frame(names= colnames(df),
+                  val = as.numeric(colSums(is.na(df))/dim(df)[1])*100)
+nas <- nas[-c(1,2,3),]
+df_samp <- df[, -c(1,2,3)]
+ww_samp <- df[, nas$names[sort(nas$val, index.return=TRUE)$ix[1:Nval]]]
+ww_samp <- as.matrix(ww_samp)
+op <- list()
+col <-  colnames(ww_samp)
+for(i in 1:dim(ww_samp)[2]){
+  ### OLS CUSUM changepoint det with missing data
+  op_efp <- efp(ww_samp[,i] ~1, type = "OLS-CUSUM")
+  plot(op_efp)
+  
+  bp_str <-breakpoints(ww_samp[,i] ~ 1)
+  op[[i]] <- breakpoints(bp_str, breaks = Nbrk)
+  #jpeg(paste0("Numbp",i,".jpg"), width = 350, height = 350)
+
+  plot(bp_str, main =col[i])
+  #dev.off()
+}
+
+
+```
+
+### Ploting the output from the changepoint method
+
+```{r}
+for (i in 1:dim(ww_samp)[2]) {
+ ggplot()+
+          geom_line(aes(x = 1:dim(ww_samp)[1], y = ww_samp[,i]))+
+          geom_vline(xintercept = op[[i]]$breakpoints, color = "blue", linetype = "dashed")+
+          theme_minimal()+ggtitle(col[i])
+ ggsave(paste0("unicp",i,".jpeg"))
+}
+
+```
+## Refitting the lasso VAR function to work with this dataset
+
+```{r}
+
+nodeImpfunc <- function(nw){
+  
+  colnames <-  c("Section","Indegree","Outdegree","Betweenness",
+                 "NeighConnect_in","NeighConnect_out", 
+                 "H_Index_in","H_Index_out","Coll_inf_in","Coll_ing_out",
+                 "ivi_in","ivi_out","ivi_all","Closeness","Eigen","City") #"Closeness","EigenCentrality",
+  Node_imp <- data.frame(matrix(ncol =length(colnames), nrow = 0))
+  
+  
+  for (i in 1:(Nbrk+1)) {
+    nw[[i]] <- igraph::simplify(nw[[i]],  remove.multiple = FALSE )
+    plot.igraph(igraph::simplify(nw[[i]]),directed = T,
+                main = paste("subsection: ", i),
+                edge.arrow.size = .2,
+                vertex.label = V(nw[[i]])$names,
+                vertex.size = 5,
+                vertex.color = c("lightblue"),
+                vertex.frame.color = "blue",
+                vertex.label.size=0.001)
+    
+    ## gathering some ndoe importance measures from all the nodes
+    Node_imp <- rbind(Node_imp, 
+                      cbind(i,
+                            igraph::degree(nw[[i]], mode = "in"),
+                            igraph::degree(nw[[i]], mode = "out"),
+                            round(igraph::betweenness(nw[[i]]),2),
+                            round(neighborhood.connectivity(nw[[i]], mode = "in"),2),
+                            round(neighborhood.connectivity(nw[[i]], mode = "out"),2),
+                            h_index(nw[[i]], mode= "in"),
+                            h_index(nw[[i]], mode= "out"),
+                            collective.influence(nw[[i]],mode = "in"),
+                            collective.influence(nw[[i]],mode = "out"),
+                            
+                            ### Calculating the integrated value of influence from a graph
+                            round(ivi(nw[[i]], directed = TRUE, mode = "in"),2),
+                            round(ivi(nw[[i]], directed = TRUE, mode = "out"),2),
+                            round(ivi(nw[[i]], directed = TRUE, mode = "all"),2),
+                            igraph::closeness(nw[[i]], mode = "out"),
+                            igraph::eigen_centrality(nw[[i]], directed = TRUE)$vector,
+                            V(nw[[i]])$names
+                      )
+    )
+    
+  }
+  colnames(Node_imp) <- colnames
+  return(Node_imp)
+}
+
+LassoVar <- function(df_split, d, retFit = FALSE){
+  edgeIx <- as.data.frame(matrix(nrow = 0, ncol = 4))
+  if(retFit ==TRUE){
+    grphs <- list()
+  }
+  for (m in 1:(Nbrk+1)) {
+    
+    k <- df_split[[m]] 
+    cityNames <- colnames(k)
+    k <- t(k)
+    if(any(is.na(k))){
+      print("k has missing values")
+    }
+    fit1 = NGC::ngc(k, d=d)
+    edge <- which(fit1$estMat != 0, arr.ind = T)
+    edgeIx <- rbind(edgeIx, cbind(m, (edge)))
+    
+    if(retFit == TRUE){
+      V(fit1$ring)$names <- cityNames
+      grphs[[m]] <- fit1$ring
+      
+    }
+    
+  }
+  
+  ## assigning the city names back to the numbered locations
+  edgeIx <- as.data.frame(edgeIx)
+  colnames(edgeIx) <- c("group","to", "from","lag")
+  cityNames <- as.data.frame(cbind(cityNames, 1:Nval))
+  colnames(cityNames) <- c("cityNames","Id")
+  cityNames$Id <- as.integer(cityNames$Id)
+  grphdf <- left_join(edgeIx, cityNames, by = join_by( to == Id))
+  grphdf <- left_join(grphdf, cityNames, by=  join_by(from == Id))
+  
+  grphdf <- grphdf[,c(1,4,5,6)]
+  colnames(grphdf) <- c("group","lag","to","from")
+  
+  if(retFit == TRUE){
+    return(list(grphdf, grphs))
+  }
+  return(grphdf)
+}
+```
+
+
+## Combine aall the breakpoints for the different time series data.
+
+```{r}
+
+d <- 2
+
+bp <- data.frame(matrix(nrow = 0, ncol =2))
+for(i in 1:length(op)){
+  tmp <- c(1,op[[i]]$breakpoints,dim(ww_samp)[1])
+  bp <- rbind(bp, cbind(rep(i, length(tmp)),tmp, df$Date[tmp]))
+}
+colnames(bp) <- c("TS","BkPtS", "Date")
+bp$BkPtS <- as.numeric(bp$BkPtS)
+bp <- bp %>% 
+  group_by(TS) %>% 
+  mutate(BkPtE = as.numeric(lead(BkPtS, 1, default = NA))) %>%
+  filter(!is.na(BkPtE)) %>%
+  mutate(range = paste0(BkPtS,"-",BkPtE)) %>%
+  ungroup()%>%
+  mutate(xRangeL =round(rep(seq(from = min(rowMeans(ww_samp, na.rm = TRUE)), to = max(rowMeans(ww_samp, na.rm = TRUE)), 
+                                length.out= length(unique(bp$TS))), each = 5), 2) ) %>%
+  mutate(xRangeH = rep(c(unique(xRangeL)[-1], 5.5) , each = Nbrk+1))%>%
+  mutate(id = rep(1:(Nbrk+1), times = Nval)) %>%
+  ungroup()
+
+## find the minimum and maximum value for each changepoint window. 
+#ww_samp <- cbind(ww_samp,df$Date)
+ggplot()+
+  geom_rect(aes(xmin = as.numeric(bp$BkPtS), xmax = as.numeric(bp$BkPtE), 
+                ymin = bp$xRangeL, ymax = bp$xRangeH,
+                fill = as.factor(bp$id)), alpha = 0.6) +
+  #geom_line(aes(y = apply(ww_samp, 1, FUN = min, na.rm = TRUE), x = as.numeric(1:dim(ww_samp)[1])), alpha =0.3)+
+  #geom_line(aes(y = apply(ww_samp, 1, FUN = max, na.rm = TRUE), x = as.numeric(1:dim(ww_samp)[1])), alpha = 0.3)+
+  geom_line(aes(y = rowMeans(ww_samp[,1:24], na.rm = TRUE), x = as.numeric(1:dim(ww_samp)[1])))+ #as.numeric(1:dim(ww_samp)[1])
+   #scale_x_discrete(breaks = levels(df$Date)[c(T, rep(F, 9))])+
+  geom_text(aes(x = 5, y =as.numeric(unique(bp$xRangeL)), label = col), 
+            size = 3, vjust = 0, hjust = 0, color = "blue4")+
+  scale_fill_brewer(palette="Dark2")+
+  xlab("Sample week")+ ylab("Average mean log copies.")+
+ # scale_x_date(date_breaks  ="3 month")+
+  theme_minimal() + 
+  theme(legend.position = "none") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  ggtitle("Mean value of all cities")
+
+ggsave("CPperCity.jpeg")
+
+```
+
+
+```{r}
+## Separate out all the time windows based on their start and end change points
+## Imputing data and creating equal length time windows depending on stationarity of the data.
+
+rng <- bp %>% group_by(id) %>%
+  summarise(minV = min(BkPtS),
+            maxV = max(BkPtE))%>%
+  mutate(minDate  = df$Date[minV],
+         maxDate  = df$Date[maxV])
+
+TSsec <- list()
+
+for (i in 1:Nval) {
+  g <- list()
+  for(j in 1:(Nbrk+1)){
+    bp_ss <- bp[bp$TS ==i,]
+    strt <- bp_ss[bp_ss$id==j,]$BkPtS
+    end <- bp_ss[bp_ss$id==j,]$BkPtE
+    t = ww_samp[strt:end,i]
+    rngstrt <- rng[j,]$minV   
+    rngend <- rng[j,]$maxV
+    ## Front padding
+    fp <- strt - rngstrt
+    if(fp > 0){
+      t <- c(rep(NA, fp), t) 
+    }
+    ## End padding for the data
+    ep <- rngend - end
+    if(ep >0){
+      t <- c(t, rep(NA,ep))
+    }
+    # Example 5:  Perform imputation with KalmanSmooth and user created model
+    g[[j]] <- na_kalman(t) ## eventually need to replace this with multiple imputation
+  }
+  TSsec[i] <- list(g)
+}
+
+
+
+## check if individual sections are stationary
+
+## If not then take difference and check pacf to see lag.
+
+## If the above is OK, run VAR using LASSO
+df_split <- list()
+for(i in 1:length(TSsec[[1]])){
+  df_split[[i]] <- as.matrix(sapply(TSsec,"[[",1)) 
+  colnames(df_split[[i]]) <- col
+}
+
+op <- LassoVar(df_split,d, retFit = TRUE)
+
+
+```
+
+
+```{r}
+## Create maps using the LASSO penalty
+G <- op[[2]]
+nodeImp <- nodeImpfunc(G)
+
+## creating network based on lat lon of the locations
+grphDat <- readRDS("GraphData.rds")
+g <- grphDat$WWgrph
+l <- data.frame(names = make.names(V(g)$name) , lat = as.numeric(V(g)$lat), lon = as.numeric(V(g)$lon))
+## adding missing cities
+l <- data.frame(rbind(as.matrix(l),rbind(c("Rock.Creek",-122.8808,45.5554),c("Dallas",-123.3170,44.9193),c("Sunriver",-121.4334,43.8694))))
+nameVal <- data.frame(names = V(G[[2]])$names)
+layout <- left_join(nameVal, l, join_by(names == names))
+## Setting labels for the nodes that have highest outdegree and indegree with different color code
+```
+
+```{r}
+
+lvl <- 2
+var <- c("Outdegree","Closeness","Eigen")
+
+for(v in var){
+  gbg <- nodeImp %>% 
+    group_by(Section) %>%
+    subset(select = c(Section, get(v), City))%>%
+    mutate(min_rank = dense_rank(as.numeric(get(v))), 
+           max_rank = dense_rank(-as.numeric(get(v)))) %>%
+    mutate(label1 = ifelse( max_rank <= lvl, City, "")) %>%
+    mutate(label2 = ifelse( min_rank <= lvl, City, "")) %>%#min_rank <= 1 |
+    mutate(color1 = case_when(max_rank <= lvl ~ "green4")) %>%
+    mutate(color2 = case_when(min_rank <= lvl ~ "red"))
+  
+  for(i in 1:(Nbrk+1)){
+    V(G[[i]])$label1 = gbg$label1[gbg$Section == i]
+    V(G[[i]])$color1 = gbg$color1[gbg$Section == i]
+    jpeg(paste0(v,i,".jpg"), width = 350, height = 350)
+    plot.igraph(igraph::simplify(G[[i]]),directed = T,
+                main = paste(rng$minDate[i],"-", rng$maxDate[i]," Node measure",v),
+                edge.arrow.size = 0.3,
+                edge.width = 0.5,
+                edge.color = "gray60",
+                edge.alpha =0.5,
+                layout = cbind(as.numeric(layout$lat),
+                               as.numeric(layout$lon)),
+                vertex.label = V(G[[i]])$label1,
+                vertex.size = 5,
+                vertex.color = V(G[[i]])$color1,
+                vertex.frame.color = NULL,
+                vertex.label.size=0.001)
+    dev.off()
+  }
+}
+```
+
+## Creating ego networks for each node at different time chunks
+
+```{r}
+subGrph <- list()
+cmnty <- NA#data.frame(matrix(nrow=0, ncol = (Nbrk+1)))
+for(i in 1:(Nbrk+1)){
+  C <- igraph::simplify(G[[i]], remove.multiple = FALSE, remove.loops = TRUE)
+  cmnty <- cbind(cmnty,c(cluster_edge_betweenness(C)$member))
+  
+  plot.igraph(C, vertex.color = cmnty[,i])
+  sub <- ego(C, mode = "out")
+  subGrph[[i]] = lapply(sub, function(x) induced_subgraph(C, x))
+  # for(j in 1:length(subGrph[[i]])){
+  #   plot.igraph(subGrph[[i]][[j]])
+  # }
+
+}
+
+
+```
+
+

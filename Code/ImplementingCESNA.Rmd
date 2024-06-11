@@ -1,0 +1,165 @@
+---
+title: "CESNA"
+output: pdf_document
+date: "2024-06-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(igraph)
+library(network)
+```
+
+## Function for community detection.
+
+```{r}
+
+LRParamUpdt <- function(){
+  
+}
+
+prob2logit <- function(x){
+  return(log(x / (1 - x)))
+}
+
+## nc : numer of communities
+## k : number of covariates
+## pClust: Probability of a ndoe belonging to a community
+## N : Number of nodes
+## pC : matrix of probability for binary assignment for each cluster 
+NWSimBin <- function(nc, k, pC,N, pClust,B){
+  C <- 0
+  while(length(table(C)) < nc){
+    C = sample(x = 1:nc,size = N,replace = TRUE, prob = pClust)
+  }
+  ## Create an empty network i.e. no cluster assignments or category assignments or edges
+  net <- network(N, directed = FALSE, density= 0 )
+  ## Assign clusters to the nodes 
+  net %v% 'Cluster' <- C
+  
+  ## Based on the probability matrix pC assign indicates the binary assignment of covariates to a community
+  binVal <- matrix(ncol =k, nrow =N, NA)
+  for(j in 1:k){
+    print(pC[,j])
+    for (i in 1:nc) {
+      binVal[which(as.numeric(net %v% 'Cluster') == i), j]  <- rbinom(length(which(as.numeric(net %v% 'Cluster') == i)), 1, pC[i,j])
+    }
+    net %v% paste0("X",j) <- binVal[,j]
+  }
+  
+  ## Use the probability of connection values defined earlier for both cluster and category for fitting the data. 
+  g.sim <- simulate(net ~ nodemix("Cluster", levels = TRUE, levels2 = TRUE),
+                    nsim = 1,
+                    coef = prob2logit(c(B)),
+                    control=control.simulate( MCMC.burnin=10000, MCMC.interval=1000))
+  return(g.sim)
+  
+}
+
+
+#f_u : Community weight vector for node u
+#Fvmat : Community weight matrix for nodes
+#X_u: Covariate matrix
+#Q_u: logistic probability matrix
+#W: Logistic weight vector
+CmntyWtUpdt <- function(f_u, Fvmat,Fvnot, X_u, Q_u, W, alpha){
+  
+  ## Gradient function to update log likelihood of G
+  ## First part of log likelihood of G
+  a <- exp(-1*(f_u %*% t(Fvmat)))
+  b <- a/(1-a)
+  llG_1 <- t(Fvmat) %*% t(b)
+  ## 2nd part of log likelihood of G
+  llG_2 <- as.matrix(colSums(Fvnot))
+  ## Total llG
+  llG <- llG_1 -llG_2
+  
+  
+  return(llG)
+}
+
+
+CESNA <- function(G, nc, k, N){
+  ## Setting initial values for lgistic weights
+  W <- matrix(nrow = k, ncol = nc+1, 1)
+  ## Community weights
+  Ftot <- matrix(nrow = N, ncol = nc, 0.01)
+  ## setting alpha value
+  alpha <- 0.01
+  ## Setting threshold for loglikelihood difference
+  thresh <- 0.001
+  
+  # Setting iterations if log likelihood is taking too long
+  nitermax <- 100
+  iter <- 0
+  ## Get the covariate matrix
+  X <- as.matrix(as.data.frame(vertex_attr(G))%>% 
+                   dplyr::select(tail(names(.),k)))
+  
+  
+  ## Updating all the node community weights
+  ## Setting the new loglikelihood to 0 
+  LLold <- 1
+  LLnew <- 0
+  tempop1 <- 0#list()
+  LLG <- 0 #list()
+  LLX <-0
+  nodeid <-0
+  while (all(c(((LLold - LLnew) > thresh), (iter < nitermax))))  {
+    #print(paste0("The difference between old and new ll ",(LLold - LLnew)))
+    LLold <- LLnew
+    LLnew <- 0
+    
+    ## Updating the commuynity weight parameter
+    for (i in 1:N) {
+      f_u <- t(as.matrix(Ftot[i,]))
+      ##The neighbours of this node
+      neigh <- neighbors(G, i, mode = "all")
+      Fvmat <- as.matrix(Ftot[neigh,])
+      Fvnot <- as.matrix(Ftot[-neigh,])
+      X_u <- X[i,]
+      Ftot[i,] <- CmntyWtUpdt(f_u, Fvmat,Fvnot, X_u, Q_u, W, alpha)      
+      #Ftot[i,] <- op[[1]]
+      tempop1 <- append(tempop1, list(Ftot[i,]))
+      #LLG <- append(LLG, op[[2]])
+      #LLX <- append(LLX, op[[3]])
+      nodeid <- append(nodeid, i)
+      #LLnew <- LLnew+op[[2]]
+    }
+    
+    ## Updating the logistic regression weights
+    
+    
+    
+    #print(paste("Log lik val ",LLnew," iteration number ",iter))
+    iter <- iter +1
+  }
+  
+  ## Updating the logistic weight parameters
+  return(Ftot)
+}
+
+```
+
+
+## Checking communtiy detection function using predefined logistic paramters.
+
+```{r}
+
+## Creating simulation of the data
+nc <- 3
+k <- 2
+N <- 100
+pClust <- c(0.3,0.3,0.3)
+pC <- matrix(nrow=nc, ncol =k,data = c(0.3,0.4,0.7,
+                                       0.7,0.3,0.4))
+B <- c(0.5,0.05,0.5,0.05,0.05,0.5)
+
+G <-asIgraph(NWSimBin(nc, k, pC, N, pClust, B))
+
+Ffin <- CESNA(G, nc, k, N)
+
+```
+

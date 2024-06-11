@@ -30,9 +30,10 @@ source("HelperFuncs.R")
 
 ```{r, warning=FALSE}
 dat <- read_excel(paste0(path_home(),
-                         "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/2.13.24/Combined_all_data_2024-02-13.xlsx"), 
+                         "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/5.17.24/Combined_all_data_2024-05-17.xlsx"), 
                   sheet = "COVID",
                   guess_max = 10000)
+
 
 df <- dat  %>% 
   filter(Study == "OHA") %>% 
@@ -52,7 +53,8 @@ df <- df %>%
 
 ## Find locations that have more than 20% missing values.
 
-nas <- as.data.frame(cbind(colnames(df),(colSums(is.na(df))/dim(df)[1])*100))
+nas <- data.frame(names= colnames(df),
+                  val = as.numeric(colSums(is.na(df))/dim(df)[1])*100)
 
 ## removing locations that have more than 50% missing values
 pctThrs <- 50
@@ -108,7 +110,7 @@ for (ts_id in 1:dim(df_comp)[2]) {
 
 max  <- 25
 x <- seq_along(df_comp[,1])
-    #k <- as.matrix(sapply(as.data.frame(k), function(x) diff(x)))
+#k <- as.matrix(sapply(as.data.frame(k), function(x) diff(x)))
 #df_comp <- as.matrix(sapply(as.data.frame(df_comp), function(x) diff(x)))
 df_split <- as.data.frame(cbind(df_comp, split = ceiling(x/max))) %>%
   group_by(split) %>%
@@ -198,51 +200,51 @@ layout= cbind(as.numeric(lsig[,2]), as.numeric(lsig[,3]))
 ```{r, warning=FALSE}
 
 ##Using HDGCvar  library and HDGC_VAR_all function to test all granger causality test.
-
-library(HDGCvar)
-op_HD <- list()
-pVal <- list()
-nw <- list()
-alpha <- 0.05
+# 
+# library(HDGCvar)
+# op_HD <- list()
+# pVal <- list()
+# nw <- list()
+# alpha <- 0.05
 ## Check stationarity of each data segment and make it stationary if it is not.
 
-for (m in 1:length(df_split)) {
-  k <- df_split[[m]] %>%
-    subset(select = -c(split)) %>%
-    scale()
-  k <- as.matrix(k)
-  print(paste("subpart: ",m))
-  colnames(k) <- gsub("df_comp.", "", colnames(k))
-  ## Use this to make data stationary
-  k <- as.matrix(sapply(as.data.frame(k), function(x) diff(diff(x))))
-  
-  # for (j in 1:ncol(k)) {
-  #   print(paste("subpart: ",i, "Column name:", colnames(k)[j]))
-  #   k[,j] <- diff(diff(k[,j]))
-  #   #adf.test(diff(diff(k[,j])))
-  # }
-  
-  ## Use this function for stationary data
-  op_HD[[m]] <- HDGC_VAR_all_I0(as.matrix(k))
-  
-  ## Use this when data is suspected non-stationary
-  #op_HD[[m]] <- HDGC_VAR_all(as.matrix(as.numeric(k)))
-  
-  pVal[[m]] <- as.matrix(op_HD[[m]][["tests"]][,,2,2])
-  #print("Before graph from inversion")
-  #The null hypothesis that variable X does not Granger-cause variable Y
-  # If a time series A Granger-causes another time series B, it means that past values of A provide useful information in predicting future values of B, beyond what B's own past values provide.
-  pVal[[m]] <- t(pVal[[m]])
-  pVal[[m]][pVal[[m]] < alpha] <- 1 #put =1 values < alpha
-  pVal[[m]][is.na(pVal[[m]])] <- 0 #put =0 the diagonal
-  pVal[[m]][pVal[[m]] != 1] <- 0 #put =0 values > alpha
-  #print("Before graph from adj matrix")
-  nw[[m]] = graph_from_adjacency_matrix(pVal[[m]], 
-                                        mode='directed',
-                                        diag=F,
-                                        add.rownames = TRUE )
-  V(nw[[m]])$label = rownames(pVal[[m]])
-}
+# for (m in 1:length(df_split)) {
+#   k <- df_split[[m]] %>%
+#     subset(select = -c(split)) %>%
+#     scale()
+#   k <- as.matrix(k)
+#   print(paste("subpart: ",m))
+#   colnames(k) <- gsub("df_comp.", "", colnames(k))
+#   ## Use this to make data stationary
+#   k <- as.matrix(sapply(as.data.frame(k), function(x) diff(diff(x))))
+#   
+#   # for (j in 1:ncol(k)) {
+#   #   print(paste("subpart: ",i, "Column name:", colnames(k)[j]))
+#   #   k[,j] <- diff(diff(k[,j]))
+#   #   #adf.test(diff(diff(k[,j])))
+#   # }
+#   
+#   ## Use this function for stationary data
+#   op_HD[[m]] <- HDGC_VAR_all_I0(as.matrix(k))
+#   
+#   ## Use this when data is suspected non-stationary
+#   #op_HD[[m]] <- HDGC_VAR_all(as.matrix(as.numeric(k)))
+#   
+#   pVal[[m]] <- as.matrix(op_HD[[m]][["tests"]][,,2,2])
+#   #print("Before graph from inversion")
+#   #The null hypothesis that variable X does not Granger-cause variable Y
+#   # If a time series A Granger-causes another time series B, it means that past values of A provide useful information in predicting future values of B, beyond what B's own past values provide.
+#   pVal[[m]] <- t(pVal[[m]])
+#   pVal[[m]][pVal[[m]] < alpha] <- 1 #put =1 values < alpha
+#   pVal[[m]][is.na(pVal[[m]])] <- 0 #put =0 the diagonal
+#   pVal[[m]][pVal[[m]] != 1] <- 0 #put =0 values > alpha
+#   #print("Before graph from adj matrix")
+#   nw[[m]] = graph_from_adjacency_matrix(pVal[[m]], 
+#                                         mode='directed',
+#                                         diag=F,
+#                                         add.rownames = TRUE )
+#   V(nw[[m]])$label = rownames(pVal[[m]])
+# }
 
 ### Plotting the graph using igraph plot.
 nodeImpfunc <- function(nw){
@@ -255,7 +257,7 @@ nodeImpfunc <- function(nw){
   
   
   for (i in 1:6) {
-    plot.igraph(nw[[i]],directed = T,
+    plot.igraph(simplify(nw[[i]]),directed = T,
                 main = paste("subsection: ", i),#df_date_split$dt_range[i],#
                 edge.arrow.size = .2,
                 vertex.label = V(nw[[i]])$names,
@@ -268,9 +270,9 @@ nodeImpfunc <- function(nw){
     #print(V(nw[[i]])$names)
     Node_imp <- rbind(Node_imp, 
                       cbind(i,
-                            degree(nw[[i]], mode = "in"),
-                            degree(nw[[i]], mode = "out"),
-                            round(betweenness(nw[[i]]),2),
+                            igraph::degree(nw[[i]], mode = "in"),
+                            igraph::degree(nw[[i]], mode = "out"),
+                            round(igraph::betweenness(nw[[i]]),2),
                             round(neighborhood.connectivity(nw[[i]], mode = "in"),2),
                             round(neighborhood.connectivity(nw[[i]], mode = "out"),2),
                             h_index(nw[[i]], mode= "in"),
@@ -285,7 +287,7 @@ nodeImpfunc <- function(nw){
                             #igraph::closeness(nw[[i]]),
                             #igraph::eigen_centrality(nw[[i]], directed = TRUE),
                             V(nw[[i]])$names
-                            )
+                      )
     )
     
   }
@@ -302,8 +304,8 @@ op_HD <- list()
 pVal <- list()
 nw <- list()
 alpha <- 0.05
-## Check stationarity of each data segment and make it stationary if it is not.
 
+## Check stationarity of each data segment and make it stationary if it is not.
 for (m in 1:length(df_split)) {
   k <- df_split[[m]] %>%
     subset(select = -c(split)) #%>%
@@ -311,7 +313,6 @@ for (m in 1:length(df_split)) {
   k <- as.matrix(k)
   print(paste("subpart: ",m))
   colnames(k) <- gsub("df_comp.", "", colnames(k))
-  
   varnames <- colnames(k)
   K <- ncol(k)
   GCpairs <- vector("list", length = K * (K - 1))
@@ -549,23 +550,23 @@ LassoVar <- function(df_split, d, retFit = FALSE){
   return(grphdf)
 }
 
-for(j in 1:niter){
-  edgeIxComp <- rbind(edgeIxComp, cbind(j,LassoVar(df_split, d)))
-}
+# for(j in 1:niter){
+#   edgeIxComp <- rbind(edgeIxComp, cbind(j,LassoVar(df_split, d)))
+# }
 #(vars <- all.vars(body(ngc)[-1], functions =TRUE)) 
 
 ```
 
 
 
-```{r, warning=FALSE, fig.width=10, fig.height=10}
+```{r, warning=FALSE, fig.width=6, fig.height=6}
 #### Check if the number of edges generated by the networks are the same at each stage
 
 #cnt <- edgeIxComp %>% count(j, group)
 ## not exactly but similar number of edges
 ## Compare the fit of the networks and see if they seem to be derived from the same model.
 ## Can use centrality measures to compare node specific and edge/pair specific values 
-
+library(igraph)
 op <- LassoVar(df_split, d, retFit = TRUE)
 
 G <- op[[2]]
@@ -582,39 +583,118 @@ nameVal <- data.frame(names = V(G[[2]])$names)
 layout <- left_join(nameVal, l, join_by(names == names))
 ## Setting labels for the nodes that have highest outdegree and indegree with different color code
 
-for (var in colnames(nodeImp)[-c(1, length(colnames(nodeImp)))]) {
-  gbg <- nodeImp %>% 
-  group_by(Section) %>%
-  subset(select = c(Section, get(var), City))%>%
-  mutate(min_rank = dense_rank(as.numeric(get(var))), 
-         max_rank = dense_rank(-as.numeric(get(var)))) %>%
-  mutate(label = ifelse( max_rank <= 2, City, "")) %>%#min_rank <= 1 |
-  mutate(color = case_when(
-  #  min_rank <= 1 ~ "red",
-    max_rank <= 2 ~ "lightblue"
-  ))
+# for (var in colnames(nodeImp)[-c(1, length(colnames(nodeImp)))]) {
+#   gbg <- nodeImp %>% 
+#     group_by(Section) %>%
+#     subset(select = c(Section, get(var), City))%>%
+#     mutate(min_rank = dense_rank(as.numeric(get(var))), 
+#            max_rank = dense_rank(-as.numeric(get(var)))) %>%
+#     mutate(label1 = ifelse( max_rank <= 2, City, "")) %>%
+#     mutate(label2 = ifelse( min_rank <= 2, City, "")) %>%#min_rank <= 1 |
+#     mutate(color1 = case_when(max_rank <= 2 ~ "skyblue")) %>%
+#     mutate(color2 = case_when(min_rank <= 2 ~ "red"))
+#   
+#   #par(mfrow=c(3,2))
+#   
+#   for(i in 1:6){
+#     V(G[[i]])$label1 = gbg$label1[gbg$Section == i]
+#     V(G[[i]])$color1 = gbg$color1[gbg$Section == i]
+#     plot.igraph(igraph::simplify(G[[i]]),directed = T,
+#                 main = paste(df_date_split$dt_range[i],"Node measure",var),
+#                 #df_date_split$dt_range[i],#
+#                 edge.arrow.size = 0.3,
+#                 edge.width = 0.5,
+#                 edge.color = "gray60",
+#                 edge.alpha =0.5,
+#                 layout = cbind(as.numeric(layout$lat),
+#                                as.numeric(layout$lon)),
+#                 vertex.label = V(G[[i]])$label1,
+#                 vertex.size = 5,
+#                 vertex.color = V(G[[i]])$color1,
+#                 vertex.frame.color = "blue",
+#                 vertex.label.size=0.001)
+#   }
+#   
+# }
 
-  par(mfrow=c(3,2))
+var <- "Outdegree"
+gbg <- nodeImp %>% 
+    group_by(Section) %>%
+    subset(select = c(Section, get(var), City))%>%
+    mutate(min_rank = dense_rank(as.numeric(get(var))), 
+           max_rank = dense_rank(-as.numeric(get(var)))) %>%
+    mutate(label1 = ifelse( max_rank <= 2, City, "")) %>%
+    mutate(label2 = ifelse( min_rank <= 2, City, "")) %>%#min_rank <= 1 |
+    mutate(color1 = case_when(max_rank <= 2 ~ "skyblue3")) %>%
+    mutate(color2 = case_when(min_rank <= 2 ~ "red"))
 
 for(i in 1:6){
-  V(G[[i]])$label = gbg$label[gbg$Section == i]
-  V(G[[i]])$color = gbg$color[gbg$Section == i]
-  plot.igraph(igraph::simplify(G[[i]]),directed = T,
-              main = paste(df_date_split$dt_range[i],"Node measure",var),
-              #df_date_split$dt_range[i],#
-              edge.arrow.size = 0.2,
-              layout = cbind(as.numeric(layout$lat),
-                             as.numeric(layout$lon)),
-              vertex.label = V(G[[i]])$label,
-              vertex.size = 5,
-              vertex.color = V(G[[i]])$color,
-              vertex.frame.color = "blue",
-              vertex.label.size=0.001)
+    V(G[[i]])$label1 = gbg$label1[gbg$Section == i]
+    V(G[[i]])$color1 = gbg$color1[gbg$Section == i]
+    plot.igraph(igraph::simplify(G[[i]]),directed = T,
+                main = paste(df_date_split$dt_range[i],"Node measure",var),
+                #df_date_split$dt_range[i],#
+                edge.arrow.size = 0.3,
+                edge.width = 0.5,
+                edge.color = "gray60",
+                edge.alpha =0.5,
+                layout = cbind(as.numeric(layout$lat),
+                               as.numeric(layout$lon)),
+                vertex.label = V(G[[i]])$label1,
+                vertex.size = 5,
+                vertex.color = V(G[[i]])$color1,
+                vertex.frame.color = NULL,
+                vertex.label.size=0.001)
 }
 
-}
+var <- "ivi_out"
+gbg <- nodeImp %>% 
+    group_by(Section) %>%
+    subset(select = c(Section, get(var), City))%>%
+    mutate(min_rank = dense_rank(as.numeric(get(var))), 
+           max_rank = dense_rank(-as.numeric(get(var)))) %>%
+    mutate(label1 = ifelse( max_rank <= 2, City, "")) %>%
+    mutate(label2 = ifelse( min_rank <= 2, City, "")) %>%#min_rank <= 1 |
+    mutate(color1 = case_when(max_rank <= 2 ~ "green4")) %>%
+    mutate(color2 = case_when(min_rank <= 2 ~ "red"))
 
+for(i in 1:6){
+    V(G[[i]])$label1 = gbg$label1[gbg$Section == i]
+    V(G[[i]])$color1 = gbg$color1[gbg$Section == i]
+    plot.igraph(igraph::simplify(G[[i]]),directed = T,
+                main = paste(df_date_split$dt_range[i],"Node measure",var),
+                #df_date_split$dt_range[i],#
+                edge.arrow.size = 0.3,
+                edge.width = 0.5,
+                edge.color = "gray60",
+                edge.alpha =0.5,
+                layout = cbind(as.numeric(layout$lat),
+                               as.numeric(layout$lon)),
+                vertex.label = V(G[[i]])$label1,
+                vertex.size = 5,
+                vertex.color = V(G[[i]])$color1,
+                vertex.frame.color = NULL,
+                vertex.label.size=0.001)
+  }
 
+# for(i in 1:6){
+#     V(G[[i]])$label2 = gbg$label2[gbg$Section == i]
+#     V(G[[i]])$color2 = gbg$color2[gbg$Section == i]
+#     plot.igraph(igraph::simplify(G[[i]]),directed = T,
+#                 main = paste(df_date_split$dt_range[i],"Node measure",var),
+#                 #df_date_split$dt_range[i],#
+#                 edge.arrow.size = 0.3,
+#                 edge.width = 0.5,
+#                 edge.color = "gray60",
+#                 edge.alpha =0.5,
+#                 layout = cbind(as.numeric(layout$lat),
+#                                as.numeric(layout$lon)),
+#                 vertex.label = V(G[[i]])$label2,
+#                 vertex.size = 5,
+#                 vertex.color = V(G[[i]])$color2,
+#                 vertex.frame.color = "blue",
+#                 vertex.label.size=0.001)
+#   }
 
 ## Outdegree: Outgoing edges of each node
 ## Closeness: Closeness centrality measures how many steps is required to access every other vertex from a given vertex.
@@ -623,6 +703,12 @@ for(i in 1:6){
 ## Percolation:
 ## Page rank centralities:
 ## k-shell decomposition:
+#  df %>%
+#   pivot_longer(-c("year","epiweek"))%>%
+#   mutate(yearWk = paste0(year,"-",epiweek)) %>%
+# ggplot()+
+#   geom_point(aes(x = yearWk, y = value, color = name))+
+#   theme(legend.position = "none")
 
 ```
 
@@ -804,9 +890,56 @@ for(c in unique(df$County)){
 ```
 
 
+1. Drop time series that have more than 50% missing data.
 
-## Remove cities that We are not interested in
+2. Missing data imputation using Kalman smoothing and state space models.
 
+3. Divide the data into non-overlapping time windows for all the available time series. Currently using time windows of size 25.
+
+4. Fit VAR with lasso penalty for each time window 
+
+5. Using the estimates from the models above create a Network Granger Causality maps.
+
+6. Currently there are 6 time windows and 6 network maps that are generated.
+
+7. Apply community detection methods such as edge betweenness/ walktrap that produce observable hub dominance structures.
+
+8.Apply various node importance measures such a in degree out-degree, betweeness and other methods such as integrated value of influence from the influential package in R.
+
+
+The goal of this project is to find the important nodes over time and their sphere of influence. See if the nodes of importance change over time. 
+
+To do:
+1. Use the multivariate time series imputation methods and use other variables such as case count, death count, hospitalization count etc. in the model.
+
+2. Look into possible application of Joint Structural Break Detection and Parameter Estimation in High-Dimensional Non-stationary VAR Models (Safikhania & Shojaie).
+
+3. Incorporate the safegraph movement data into the model as exogenous variables or include that data in the penalty structure.
+
+
+I have doubts about using imputed time series data. Would using another imputation methods help quantify imputation uncertainty?
+Would using structural break detection methods provide a better division of the time series into appropriate time windows instead of using hard coded sectioning?
+I was reading some literature regarding time varying Granger causality test (Shi, et al 2020). They are using only two financial time series data. Would it be applicable here to assess if the causal direction changes over time? Would this be able to mitigate the issue of finding the appropriate structural breaks in the time series?
+
+
+
+########################################################
+
+Create a simulation framework for time series data with change point at different points in time. 
+## Create time series data with same number of change points. Make sure the change points are close to each other. 
+```{r}
+
+```
+
+## Run some univariate changepoint detection method. the number of change pint need to be the same for all the timeseries
+
+## for each segement fill in the blanks using kalman filter  make each segment the same size. 
+
+## Run VAR models. on each timer series segment. 
+
+## Create network granger maps based on these outputs. 
+
+## node importance measures using these maps.
 
 
 
