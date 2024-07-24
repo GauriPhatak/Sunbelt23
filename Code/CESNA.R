@@ -109,6 +109,10 @@ CmntyWtUpdt <- function(f_u, Fvmat,Fvnot, X_u = NULL , W = NULL ,Z_u= NULL, beta
   return(f_u_new)
 }
 
+sigmoid <- function(W,Ftot){
+  Q <- 1/(1+exp(-1*(W %*% t(Ftot))))
+  return(Q)
+}
 
 ## W: Logistic weight matrix
 ## X: Covariate values
@@ -117,10 +121,10 @@ CmntyWtUpdt <- function(f_u, Fvmat,Fvnot, X_u = NULL , W = NULL ,Z_u= NULL, beta
 ## lambda: 
 LRParamUpdt <- function(W, X, Ftot, alpha, lambda){
   Ftotn <- cbind(1,Ftot)
-  Q <- 1/(1+exp(-1*(W %*% t(Ftotn))))
+  Q <- sigmoid(W,Ftotn)
   
   W_grad <- t(X - t(Q)) %*% Ftotn
-  
+  alpha <- 0.05
   W_new <- W + alpha*(W_grad - lambda*(sign(W)))
   # W_new <- matrix(nrow = dim(W)[1], ncol = dim(W)[2],0)
   # for(i in 1:k){
@@ -149,7 +153,7 @@ LinRParamUpdt <- function(beta, Z, Ftot, alpha, lambda,missVals){
 }
 
 findLL <- function(G, Ftot, W= NA, X = NA, beta= NA ,Z= NA, sigmaSq = NA){
-  scale <- 0.5
+  scale <- 1
   E <- as_edgelist(G)
   F1 <- Ftot[E[,1],]
   F2 <- Ftot[E[,2],]
@@ -197,7 +201,8 @@ findLL <- function(G, Ftot, W= NA, X = NA, beta= NA ,Z= NA, sigmaSq = NA){
   
   
   ## Calculating the final log likelihood 
-  ll <- scale*S1 + (1-scale)* (S2 + S3)
+  #ll <- scale*S1 + (1-scale)* (S2 + S3)
+  ll <- S1 +(S2 + S3)
   return(ll)
 }
 
@@ -258,6 +263,7 @@ CESNA <- function(G, nc, k =0 , o=0 , N, alpha, lambda, thresh, nitermax, random
   W <- NULL
   W_orig <- NULL
   if(k >0){
+    W <- matrix(nrow = k, ncol = nc+1, 0)
     W <- LRParamUpdt(W,X,Ftot,alpha,lambda)#matrix(nrow = k, ncol = nc+1, 0)#sample(seq(0.1,0.5,length.out =10), k*(nc+1), replace = TRUE))
     W_orig <- W
   }
@@ -299,6 +305,7 @@ CESNA <- function(G, nc, k =0 , o=0 , N, alpha, lambda, thresh, nitermax, random
   arilst <- c()
   continue <- TRUE
   mse <- matrix(nrow= 0, ncol =o)
+  accuracy <- matrix(nrow= 0, ncol =k)#c()
   #while (all(c(((LLnew - LLold) > thresh), (iter < nitermax))))  {
   while(continue){
     #print(iter)
@@ -375,20 +382,30 @@ CESNA <- function(G, nc, k =0 , o=0 , N, alpha, lambda, thresh, nitermax, random
       pred <- cbind(1,Ftot) %*% t(beta)
       mse <- rbind(mse, colSums((pred - Z)^2)/dim(Z)[1])
     }
+    if(k > 0){
+      predLR <- apply(sigmoid(W,cbind(1,Ftot)) > 0.5,1,as.numeric)
+      acc <- rep(0,k)
+      for(i in 1:k){
+        cm <-  confusionMatrix(factor(predLR[,i], levels = c(0,1)),factor(X[,i]))
+        acc[i] <- round(cm$overall[1],2)
+      }
+      #cm <-  confusionMatrix(factor(as.numeric(predLR)),factor(X))
+      accuracy <- rbind(accuracy, acc)
+    }
    
   }
   
   ## Updating the logistic weight parameters
-  return(list(Ftotold,Ftot_orig,W_orig,arilst,W,lllst,beta, Z, mse))
+  return(list(Ftotold,Ftot_orig,W_orig,arilst,W,lllst,beta, Z, mse,accuracy))
 }
 
 
 ## Creating simulation of the data
 nc <- 3
 ## Number of binary cov
-k <- 0
+k <- 3
 ## Number of continuous cov
-o <- 3
+o <- 0
 ## Number of nodes 
 N <- 100
 # Probability of cluster assignment
@@ -413,12 +430,12 @@ alpha <- 0.001
 lambda <- 0.001
 
 ## Setting threshold for log-likelihood difference
-thresh <- 0.001
+thresh <- 0.0001
 
 #Types of covariate values
-covTypes <- c("continuous")#c("binary")#c("continuous")
-CovNamesLin <- c("cv1", "cv2","cv3") 
-CovNamesLP <- c()#c("bv1", "bv2","bv3") 
+covTypes <- c("binary")#c("continuous")#c("binary")#c("continuous")
+CovNamesLin <- c()#c("cv1", "cv2","cv3") 
+CovNamesLP <- c("bv1", "bv2","bv3") 
 missing = 0
 randomize = TRUE
 G <- intergraph::asIgraph(NWSimBin(nc, k, pC, N, pClust, B, o,dist,covTypes,CovNamesLin , CovNamesLP, missing))
@@ -449,35 +466,38 @@ arilst <- list()
 ## saving the final cluster list
 cLst <- c(V(G)$Cluster)
 mse <- matrix(nrow = Nsim, ncol = o+k, 0)
-Z <-  as.data.frame(vertex_attr(G))%>% 
+Z <-  as.data.frame(vertex_attr(G)) %>% 
   dplyr::select(all_of(c(CovNamesLin)))
+X <-  as.data.frame(vertex_attr(G)) %>% 
+  dplyr::select(all_of(c(CovNamesLP)))
 for(j in 1:Nsim){
   print(j)
   op <- CESNA(G, nc, k,o, N, alpha, lambda, thresh, nitermax, randomize, orig, CovNamesLin, CovNamesLP)
+  
+   opf[[j]] <- op
+}
+if(o >0){
   Ffin <- op[[1]]
-
   mem <- rep(NA, N)
   for(i in 1:N){
     mem[i] <- which.max(Ffin[i,])
   }
-  
-  opf[[j]] <- op
-  if(o >0){
-    df <- cbind(1, opf[[j]][[1]])
-    bt <- opf[[j]][[7]]
-    pred <- df %*% t(bt)
-    mse[j, ] <- colSums((pred - Z)^2)/dim(Z)[1]
-  }
-  
-  
+  df <- cbind(1, opf[[j]][[1]])
+  bt <- opf[[j]][[7]]
+  pred <- df %*% t(bt)
+  pred  <- cbind(pred,Z, V(G)$Cluster, mem, op[[8]])
+  #mse[j, ] <- colSums((pred - Z)^2)/dim(Z)[1]
 }
-#Z <- cbind(op[[8]],data.frame(vertex_attr(G)))
-#view(Z)
-#ARIV_NewG <- ARIV
 
-# df <- cbind(1, opf[[1]][[1]])
-# bt <- opf[[1]][[7]]
-# pred <- df %*% t(bt)
-# pred  <- cbind(pred,V(G)$Cluster, opf[[1]][[1]], mem)
-# opf[[1]][[4]]
-# view(opf[[1]][[6]])
+if(k >0 ){
+  Ffin <- op[[1]]
+  mem <- rep(NA, N)
+  for(i in 1:N){
+    mem[i] <- which.max(Ffin[i,])
+  }
+  df <- cbind(1, op[[1]])
+  W <- op[[5]]
+  pred <- apply(sigmoid(W,df) > 0.5,1,as.numeric)
+  pred <- cbind(pred,X, V(G)$Cluster, mem)
+}
+
