@@ -4,7 +4,7 @@ library(igraph)
 library(network)
 library(intergraph)
 library(ergm)
-
+source("Code/HelperFuncs.R")
 
 prob2logit <- function(x){
   return(log(x / (1 - x)))
@@ -35,6 +35,7 @@ NWSimBin <- function(nc, k, pC,N, pClust,B,o,dist,covTypes = c("binary", "contin
       }
     }
     for(j in 1:k){
+      binVal[sample(1:N, round(missing*N/100)),j] <- NA
       net %v% CovNamesLP[j] <- binVal[,j]
     }
   }
@@ -71,8 +72,8 @@ NWSimBin <- function(nc, k, pC,N, pClust,B,o,dist,covTypes = c("binary", "contin
 #X_u: Covariate matrix
 #Q_u: logistic probability matrix
 #W: Logistic weight matrix
-CmntyWtUpdt <- function(f_u, Fvmat,Fvnot, X_u = NULL , W = NULL ,Z_u= NULL, beta= NULL, sigmaSq, alpha){
-  
+CmntyWtUpdt <- function(f_u, Fvmat,Fvnot, X_u = NULL , W = NULL ,Z_u= NULL, beta= NULL, sigmaSq, alpha, alphaLL){
+  nc <- ncVal
   ## Gradient function to update log likelihood of G
   ## First part of log likelihood of G based on the structure of the network
   a <- exp(-1*(f_u %*% t(Fvmat)))
@@ -103,7 +104,13 @@ CmntyWtUpdt <- function(f_u, Fvmat,Fvnot, X_u = NULL , W = NULL ,Z_u= NULL, beta
   }
   
   ## Function to update the community weights vector using non negative matrix factorization
-  f_u_new <- f_u + t((alpha*(llG+llX[2:(nc+1)]+llZ[2:(nc+1)])))
+  if(is.null(alphaLL)){
+    f_u_new <- f_u + t((alpha*(llG+(llX[2:(nc+1)]+llZ[2:(nc+1)]))))
+    
+  }else{
+    f_u_new <- f_u + t((alpha*(alphaLL*llG+(1-alphaLL)*(llX[2:(nc+1)]+llZ[2:(nc+1)]))))
+    
+  }
   f_u_new[f_u_new < 0] <- 0.0001
   
   return(f_u_new)
@@ -119,12 +126,12 @@ sigmoid <- function(W,Ftot){
 ## Ftot: Community weight params
 ## alpha: tuning param
 ## lambda: 
-LRParamUpdt <- function(W, X, Ftot, alpha, lambda){
+LRParamUpdt <- function(W, X, Ftot, alpha, lambda, missing){
   Ftotn <- cbind(1,Ftot)
   Q <- sigmoid(W,Ftotn)
   
   W_grad <- t(X - t(Q)) %*% Ftotn
-  alpha <- 0.05
+  #alpha <- 0.05
   W_new <- W + alpha*(W_grad - lambda*(sign(W)))
   # W_new <- matrix(nrow = dim(W)[1], ncol = dim(W)[2],0)
   # for(i in 1:k){
@@ -141,41 +148,53 @@ LRParamUpdt <- function(W, X, Ftot, alpha, lambda){
   return(W_new)
 }
 
+PredictCovLR <- function(X, W, Ftot,missing){
+  for(i in 1:dim(X)[2]){
+    X[which(missing[,i]),i] <- as.numeric(sigmoid(W[i,], cbind(1,Ftot[which(missing[,i]),])) > 0.5)
+  }
+  return(X)
+}
+
 LinRParamUpdt <- function(beta, Z, Ftot, alpha, lambda,missVals){
   #Z <- as.matrix(Z, ncol = dim(beta)[1])
   beta_new <- matrix(0, nrow = dim(beta)[1], ncol = dim(beta)[2])
   Ftot_n <- cbind(1,Ftot)
   for(i in 1:dim(beta)[1]){
-    beta_new[i,] <- MASS::ginv(t(Ftot_n) %*% Ftot_n) %*% t(Ftot_n) %*% Z[,i] # (t(X)*X)^-1t(X)y : X : Ftot & y = Z
+    beta_new[i,] <- MASS::ginv(t(Ftot_n) %*% Ftot_n) %*% t(Ftot_n) %*% Z[,i] 
+    # (t(X)*X)^-1t(X)y : X : Ftot & y = Z
   }
   return(beta_new)
   
 }
 
-findLL <- function(G, Ftot, W= NA, X = NA, beta= NA ,Z= NA, sigmaSq = NA){
+findLL <- function(G, Ftot, W= NA, X = NA, beta= NA ,Z= NA, sigmaSq = NA, alphaLL){
   scale <- 1
   E <- as_edgelist(G)
   F1 <- Ftot[E[,1],]
   F2 <- Ftot[E[,2],]
   N <-  gorder(G)
-  ## Calculating the L_g part of the log likelihood
-  S11 <- 0
+  ## Calculating the L_g part of the log likelihood for structure of the network
   
+  ## Variable to save the loglik contributed by nodes with edges between them
+  S11 <- 0
   for(i in 1:dim(E)[1]){
     S11 <- S11 + log(1- exp(-1*sum(F1[i,] *F2[i,])))
   }
   
+  ## Creating a graph that is negative of the given graph to get edges not present in G
   A <- 1- (1 * as.matrix(as_adjacency_matrix(G)))
   E2<-  as_edgelist(graph_from_adjacency_matrix(A))
   F1 <- Ftot[E2[,1],]
   F2 <- Ftot[E2[,2],]
+  
+  ## Variable to save the loglik contributed by nodes without edges between them
   S12 <- 0
   for(i in 1:dim(E2)[1]){
     S12 <- S12 + sum(F1[i,] * F2[i,])
   }
   S1 <- S11-S12
   
-  ## Calculating the L_x part of the log likelihood
+  ## Calculating the L_x part of the log likelihood for binary covariates
   S2 <- 0
   if(length(W) > 0){
     for(i in 1:N){
@@ -185,7 +204,7 @@ findLL <- function(G, Ftot, W= NA, X = NA, beta= NA ,Z= NA, sigmaSq = NA){
   }
   
   
-  ## Calculating the L_z part of the log likelihood
+  ## Calculating the L_z part of the log likelihood for continuous covariates
   S3 <- 0
   if(length(beta) > 0){
     for(j in 1:o){
@@ -202,7 +221,13 @@ findLL <- function(G, Ftot, W= NA, X = NA, beta= NA ,Z= NA, sigmaSq = NA){
   
   ## Calculating the final log likelihood 
   #ll <- scale*S1 + (1-scale)* (S2 + S3)
-  ll <- S1 +(S2 + S3)
+  if(is.null(alphaLL)){
+    ll <- S1 + (S2 + S3)
+    
+  }else{
+    ll <- alphaLL* S1 + (1-alphaLL)*(S2 + S3)
+    
+  }
   return(ll)
 }
 
@@ -210,7 +235,7 @@ SigmaSqCalc <- function(Z, beta, Ftot, missVals){
   sigmaSq <- rep(0, dim(beta)[1])
   for(i in 1:dim(beta)[1]){
     sigmaSq[i] <- sum((Z[!missVals[,i],i] - (t(beta[i,]) %*% t(cbind(1,Ftot)[!missVals[,i],])) )^2, na.rm = TRUE)/sum(!missVals[,i])
-      #colSums((Z - t(beta %*% t(cbind(1,Ftot)))) ^2, na.rm = TRUE)/dim(Z)[1]
+    #colSums((Z - t(beta %*% t(cbind(1,Ftot)))) ^2, na.rm = TRUE)/dim(Z)[1]
   }
   
   return(sigmaSq)
@@ -223,7 +248,9 @@ PredictCovLin <- function(Ftot, Z, beta, missVals){
   return(Z)
 }
 
-CESNA <- function(G, nc, k =0 , o=0 , N, alpha, lambda, thresh, nitermax, randomize =TRUE, orig, CovNamesLin = c() , CovNamesLP = c()){
+mode<-function(x){which.max(tabulate(x))}
+
+CESNA <- function(G, nc, k =0 , o=0 , N, alpha, lambda, thresh, nitermax, randomize =TRUE, orig, CovNamesLin = c() , CovNamesLP = c(), alphaLL = NULL){
   ## Setting initial values for logistic weights
   
   
@@ -264,6 +291,9 @@ CESNA <- function(G, nc, k =0 , o=0 , N, alpha, lambda, thresh, nitermax, random
   W_orig <- NULL
   if(k >0){
     W <- matrix(nrow = k, ncol = nc+1, 0)
+    if(numMissVal > 0 ){
+      X <- PredictCovLR(X, W, Ftot,missVals)
+    }
     W <- LRParamUpdt(W,X,Ftot,alpha,lambda)#matrix(nrow = k, ncol = nc+1, 0)#sample(seq(0.1,0.5,length.out =10), k*(nc+1), replace = TRUE))
     W_orig <- W
   }
@@ -294,7 +324,7 @@ CESNA <- function(G, nc, k =0 , o=0 , N, alpha, lambda, thresh, nitermax, random
   ## Updating all the node community weights
   ## Setting the new loglikelihood to 0 
   #LLold <- -2000000
-  LLold <- findLL(G,Ftot,W,X,beta,Z, sigmaSq)
+  LLold <- findLL(G,Ftot,W,X,beta,Z, sigmaSq,alphaLL)
   lllst <- c()
   lllst <- c(lllst, LLold)
   #LLnew <- -1000000
@@ -327,7 +357,7 @@ CESNA <- function(G, nc, k =0 , o=0 , N, alpha, lambda, thresh, nitermax, random
       Fvnot <- matrix(Ftot[-neigh,], ncol = nc )
       X_u <- NULL
       if(k > 0){
-        X_u <- X[i,]
+        X_u <- matrix(X[i,], ncol = k)
       }
       Z_u <- NULL
       if(o > 0){
@@ -335,12 +365,12 @@ CESNA <- function(G, nc, k =0 , o=0 , N, alpha, lambda, thresh, nitermax, random
         #if(numMissVal > 0){
         #  sigmaSq <- SigmaSqCalc(as.data.frame(Z[missIdx,]),beta, as.data.frame(Ftot[missIdx,]))
         #}else{
-          sigmaSq <- SigmaSqCalc(Z,beta,Ftot, missVals)
-          
+        sigmaSq <- SigmaSqCalc(Z,beta,Ftot, missVals)
+        
         #}        
-        }
+      }
       
-      Ftot[i,] <- CmntyWtUpdt(f_u, Fvmat, Fvnot, X_u, W, Z_u, beta, sigmaSq,alpha)      
+      Ftot[i,] <- CmntyWtUpdt(f_u, Fvmat, Fvnot, X_u, W, Z_u, beta, sigmaSq,alpha,alphaLL)      
       tempop1 <- append(tempop1, list(Ftot[i,]))
       nodeid <- append(nodeid, i)
     }
@@ -348,7 +378,11 @@ CESNA <- function(G, nc, k =0 , o=0 , N, alpha, lambda, thresh, nitermax, random
     
     ## Updating logistic paramters
     if(length(W) > 0){
-      W <-  LRParamUpdt(W, X, Ftot, alpha, lambda)
+      if(numMissVal > 0 ){        W <-  LRParamUpdt(W, X, Ftot, alpha, lambda,missVals)
+      X <-  PredictCovLR(X, W, Ftot,missVals)
+      }else{
+        W <-  LRParamUpdt(W, X, Ftot, alpha, lambda,missVals)
+      }
     }
     if(length(beta) > 0 ){
       if(numMissVal > 0 ){
@@ -371,7 +405,7 @@ CESNA <- function(G, nc, k =0 , o=0 , N, alpha, lambda, thresh, nitermax, random
     
     ## Update the log likelihood.
     #LLold <- LLnew
-    LLnew <- findLL(G,Ftot,W,X,beta, Z,sigmaSq )
+    LLnew <- findLL(G,Ftot,W,X,beta, Z,sigmaSq , alphaLL)
     if(any(c(((LLnew - LLold) < thresh), (iter > nitermax)))){
       continue <- FALSE
     }
@@ -392,112 +426,146 @@ CESNA <- function(G, nc, k =0 , o=0 , N, alpha, lambda, thresh, nitermax, random
       #cm <-  confusionMatrix(factor(as.numeric(predLR)),factor(X))
       accuracy <- rbind(accuracy, acc)
     }
-   
   }
-  
   ## Updating the logistic weight parameters
   return(list(Ftotold,Ftot_orig,W_orig,arilst,W,lllst,beta, Z, mse,accuracy))
 }
 
-
-## Creating simulation of the data
-nc <- 3
-## Number of binary cov
-k <- 3
-## Number of continuous cov
-o <- 0
-## Number of nodes 
-N <- 100
-# Probability of cluster assignment
-pClust <- c(0.3,0.3,0.3)
-#c(0.7,0,0,0,0.7,0,0,0,0.7)
-pC <- matrix(nrow=nc, ncol =k,data = c(1,0,0,
-                                       0,1,0,
-                                       0,0,1))
-
-#dist <- data.frame(matrix(nrow = nc, ncol = o, data=list(list(5,1), list(5,1),list(5,1))))
-
-dist <- data.frame(matrix(nrow = nc, ncol = o, data=list(list(5,1), list(0,1),list(0,1),
-                                                         list(0,1), list(10,1),list(0,1),
-                                                         list(0,1), list(0,1),list(15,1))))
-#dist <- cbind(c(5,10,15), c(1,1,1))
-B <- c(0.5,0.01,0.5,0.01,0.01,0.5)
-
-## setting alpha value
-alpha <- 0.001
-
-## setting lambda value
-lambda <- 0.001
-
-## Setting threshold for log-likelihood difference
-thresh <- 0.0001
-
-#Types of covariate values
-covTypes <- c("binary")#c("continuous")#c("binary")#c("continuous")
-CovNamesLin <- c()#c("cv1", "cv2","cv3") 
-CovNamesLP <- c("bv1", "bv2","bv3") 
-missing = 0
-randomize = TRUE
-G <- intergraph::asIgraph(NWSimBin(nc, k, pC, N, pClust, B, o,dist,covTypes,CovNamesLin , CovNamesLP, missing))
-orig <- V(G)$Cluster
-
-## Use the igraph for week 50-2020
-# iGraph_op <- readRDS("Code/iGraph_NW.rds")
-# G <- iGraph_op[["50-2020"]]
-# G <- as.undirected(G, mode = "collapse")
-# CovNamesLin<- c("covVal") 
-# CovNamesLP <- c()
-# k <- 0
-# o <- 1
-# nc <- 6
-# alpha <- 0.001
-# lambda <- 0.001
-# thresh <- 0.001
-# randomize = FALSE
-# N <- gorder(G)
-# orig <- membership(cluster_edge_betweenness(G))
-
-# Setting iterations if log likelihood is taking too long
-nitermax <- 500
-Nsim <- 20
-opf <- list()
-ARIV <- rep(0,Nsim)
-arilst <- list()
-## saving the final cluster list
-cLst <- c(V(G)$Cluster)
-mse <- matrix(nrow = Nsim, ncol = o+k, 0)
-Z <-  as.data.frame(vertex_attr(G)) %>% 
-  dplyr::select(all_of(c(CovNamesLin)))
-X <-  as.data.frame(vertex_attr(G)) %>% 
-  dplyr::select(all_of(c(CovNamesLP)))
-for(j in 1:Nsim){
-  print(j)
-  op <- CESNA(G, nc, k,o, N, alpha, lambda, thresh, nitermax, randomize, orig, CovNamesLin, CovNamesLP)
+sim <- TRUE
+if(sim == TRUE){
+  ## Creating simulation of the data
+  #Types of covariate values
+  covTypes <- c("continuous")#c("binary")#c("continuous")#c("continuous")
+  CovNamesLin <-c("cv1")# c("cv1", "cv2","cv3") 
+  CovNamesLP <- c()#c("bv1", "bv2","bv3") 
+  ## setting alpha value
+  nc <- c(3)#4
+  alpha <- c(0.0002,0.0005,0.0008,0.001)#c(0.001)#c(0.0002,0.0005,0.0008,0.001)#0.0002
+  alphaLL <- c(0, 0.3, 0.5, 0.7, 0.9, 1)#c(1)#c(0.7)#c(0, 0.3, 0.5, 0.7, 0.9, 1)#c(0.2,0.5,0.7)#0.5
+  lambda <- 0.001
+  thresh <- 0.0001
+  randomize = TRUE
+  missing = 0
+  randomize = TRUE
   
-   opf[[j]] <- op
-}
-if(o >0){
-  Ffin <- op[[1]]
-  mem <- rep(NA, N)
-  for(i in 1:N){
-    mem[i] <- which.max(Ffin[i,])
+  ## Number of binary cov
+  k <- length(CovNamesLP)
+  ## Number of continuous cov
+  o <- length(CovNamesLin)
+  ## Number of nodes 
+  N <- 100
+  # Probability of cluster assignment
+  pClust <- c(0.3,0.3,0.3)
+  #c(0.7,0,0,0,0.7,0,0,0,0.7)
+  pC <- matrix(nrow=nc, ncol =k,data = c(1,0,0,
+                                         0,1,0,
+                                         0,0,1))
+  dist <- data.frame(matrix(nrow = nc, ncol = o, data=list(list(5,1), list(10,1),list(15,1))))
+  # dist <- data.frame(matrix(nrow = nc, ncol = o, data=list(list(5,1), list(0,1),list(0,1),
+  #                                                          list(0,1), list(10,1),list(0,1),
+  #                                                          list(0,1), list(0,1),list(15,1))))
+  #dist <- cbind(c(5,10,15), c(1,1,1))
+  B <- c(0.5,0.01,0.5,0.01,0.01,0.5)
+  G <- intergraph::asIgraph(NWSimBin(nc, k, pC, N, pClust, B, o,dist,covTypes,CovNamesLin , CovNamesLP, missing))
+  orig <- V(G)$Cluster
+  Z <-  as.data.frame(vertex_attr(G)) %>% 
+    dplyr::select(all_of(c(CovNamesLin)))
+  X <-  as.data.frame(vertex_attr(G)) %>% 
+    dplyr::select(all_of(c(CovNamesLP)))
+  if(length(Z) >0){
+    cov <- Z
+    if(missing >0){
+      mns <- colMeans(cov,na.rm  = TRUE)
+      for(i in 1:o){
+        cov[is.na(cov[,i]),i] <- mns[i]
+      }
+    }
+    origCov <-  CovAssistedSpecClust(G,cov,nc, alpha=0.5)
   }
-  df <- cbind(1, opf[[j]][[1]])
-  bt <- opf[[j]][[7]]
-  pred <- df %*% t(bt)
-  pred  <- cbind(pred,Z, V(G)$Cluster, mem, op[[8]])
-  #mse[j, ] <- colSums((pred - Z)^2)/dim(Z)[1]
+  if(length(X) >0){
+    if(missing >0){
+      cov <- X
+      for(i in 1:k){
+        cov[is.na(cov[,i]),i] <- mode(cov[,i])
+      }
+    }
+    origCov <-  CovAssistedSpecClust(G,cov,nc, alpha=0.5)
+  }
+  nitermax <- 500
+  Nsim <- 20
+  opf <- list()
+  ARIV <- rep(0,Nsim)
+  arilst <- list()
+  ## saving the final cluster list
+  cLst <- c(V(G)$Cluster)
+  mse <- matrix(nrow = Nsim, ncol = o+k, 0)
+  lvl <- 1
+  for(a3 in nc){
+    ncVal <- a3
+    orig <- RegSpectralClust(G,ncVal)
+    origCov <-  CovAssistedSpecClust(G,cov,ncVal,alpha=0.5)
+    for(a1 in alphaLL){
+      for (a2 in alpha) {
+        for(j in 1:Nsim){
+          print(paste0("iteration ",lvl," alpha ",a2,
+                       " alphaLL ",a1," num cmnty ",ncVal))
+          op <- CESNA(G,ncVal,k,o,N,a2,lambda,
+                      thresh,nitermax,randomize,
+                      orig,CovNamesLin,CovNamesLP,a1)
+          opf[[lvl]] <- op
+          lvl <- lvl+1
+        }
+      }
+    }
+  }
+  EG <- expand.grid(1:Nsim,alpha,alphaLL,nc)
 }
 
-if(k >0 ){
-  Ffin <- op[[1]]
-  mem <- rep(NA, N)
-  for(i in 1:N){
-    mem[i] <- which.max(Ffin[i,])
+### Use the igraph for week 50-2020
+if (sim == FALSE){
+  iGraph_op <- readRDS("Code/iGraph_NW.rds")
+  G <- iGraph_op[["50-2020"]]
+  G <- as.undirected(G, mode = "collapse")
+  covTypes <- c()#c("continuous")#c("binary")#c("continuous")
+  CovNamesLin<- c()#c("covVal")
+  CovNamesLP <- c()
+  k <- length(CovNamesLP)
+  o <- length(CovNamesLin)
+  nc <- c(3,4)#4
+  alpha <- c(0.0005, 0.0008, 0.001)#c(0.0002,0.0005,0.0008,0.001)#0.0002
+  alphaLL <- c(1)#c(0.7)#c(0, 0.3, 0.5, 0.7, 0.9, 1)#c(0.2,0.5,0.7)#0.5
+  lambda <- 0.001
+  thresh <- 0.0001
+  randomize = TRUE
+  N <- gorder(G)
+  #RegSpectralClust(G,nc)
+  cov <- V(G)$covVal
+  cov[is.na(V(G)$covVal)] <- mean(V(G)$covVal,na.rm  = TRUE)
+  cov <- as.matrix(cov, ncol = 1)
+  # Setting iterations if log likelihood is taking too long
+  nitermax <- 800
+  Nsim <- 20
+  opf <- list()
+  ARIV <- rep(0,Nsim)
+  arilst <- list()
+  ## saving the final cluster list
+  cLst <- c(V(G)$Cluster)
+  mse <- matrix(nrow = Nsim, ncol = o+k, 0)
+  lvl <- 1
+  for(a3 in nc){
+    ncVal <- a3
+    for(a1 in alphaLL){
+      for (a2 in alpha) {
+        for(j in 1:Nsim){
+          print(paste0("iteration ",lvl, " alpha ", a2, " alphaLL ", a1, " num cmnty ", ncVal))
+          orig <- RegSpectralClust(G,ncVal)
+          origCov <-  CovAssistedSpecClust(G,cov,ncVal, alpha=0.5)
+          op <- CESNA(G, ncVal, k,o, N, a2, lambda, thresh, nitermax, randomize, orig, CovNamesLin, CovNamesLP, a1)
+          opf[[lvl]] <- op
+          lvl <- lvl+1
+        }
+      }
+    }
   }
-  df <- cbind(1, op[[1]])
-  W <- op[[5]]
-  pred <- apply(sigmoid(W,df) > 0.5,1,as.numeric)
-  pred <- cbind(pred,X, V(G)$Cluster, mem)
+  EG <- expand.grid(1:Nsim,alpha,alphaLL,nc)
 }
-

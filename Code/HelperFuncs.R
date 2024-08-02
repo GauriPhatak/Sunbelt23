@@ -289,14 +289,11 @@ CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "asso
   #print(alpha)
   if(type == "non-assortative"){
     L_alpha <-  Lt %*% Lt + alpha *(X %*% t(X))
-  }
-  else if(type == "CCA"){
+  }else if(type == "CCA"){
     L_alpha <- Lt %*% X
-  }
-  else if(type == "assortative"){
+  }else if(type == "assortative"){
     L_alpha <-  Lt + alpha *(X %*% t(X))
-  }
-  else{
+  }else{
     return("No type Specified!")
   }
   
@@ -305,7 +302,7 @@ CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "asso
   # Step 2:
   ## Fnd the eigen values and vectors of the Lt matrix
   
-  X_L <-  eigen(L_alpha)
+  X_L <- eigen(L_alpha)
   
   ## print the difference between the eigen values 
   #print(X$values - lead(X$values))
@@ -314,7 +311,7 @@ CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "asso
   # Step 3:
   
   #3 Normalize each row of the matrix to have unit length
-  Xt <- normalize.rows(X_L$vectors[,1:k]) 
+  Xt <- normalize.rows(Re(X_L$vectors[,1:k]) )
   
   # Step 4 
   #Run kK- means algorithm on the subset of the eigen vector matrix of size nXk
