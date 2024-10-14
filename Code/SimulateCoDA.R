@@ -11,7 +11,7 @@ SaveCoDASim <- function(simvec){
   sim <- TRUE
   dir <- TRUE
   #simvec <- 3
-  S <- as.data.frame(readRDS("InitParam2.rds"))
+  S <- as.data.frame(readRDS("InitParam6.rds"))
   
   if (sim == TRUE) {
     
@@ -25,20 +25,32 @@ SaveCoDASim <- function(simvec){
     k <- k_out + k_in
     
     ## Number of in and out continuous covariates
-    o_out <- 1
-    o_in <- 1
+    o_out <- Sim$o_out
+    o_in <- Sim$o_in
     o <- o_in + o_out
     
     ## Types of covariates
-    covTypes <- c( "continuous")
+    covTypes <- Sim$covType#c( "continuous")
     
     ## Naming the binary covariates
-    CovNamesLPin <- c()#paste0("bvin", 1:k_in)
-    CovNamesLPout <- c()#paste0("bvout", 1:k_out)
+    CovNamesLPin <- c()
+    CovNamesLPout <- c()
+    CovNamesLinin <- c()
+    CovNamesLinout <- c()
+    if(k_in > 0 ){
+      CovNamesLPin <- paste0("bvin", 1:k_in)
+    }
+    if(k_out > 0 ){
+      CovNamesLPout <- paste0("bvout", 1:k_out)
+    }
     
     ## Naming the continuous covariates
-    CovNamesLinin <- paste0("cvin", 1:o_in)#c()#paste0("cvin", 1:o_in)
-    CovNamesLinout <- paste0("cvout", 1:o_out)#c()
+    if(o_in > 0 ){
+      CovNamesLinin <- paste0("cvin", 1:o_in)
+    }
+    if(o_out > 0 ){
+      CovNamesLinout <- paste0("cvout", 1:o_out)
+    }
     
     ## Number of communities
     nc <- Sim$nc
@@ -103,6 +115,7 @@ SaveCoDASim <- function(simvec){
     GTlogLiknoCovtot <- list()
     opf_covtot <- list()
     opf_noCovtot <- list()
+    TimeTaken <- list()
     
     for(m in 1:bigN){
       ## Generating netowrk with covariates and overlapping clusters
@@ -119,7 +132,7 @@ SaveCoDASim <- function(simvec){
                                 CovNamesLinin=c(), CovNamesLinout =c(),
                                 CovNamesLPin=c(),CovNamesLPout=c(),
                                 k_in =0 ,k_out =0 ,o_in=0,o_out=0, epsilon)
-      orig <- V(G)$Cluster
+      orig <<- V(G)$Cluster
       
       ## cluster assignments based on covariate assisted clustering.
       Z <-  as.data.frame(vertex_attr(G)) %>%
@@ -135,7 +148,7 @@ SaveCoDASim <- function(simvec){
             cov[is.na(cov[, i]), i] <- mns[i]
           }
         }
-        origCov <-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
+        origCov <<-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
       }
       if (length(X) > 0) {
         cov <- X
@@ -144,7 +157,7 @@ SaveCoDASim <- function(simvec){
             cov[is.na(cov[, i]), i] <- mode(cov[, i])
           }
         }
-        origCov <-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
+        origCov <<-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
       }
       
       ## Running Nsim simulations for the above settings.
@@ -152,44 +165,18 @@ SaveCoDASim <- function(simvec){
       for (j in 1:Nsim) {
         print(paste0("iteration ",lvl," alpha ",alpha,  " alphaLL ",alphaLL," num cmnty ",nc))
         if (dir == TRUE) {
-          
-          opf_cov[[lvl]] <- CoDA(
-            G,
-            nc,
-            k = c(k_in, k_out),
-            o = c(o_in, o_out),
-            N,
-            alpha,
-            lambda,
-            thresh,
-            nitermax,
-            orig,
-            randomize = TRUE,
-            CovNamesLinin,
-            CovNamesLinout,
-            CovNamesLPin,
-            CovNamesLPout,
-            alphaLL = NULL,
-            test = TRUE)
-          
-          opf_noCov[[lvl]] <- CoDA(
-            G,
-            nc,
-            k = c(0, 0),
-            o = c(0, 0),
-            N,
-            alpha,
-            lambda,
-            thresh ,
-            nitermax,
-            orig,
-            randomize = TRUE,
-            CovNamesLinin = c(),
-            CovNamesLinout = c(),
-            CovNamesLPin = c(),
-            CovNamesLPout = c(),
-            alphaLL = NULL,
-            test = TRUE)
+          start <- Sys.time()
+          opf_cov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),
+            N,alpha,lambda,thresh,nitermax,orig,randomize = TRUE,
+            CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout,
+            alphaLL = NULL,test = TRUE)
+          tme <- Sys.time() - start
+          print(paste0("Total time take ", tme))
+          TimeTaken[[lvl]] <- tme 
+          # opf_noCov[[lvl]] <- CoDA(G,nc,k = c(0, 0),o = c(0, 0),N,alpha,
+          #   lambda,thresh ,nitermax,orig,randomize = TRUE,
+          #   CovNamesLinin = c(),CovNamesLinout = c(),CovNamesLPin = c(),
+          #   CovNamesLPout = c(),alphaLL = NULL,test = TRUE)
         } 
         # else{
         #   op <- CESNA(
@@ -211,16 +198,19 @@ SaveCoDASim <- function(simvec){
         #}
         lvl <- lvl + 1
       }
+      Gtot <-  list(Gtot, G)
+      GTlogLikcovtot <-  list(GTlogLikcovtot, GTlogLikcov)
+      GTlogLiknoCovtot <- list(GTlogLiknoCovtot, GTlogLiknoCov)
     }
-    Gtot <-  list(Gtot, G) 
-    GTlogLikcovtot <-  list(GTlogLikcovtot, GTlogLikcov) 
-    GTlogLiknoCovtot <- list(GTlogLiknoCovtot, GTlogLiknoCov)
-    opf_covtot <- list(opf_covtot, opf_cov) 
+    
+    opf_covtot <- list(opf_covtot, opf_cov)
     opf_noCovtot <- list(opf_noCovtot, opf_noCov)
     
   }
-  saveRDS(list(opf_covtot, opf_noCovtot,Gtot, GTlogLikcovtot, GTlogLiknoCovtot),
-          paste0("Code/CoDAOP/OutputFileMult", simvec,".rds"))
+  saveRDS(list(opf_cov, opf_noCov,G, GTlogLikcov, GTlogLiknoCov),
+          paste0("Code/CoDAOP/OutputFile10_8", simvec,".rds"))
+  #OutputFile10_7 for Thursday meeting ## 2nd continuous var is very different distribution
+  #OutputFile10_8 for Thursday meeting ##  2nd continuous var has same distribution
   
   ### Use the igraph for week 50-2020
   if (sim == FALSE) {
@@ -295,15 +285,16 @@ SaveCoDASim <- function(simvec){
     #EG <- expand.grid(1:Nsim, alpha, alphaLL, nc)
   }
   return(list(opf_covtot, opf_noCovtot,Gtot, GTlogLikcovtot, GTlogLiknoCovtot))
+  #return(0)
 }
 
 #for(i in 1:16){
 #  print(paste0("level ", i))
 lst <- SaveCoDASim(1)
-opf_cov <- lst[[1]] 
-opf_noCov <- lst[[2]] 
-G <- lst[[3]] 
-GTlogLikcov <- lst[[4]] 
-GTlogLiknoCov <- lst[[5]]
-#  gc()
+#opf_cov <- lst[[1]] 
+# opf_noCov <- lst[[2]] 
+# G <- lst[[3]] 
+# GTlogLikcov <- lst[[4]] 
+# GTlogLiknoCov <- lst[[5]]
+gc()
 #}

@@ -14,71 +14,111 @@ library(intergraph)
 library(ergm)
 library(gridExtra)
 library(RColorBrewer)
+library(ggpubr)
+#source("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/CESNA.R")
+#getwd()
 ```
 
 
 ```{r}
 ##plotting the ari values
-printplots <- function(opf, GTll, EG, printFlg  = TRUE){
-  comp <-  data.frame( maxari = rep(0,dim(EG)[1]), llike =rep(0,dim(EG)[1]), 
-                       minllike = rep(0,dim(EG)[1]),
+printplots <- function(opf, GTll, EG, G, printFlg  = TRUE){
+  comp <-  data.frame( Finari = rep(0,dim(EG)[1]), llike =rep(0,dim(EG)[1]), 
+                       Startllike = rep(0,dim(EG)[1]),
                        alpha =rep(0,dim(EG)[1]), alphaLL=rep(0,dim(EG)[1]),
-                       nc =rep(0,dim(EG)[1]), MSE = rep(0,dim(EG)[1]),
-                       OmegaIdx = rep(0,dim(EG)[1]), 
+                       nc =rep(0,dim(EG)[1]), 
+                       MSEintot = rep(0,dim(EG)[1]),MSEouttot = rep(0,dim(EG)[1]),
+                       MSEin = rep(0,dim(EG)[1]),MSEout = rep(0,dim(EG)[1]),
+                       FinOmegaIdx = rep(0,dim(EG)[1]), 
                        accuracy  = rep(0,dim(EG)[1]), NumIter = rep(0,dim(EG)[1]))
-  llDF <- matrix(0,nrow = 0, ncol=5)
+  llDF <- matrix(0,nrow = 0, ncol=9)
+  MSE1 <- 0
+  MSE2 <- 0
+  orig <<- V(G)$Cluster
+  nc <- EG[1,4]
+  o <- EG[1,7] + EG[1,8]
+  k <- EG[1,5] + EG[1,6]
+  N <- EG[1,9]
+  
+  Z <-  as.data.frame(vertex_attr(G)) %>%
+    dplyr::select(all_of(c("cvin1", "cvout1")))
+  
+  if (length(Z) > 0) {
+    cov <- Z
+    #if (missing > 0) {
+    #  mns <- colMeans(cov, na.rm  = TRUE)
+    #  for (i in 1:o) {
+    #    cov[is.na(cov[, i]), i] <- mns[i]
+    #  }
+    #}
+    origCov <<-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
+  }
   for(i in 1:dim(EG)[1]){
+    if(length(opf[[i]]$MSE) > 0){
+      MSE1tot <- opf[[i]]$MSE[,1]
+      MSE2tot <- opf[[i]]$MSE[,2]
+      MSE1 <- opf[[i]]$MSE[,1]
+      MSE2 <- opf[[i]]$MSE[,2]
+    }
     
     llDF <- rbind(llDF, cbind(opf[[i]]$Loglik, 
                               i, 
                               1:length(opf[[i]]$Loglik),
                               opf[[i]]$OmegaIndex,
-                              max(opf[[i]]$OmegaIndex)))
+                              max(opf[[i]]$OmegaIndex),
+                              MSE1tot,
+                              MSE2tot,
+                              MSE1,
+                              MSE2))
     nc <- EG[i,4]
-    comp$maxari[i] <- max(opf[[i]]$ARI)
-    comp$llike[i] <- max(opf[[i]]$Loglik)
-    comp$minllike[i] <- min(opf[[i]]$Loglik)
+    comp$Finari[i] <- opf[[i]]$ARI[length(opf[[i]]$ARI)]
+    comp$llike[i] <- opf[[i]]$Loglik[length(opf[[i]]$Loglik)]
+    comp$Startllike[i] <- opf[[i]]$Loglik[1]
     comp$alpha[i] <- EG[i,2]
     comp$alphaLL[i] <- EG[i,3]
     comp$nc[i] <- EG[i,4]
-    comp$OmegaIdx[i] <- max(opf[[i]]$OmegaIndex)
+    comp$FinOmegaIdx[i] <- opf[[i]]$OmegaIndex[length(opf[[i]]$OmegaIndex)]
     comp$accuracy[i] <- max(opf[[i]]$Acc)
     comp$NumIter[i] <- length(opf[[i]]$Loglik)
     if(all(dim(opf[[i]]$MSE)[1] > 0, !(is.null(opf[[i]]$MSE)))){
-      comp$MSE[i] <- min(opf[[i]]$MSE)
+      comp$MSEin[i] <- opf[[i]]$MSE[length(opf[[i]]$Loglik),3]
+      comp$MSEout[i] <- opf[[i]]$MSE[length(opf[[i]]$Loglik),4]
+      comp$MSEintot[i] <- opf[[i]]$MSE[length(opf[[i]]$Loglik),1]
+      comp$MSEouttot[i] <- opf[[i]]$MSE[length(opf[[i]]$Loglik),2]
+      ## Just looking at the MSE of the first covariate for now.
     }else if(all(dim(opf[[i]]$Acc)[1] > 0, !(is.null(opf[[i]]$Acc)))){
     }else{
     }
   }
-  colnames(llDF) <- c("loglik","sim","seq", "OmegaIdx", "OmegaIdxfac")
+  colnames(llDF) <- c("loglik","sim","seq", "OmegaIdx", "OmegaIdxfac","MSE1","MSE2","MSE1tot","MSE2tot")
   if(printFlg == TRUE){
     print(comp %>% 
             ggplot()+
-            geom_point(aes(x = llike, y = maxari, color = as.factor(alpha)))+
+            geom_point(aes(x = llike, y = Finari, color = as.factor(alpha)))+
             ylim(0,1)+
             theme_minimal()+ggtitle("Max Adjusted Rand Index"))
     
     print(comp %>% 
             ggplot()+
-            geom_point(aes(x = llike, y = OmegaIdx, color = as.factor(alpha)))+
+            geom_point(aes(x = llike, y = FinOmegaIdx, color = as.factor(alpha)))+
             ylim(0,1)+
             theme_minimal()+
             ggtitle("Max Omega Index"))
     print(comp %>% 
             ggplot()+
-            geom_point(aes(x = maxari, y = OmegaIdx, color =as.factor(alpha)))+
+            geom_point(aes(x = Finari, y = FinOmegaIdx, color =as.factor(alpha)))+
             ylim(0,1)+xlim(0,1)+
             theme_minimal()+ggtitle("OmegaIdx vs ARI"))
     
     print(comp %>% 
             ggplot()+
-            geom_point(aes(x = accuracy, y = OmegaIdx, color =as.factor(alpha)))+
+            geom_point(aes(x = accuracy, y = FinOmegaIdx, color =as.factor(alpha)))+
             ylim(0,1)+xlim(0,1)+
             theme_minimal()+ggtitle("Max accuracy plot"))
     
     print(comp %>%
             ggplot()+
-            geom_point(aes(x = OmegaIdx, y = NumIter), color = "darkblue")+
+            geom_point(aes(x = FinOmegaIdx, y = NumIter), color = "darkblue")+
             theme_minimal())
   }
   
@@ -98,7 +138,7 @@ printplots <- function(opf, GTll, EG, printFlg  = TRUE){
             geom_line(aes(y = seq, 
                           x = loglik, 
                           group=sim, 
-                          color = as.factor(OmegaIdxfac)),
+                          color = OmegaIdx),
                       show.legend = TRUE) +
             geom_point(data = llDF_pt_max, 
                        aes(y = seq, x = loglik), 
@@ -123,28 +163,75 @@ printplots <- function(opf, GTll, EG, printFlg  = TRUE){
                 main = "Cov assisted Spectral clustering results")
     print(comp)
     
-    t1 <- which.max(comp$maxari)
+    t1 <- which.max(comp$Finari)
     print(paste0("The maximum ARI value is at this index ",t1))
     t2 <- which.max(comp$llike)
     print(paste0("The max LL is at this index ",t2))
-    t3 <- which.min(comp$MSE)
+    t3 <- which.min(comp$MSEin)
     print(paste0("The min MSE is at this index ",t3))
-    t4 <- which.max(comp$OmegaIdx)
+    t4 <- which.max(comp$FinOmegaIdx)
     print(paste0("The max Omega Index is ",t4))
-    
     ## Find the overlapping communities.
     delta <- getDelta(N)
     print(paste0("the delta value of overlapping communities is ", delta))
     
-    type <- c("Max ARI", "Max logLik","Minimum MSE","Maximum Omega Idx")
+    type <- c("Max ARI", "Max logLik","Minimum MSEin","Maximum Omega Idx")
     typeNum <- 1
     
     
     
-    for(t in c(t1,t2,t3,t4)){
+    for(t in c(1:length(opf))){
       print(ggplot()+
-              geom_point(aes(x = 1:length(opf[[t]]$OmegaIndex), y = opf[[t]]$OmegaIndex), 
-                         color = "darkblue")+theme_minimal())
+              geom_point(aes(x = 1:length(opf[[t]]$OmegaIndex), 
+                             y = opf[[t]]$OmegaIndex), 
+                         color = "darkblue")+ xlab("iteration")+xlab("Omega Idx")+
+              theme_minimal())
+      print(ggplot()+
+              geom_point(aes(x = opf[[t]]$Loglik, 
+                             y = opf[[t]]$OmegaIndex), 
+                         color = "darkgreen")+ ylab("Omega Index")+xlab("Log Likelihood")+
+              theme_minimal())
+      print(ggplot()+
+              geom_point(aes(x = opf[[t]]$MSE[,1], 
+                             y = opf[[t]]$OmegaIndex), 
+                         color = "darkred")+
+              geom_point(aes(x = opf[[t]]$MSE[,2], 
+                             y = opf[[t]]$OmegaIndex), 
+                         color = "darkblue")+ ylab("Omega Index")+xlab("MeanSq")+
+              theme_minimal())
+      
+      print(ggplot()+
+              geom_point(aes(y = opf[[t]]$MSE[,1], 
+                             x = 1:length(opf[[t]]$OmegaIndex)), 
+                         color = "darkred")+
+              geom_point(aes(y = opf[[t]]$MSE[,2], 
+                             x = 1:length(opf[[t]]$OmegaIndex)), 
+                         color = "darkblue")+ xlab("iteration")+ylab("MeanSq")+
+              theme_minimal())
+      
+      print(ggplot()+
+              geom_point(aes(y = opf[[t]]$MSE[,3], 
+                             x = 1:length(opf[[t]]$OmegaIndex)), 
+                         color = "darkred")+
+              geom_point(aes(y = opf[[t]]$MSE[,4], 
+                             x = 1:length(opf[[t]]$OmegaIndex)), 
+                         color = "darkblue")+ xlab("iteration")+ylab("MeanSq subset")+
+              theme_minimal())
+      # print(data.frame(MSE2 = opf[[t]]$MSE[,2],MSE1 = opf[[t]]$MSE[,1],
+      #                  OmegaIdx = opf[[t]]$OmegaIndex,
+      #                  seqDat = 1:length(opf[[t]]$OmegaIndex)) %>% 
+      #         ggplot()+
+      #         geom_point(aes(x = seqDat, y = MSE2), size = 0.01, color = "darkblue") + 
+      #         geom_point(aes(x = seqDat, y = OmegaIdx), size = 0.01, color = "darkgreen") +
+      #         scale_y_continuous( name = "MeanSq error 2",
+      #                             sec.axis = sec_axis(~.*0.1,name ="Omega Index")))
+      #       coord_cartesian(xlim = c(100,350), ylim = c(0,1.1), clip = "off") +
+      #geom_magnify(from=c(124,130,0.9,1), to = c(120,250,0.1,0.8), axes = "xy"))
+      #xlim(100, 350)+ylim(0,1.1)+
+      #geom_magnify(from=c(130,150,0.8,1), to = c(175,250,0.3,0.8))+
+      #geom_magnify(aes(from = opf[[t]]$MSE[,2] > 100 & opf[[t]]$OmegaIndex > 0.8,
+      #                                               to = opf[[t]]$MSE[,2] < 150 & opf[[t]]$OmegaIndex <= 1))+
+      #theme_minimal())
       
       ## Original overlap assignment
       origoverlap <- as.data.frame(matrix(0, ncol = EG[t,4], nrow = N ))
@@ -167,7 +254,8 @@ printplots <- function(opf, GTll, EG, printFlg  = TRUE){
       
       mem <- rep(NA, N)
       for(i in 1:N){
-        m <- data.frame(com = rep(letters[1:nc], times = 2), val = c(opf[[t]]$Ffin[i,], opf[[t]]$Hfin[i,]))
+        m <- data.frame(com = rep(letters[1:nc], times = 2), 
+                        val = c(opf[[t]]$Ffin[i,], opf[[t]]$Hfin[i,]))
         mem[i] <-  m$com[which.max(m$val)]#letters[which.max(Ftot[i,])]
       }
       if(!sim){
@@ -178,10 +266,12 @@ printplots <- function(opf, GTll, EG, printFlg  = TRUE){
                               naval = is.na(V(G)$covVal))
         print(imputed %>% ggplot()+
                 geom_histogram(aes(x = covVal, fill = as.factor(naval)))+
-                facet_wrap(~membership, ncol =1)+ggtitle("CESNA")+ theme_minimal())
+                facet_wrap(~membership, ncol =1)+ggtitle("CESNA")+
+                theme_minimal())
         print(imputed %>% ggplot()+
                 geom_histogram(aes(x = cov, fill = as.factor(naval)))+
-                facet_wrap(~covmem, ncol =1)+ggtitle("Spectral Clustering") +theme_minimal())
+                facet_wrap(~covmem, ncol =1)+ggtitle("Spectral Clustering")
+              +theme_minimal())
         
       }else{
         igraphplots(G,mem,memoverlap,origoverlap,EG[t,4], t, NULL,k+o, type[typeNum])
@@ -190,7 +280,7 @@ printplots <- function(opf, GTll, EG, printFlg  = TRUE){
     }
     print(comp %>%
             ggplot()+
-            geom_point(aes(x = MSE, y = maxari, color = as.factor(alpha) ) )+
+            geom_point(aes(x = MSEin, y = Finari, color = as.factor(alpha) ) )+
             ylab("Adjusted Rand Index")+
             labs(color = "alpha")+
             scale_color_manual(values=c("firebrick3", "blue3",
@@ -206,8 +296,7 @@ printplots <- function(opf, GTll, EG, printFlg  = TRUE){
   return(list(comp, llDF))
 }
 
-igraphplots <- function(G, mem, memoverlap,origoverlap, nc, t,
-                        lo = match.fun(layout_nicely),
+igraphplots <- function(G, mem, memoverlap,origoverlap, nc, t, lo = match.fun(layout_nicely),
                         covnum=0, type){
   
   group_color <- brewer.pal(length(letters[1:nc]), 'Set1')
@@ -242,62 +331,85 @@ igraphplots <- function(G, mem, memoverlap,origoverlap, nc, t,
 
 ```
 
+
 ## Current run
 
 ```{r}
 #3,7,11
 
 sim <- 1
-EGip <- expand.grid(1, 
-                      S[sim,]$alpha, 
-                      S[sim,]$alphaLL, 
-                      S[sim,]$nc)
+S <- as.data.frame(readRDS("../InitParam6.rds"))
+EGip <- expand.grid(1:5,
+                    S[sim,]$alpha, 
+                    S[sim,]$alphaLL, 
+                    S[sim,]$nc,
+                    S[sim,]$k_in,
+                    S[sim,]$k_out,
+                    S[sim,]$o_in,
+                    S[sim,]$o_out,
+                    S[sim,]$N)
 ```
 
-```{r}
-printplots(opf_cov, GTlogLikcov,EGip)
+
+```{r, fig.width=9, fig.height=7}
+
+gbg <- printplots(opf = opf_cov, GTll = GTlogLikcov, EG = EGip, G = G)
+
 ```
 
-```{r}
-op <- printplots(opf_noCov, GTlogLiknoCov, EGip)
+```{r, fig.width=9, fig.height=7}
+
+op <- readRDS("CoDAOP/OutputFile10_81.rds")
+gbg <- printplots(opf = op[[1]], GTll = op[[5]], EG = EGip, G = op[[3]])
+
 ```
 
 
-
-```{r}
+```{r, fig.width= 14, fig.height=8}
 getwd()
-S <- as.data.frame(readRDS("../InitParam2.rds"))
+S <- as.data.frame(readRDS("../InitParam3.rds"))
 S$ol <- rep(rep(c("a","b"), each = 4), 2)
+S$clust <- rep(c("none","two","three","all"), times = 4 )
+S$ConnP <- rep(rep(c("0.5 all", " 0.3,0.4,0.5"), each = 4), times = 2)
+S$PctDir <- rep(c("50 pct in/out", "75 pct in 25 pct out"), each =8)
 dfcov <- as.data.frame(matrix(nrow = 0 , ncol = 13, 0))
-llcov <- as.data.frame(matrix(nrow = 0 , ncol = 6, 0))
+llcov <- as.data.frame(matrix(nrow = 0 , ncol = 7, 0))
 dfnocov <- as.data.frame(matrix(nrow = 0 , ncol = 13, 0))
-llnocov <- as.data.frame(matrix(nrow = 0 , ncol = 6, 0))
-
-for(sim in 1:16){
-  op <- readRDS(paste0("CoDaOP/OutputFileNsim", sim,".rds"))
-  opf_cov <- op[[1]]
-  opf_noCov <- op[[2]]
-  G <- op[[3]]
-  GTlogLikcov <- op[[4]]
-  GTlogLiknoCov <- op[[5]]
-  EGip <- expand.grid(1:S[sim,]$Nsim, 
+llnocov <- as.data.frame(matrix(nrow = 0 , ncol = 7, 0))
+GTll <- as.data.frame(matrix(nrow =0, ncol =2,0))
+Ncombo <- 16
+bigN <- 2
+fileStrt <- "CoDaOP/OutputFileMult"
+for(sim in 1:Ncombo){
+  op <- readRDS(paste0(fileStrt, sim,".rds"))
+  opf_cov <- op[[1]][[2]]
+  opf_noCov <- op[[2]][[2]]
+  G <- op[[3]][[2]]
+  GTlogLikcov <- op[[4]][[2]]
+  GTlogLiknoCov <- op[[5]][[2]]
+  EGip <- expand.grid(1:(S[sim,]$Nsim*bigN), 
                       S[sim,]$alpha, 
                       S[sim,]$alphaLL, 
                       S[sim,]$nc)
   
-  opcov <- printplots(opf_cov, GTlogLikcov,EGip, FALSE)
+  opcov <- printplots(opf_cov, GTlogLikcov,EGip,G, FALSE)
   dfcov <- rbind(dfcov, cbind(opcov[[1]],sim, iter = 1:10, 
                               lambda = S[sim,]$lambda, 
                               thresh = S[sim,]$thresh,
-                              ol = S[sim,]$ol))
+                              ol = S[sim,]$ol,
+                              clust = S[sim,]$clust,
+                              ConnP = S[sim,]$ConnP ,
+                              PctDir = S[sim,]$PctDir))
   llcov <- rbind(llcov , 
                  cbind(opcov[[2]], 
-                       i=sim,
+                       i= sim,
                        lambda = S[sim,]$lambda,
                        thresh = S[sim,]$thresh,
-                       ol = S[sim,]$ol))
+                       ol = S[sim,]$ol,
+                       grp = rep(c(1,2), c(sum(opcov[[2]][,2] %in% 1:5),
+                                           sum(opcov[[2]][,2] %in% 6:10)))))
   
-  opnocov <- printplots(opf_noCov, GTlogLiknoCov,EGip, FALSE)
+  opnocov <- printplots(opf_noCov, GTlogLiknoCov,EGip,G, FALSE)
   dfnocov <- rbind(dfnocov, cbind(opnocov[[1]],sim, iter = 1:10,
                                   lambda = S[sim,]$lambda, 
                                   thresh = S[sim,]$thresh,
@@ -307,42 +419,129 @@ for(sim in 1:16){
                          i=sim, 
                          lambda = S[sim,]$lambda,
                          thresh = S[sim,]$thresh,
-                         ol = S[sim,]$ol))
+                         ol = S[sim,]$ol,
+                         grp = rep(c(1,2), c(sum(opnocov[[2]][,2] %in% 1:5),
+                                             sum(opnocov[[2]][,2] %in% 6:10)))))
+  
+  GTll <- rbind(GTll, c(GTlogLikcov, GTlogLiknoCov))
   
 }
-#llcov$OmegaIdx <- as.numeric(llcov$OmegaIdx)
+llcov$OmegaIdx <- as.numeric(llcov$OmegaIdx)
 llcov$OmegaIdxfac <- as.numeric(llcov$OmegaIdxfac)
 llnocov$OmegaIdxfac <- as.numeric(llnocov$OmegaIdxfac)
+llcov$loglik <- as.numeric(llcov$loglik)
+llnocov$loglik <- as.numeric(llnocov$loglik)
+llcov$seq <- as.numeric(llcov$seq)
+llnocov$seq <- as.numeric(llnocov$seq)
+llcov$MSE1 <- as.numeric(llcov$MSE1)
+llcov$MSE2 <- as.numeric(llcov$MSE2)
 
-llcov %>%
-  ggplot() +
-  geom_line(aes(y = as.numeric(seq), 
-                x = as.numeric(loglik), 
-                group=sim, 
-                color = OmegaIdxfac),
-            show.legend = TRUE) +
-  scale_color_gradient(limits = c(min(llcov$OmegaIdxfac),
-                                  max(llcov$OmegaIdxfac)))+
-  facet_grid(ol+lambda ~ thresh)+
-  theme_minimal()
+for(j in 1:Ncombo){
+  
+  p1 <- llcov[llcov$i == j, ] %>%
+    ggplot() +
+    geom_line(aes(y = seq, 
+                  x = round(loglik,1), 
+                  group = sim, 
+                  color = grp),
+              show.legend = TRUE) +
+    geom_vline(aes(xintercept = GTll[j,1])) +xlab("Loglik")+ylab("Iteration")+
+    scale_x_continuous(guide = guide_axis(angle = 45)) +
+    theme_minimal()
+  
+  p2 <- llcov[llcov$i == j, ] %>%
+    ggplot() +
+    geom_point(aes(y = seq, 
+                   x = round(OmegaIdx,3), 
+                   group = sim, 
+                   color = sim), 
+               size  = 0.1,
+               show.legend = TRUE) + xlab("Omega Idx")+ylab("Iteration")+
+    scale_x_continuous(guide = guide_axis(angle = 45)) +
+    theme_minimal()
+  
+  p3 <- llcov[llcov$i == j, ] %>%
+    ggplot() +
+    geom_point(aes(y = seq, 
+                   x = round(MSE1,3), 
+                   group = sim, 
+                   color = sim), 
+               size  = 0.1,
+               show.legend = TRUE) +
+    scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0, NA), expand = c(0,0)) +
+    scale_y_continuous(limits = c(0, NA), expand = c(0,0))+ xlab("MSE Cov 1")+ylab("Iteration")+
+    theme_minimal()
+  
+  p4 <- llcov[llcov$i == j, ] %>%
+    ggplot() +
+    geom_point(aes(y = seq, 
+                   x = round(MSE2,3), 
+                   group = sim, 
+                   color = sim), 
+               size  = 0.1,
+               show.legend = TRUE) +
+    scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0, NA), expand = c(0,0)) + 
+    scale_y_continuous(limits = c(0, NA), expand = c(0,0))+ xlab("MSE Cov 2")+ylab("Iteration") +
+    theme_minimal()
+  p <- ggpubr::ggarrange(p1,p2,p3,p4, ncol = 2, nrow = 2)
+  print(ggpubr::annotate_figure(p, 
+                                top = ggpubr::text_grob(paste0("Overlap ", S[j,]$clust, 
+                                                               " Conn prob ", S[j,]$ConnP, 
+                                                               " Dir ", S[j,]$PctDir ),
+                                                        color = "darkblue", 
+                                                        face = "bold", 
+                                                        size = 14)))
+  
+}
 
-llnocov %>%
-  ggplot() +
-  geom_line(aes(y = as.numeric(seq), 
-                x = as.numeric(loglik), 
-                group=sim, 
-                color = OmegaIdxfac), 
-            show.legend = TRUE) +
-  scale_color_gradient(limits = c(min(llnocov$OmegaIdxfac),
-                                  max(llnocov$OmegaIdxfac)))+
-  facet_grid(ol+lambda ~ thresh)+
-  theme_minimal()
-
-dfcov %>%
-  ggplot()+
-  geom_jitter(aes(x = OmegaIdx, 
-                  y = accuracy, 
-                  color = as.factor(ol))) +
-  theme_minimal() + facet_grid(thresh~lambda)
+# dfcov %>%
+#   ggplot()+
+#   geom_jitter(aes(x = FinOmegaIdx,
+#                   y = accuracy,
+#                   color = as.factor(ol))) +
+#   theme_minimal() + facet_grid(thresh~lambda)
 
 ```
+
+```{r}
+## Check if there is correlation between incoming/outgoing membership or other factors with predictions
+N <- 100
+nc <- 3
+Ffin <- op[[1]][[2]][[1]]$Ffin
+Hfin <- op[[1]][[2]][[1]]$Hfin
+delta <- getDelta(N)
+origoverlap <- as.data.frame(matrix(0, ncol = nc, nrow = N ))
+for(i in 1:nc){
+  origoverlap[,i] <- as.numeric(vertex_attr(G,name = letters[i]))
+}
+colnames(origoverlap) <- letters[1:nc]
+### Overlap results of CODA+covariates
+ memoverlap <- as.data.frame(matrix(0, ncol = nc, nrow = N ))
+  for (i in 1:N) {
+    memoverlap[i, ] <- as.numeric(Ffin[i, ] > delta)
+  }
+ cor <- 0
+ tot <- 0
+ for(i in 1:nc){
+   cor <- cor + sum((memoverlap[,i] == 1) & (origoverlap[,i] == 1))
+   tot <- tot + sum(origoverlap[,i] == 1)
+ }
+ percorin <- cor/tot
+ 
+ memoverlap <- as.data.frame(matrix(0, ncol = nc, nrow = N ))
+  for (i in 1:N) {
+    memoverlap[i, ] <- as.numeric(Hfin[i, ] > delta)
+  }
+  cor <- 0
+ tot <- 0
+ for(i in 1:nc){
+   cor <- cor + sum((memoverlap[,i] == 1) & (origoverlap[,i] == -1))
+   tot <- tot + sum(origoverlap[,i] == -1)
+ }
+ percorout <- cor/tot
+
+ 
+```
+
+
+
