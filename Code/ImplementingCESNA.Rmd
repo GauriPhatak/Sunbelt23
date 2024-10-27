@@ -19,12 +19,41 @@ library(ggpubr)
 #getwd()
 ```
 
+```{r}
+Printoutput <- function(opf,G, N, nc){
+  delta <- getDelta(N)
+  ## Original overlap assignment
+      origoverlap <- as.data.frame(matrix(0, ncol = nc, nrow = N ))
+      for(i in 1:nc){
+        origoverlap[,i] <- as.numeric(vertex_attr(G,name = letters[i]))
+      }
+      colnames(origoverlap) <- letters[1:nc]
+      origoverlap$id <- 1:N
+      origoverlap <- origoverlap %>%
+        pivot_longer(!id)
+      origoverlap <- origoverlap[!(origoverlap$value == 0),]
+    mem <- as.factor(V(G)$Cluster)
+  for(t in 1:length(opf)){
+      ### Overlap results of CODA+covariates
+      memoverlap <- memOverlapCalc(opf[[t]]$Ffin, opf[[t]]$Hfin, delta, N , nc)
+      colnames(memoverlap) <- letters[1:nc]
+      memoverlap$id <- 1:N
+      memoverlap <- memoverlap %>%
+        pivot_longer(!id)
+      memoverlap <- memoverlap[memoverlap$value == 1,]
+      igraphplots(G,mem,memoverlap, origoverlap,nc,t,NULL,3, "gen")
+
+  }
+}
+
+Printoutput(opf = opf_cov ,G =G, N =100, nc=3)
+
+```
 
 ```{r}
 ##plotting the ari values
 printplots <- function(opf, GTll, EG, G, printFlg  = TRUE){
   comp <-  data.frame( Finari = rep(0,dim(EG)[1]), llike =rep(0,dim(EG)[1]), 
-                       Startllike = rep(0,dim(EG)[1]),
                        alpha =rep(0,dim(EG)[1]), alphaLL=rep(0,dim(EG)[1]),
                        nc =rep(0,dim(EG)[1]), 
                        MSEintot = rep(0,dim(EG)[1]),MSEouttot = rep(0,dim(EG)[1]),
@@ -36,12 +65,31 @@ printplots <- function(opf, GTll, EG, G, printFlg  = TRUE){
   MSE2 <- 0
   orig <<- V(G)$Cluster
   nc <- EG[1,4]
+  o_in <- EG[1,7]
+  o_out <- EG[1,8]
   o <- EG[1,7] + EG[1,8]
+  k_in <- EG[1,5]
+  k_out <- EG[1,6]
   k <- EG[1,5] + EG[1,6]
   N <- EG[1,9]
+  allAccuracy <- matrix(0, nrow = 0, ncol = dim(opf[[1]]$Acc)[2]+2)
+  Names <- c()
+  if(k_in > 0 ){
+    Names <- c(Names, paste0("bvin", 1:k_in))
+  }
+  if(k_out > 0 ){
+    Names <- c(Names, paste0("bvout", 1:k_out))
+  }
   
+  ## Naming the continuous covariates
+  if(o_in > 0 ){
+    Names <- c(Names, paste0("cvin", 1:o_in))
+  }
+  if(o_out > 0 ){
+    Names <- c(Names, paste0("cvout", 1:o_out))
+  }
   Z <-  as.data.frame(vertex_attr(G)) %>%
-    dplyr::select(all_of(c("cvin1", "cvout1")))
+    dplyr::select(all_of(Names))
   
   if (length(Z) > 0) {
     cov <- Z
@@ -54,11 +102,19 @@ printplots <- function(opf, GTll, EG, G, printFlg  = TRUE){
     origCov <<-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
   }
   for(i in 1:dim(EG)[1]){
-    if(length(opf[[i]]$MSE) > 0){
-      MSE1tot <- opf[[i]]$MSE[,1]
-      MSE2tot <- opf[[i]]$MSE[,2]
-      MSE1 <- opf[[i]]$MSE[,1]
-      MSE2 <- opf[[i]]$MSE[,2]
+    MSE1tot <- 0
+    MSE2tot <- 0
+    MSE1 <- 0
+    MSE2 <- 0
+    if(o_in+o_out > 0 ){
+      if(length(opf[[i]]$MSE) > 0){
+        MSE1tot <- opf[[i]]$MSE[,1]
+        MSE2tot <- opf[[i]]$MSE[,2]
+        MSE1 <- opf[[i]]$MSE[,1]
+        MSE2 <- opf[[i]]$MSE[,2]
+      }}
+    if(k_in+k_out > 0){
+      allAccuracy <- rbind(allAccuracy, cbind(opf[[i]]$Acc, 1:length(opf[[i]]$Acc), i))
     }
     
     llDF <- rbind(llDF, cbind(opf[[i]]$Loglik, 
@@ -80,13 +136,12 @@ printplots <- function(opf, GTll, EG, G, printFlg  = TRUE){
     comp$FinOmegaIdx[i] <- opf[[i]]$OmegaIndex[length(opf[[i]]$OmegaIndex)]
     comp$accuracy[i] <- max(opf[[i]]$Acc)
     comp$NumIter[i] <- length(opf[[i]]$Loglik)
-    if(all(dim(opf[[i]]$MSE)[1] > 0, !(is.null(opf[[i]]$MSE)))){
+    if(o_in + o_out > 0 ){
       comp$MSEin[i] <- opf[[i]]$MSE[length(opf[[i]]$Loglik),3]
       comp$MSEout[i] <- opf[[i]]$MSE[length(opf[[i]]$Loglik),4]
       comp$MSEintot[i] <- opf[[i]]$MSE[length(opf[[i]]$Loglik),1]
       comp$MSEouttot[i] <- opf[[i]]$MSE[length(opf[[i]]$Loglik),2]
-      ## Just looking at the MSE of the first covariate for now.
-    }else if(all(dim(opf[[i]]$Acc)[1] > 0, !(is.null(opf[[i]]$Acc)))){
+    }else if(k_in+k_out > 0){
     }else{
     }
   }
@@ -191,47 +246,51 @@ printplots <- function(opf, GTll, EG, G, printFlg  = TRUE){
                              y = opf[[t]]$OmegaIndex), 
                          color = "darkgreen")+ ylab("Omega Index")+xlab("Log Likelihood")+
               theme_minimal())
-      print(ggplot()+
-              geom_point(aes(x = opf[[t]]$MSE[,1], 
-                             y = opf[[t]]$OmegaIndex), 
-                         color = "darkred")+
-              geom_point(aes(x = opf[[t]]$MSE[,2], 
-                             y = opf[[t]]$OmegaIndex), 
-                         color = "darkblue")+ ylab("Omega Index")+xlab("MeanSq")+
-              theme_minimal())
       
-      print(ggplot()+
-              geom_point(aes(y = opf[[t]]$MSE[,1], 
-                             x = 1:length(opf[[t]]$OmegaIndex)), 
-                         color = "darkred")+
-              geom_point(aes(y = opf[[t]]$MSE[,2], 
-                             x = 1:length(opf[[t]]$OmegaIndex)), 
-                         color = "darkblue")+ xlab("iteration")+ylab("MeanSq")+
-              theme_minimal())
+      if(o_in+o_out > 0){
+        print(ggplot()+
+                geom_point(aes(x = opf[[t]]$MSE[,1], 
+                               y = opf[[t]]$OmegaIndex), 
+                           color = "darkred")+
+                geom_point(aes(x = opf[[t]]$MSE[,2], 
+                               y = opf[[t]]$OmegaIndex), 
+                           color = "darkblue")+ ylab("Omega Index")+xlab("MeanSq")+
+                theme_minimal())
+        
+        print(ggplot()+
+                geom_point(aes(y = opf[[t]]$MSE[,1], 
+                               x = 1:length(opf[[t]]$OmegaIndex)), 
+                           color = "darkred")+
+                geom_point(aes(y = opf[[t]]$MSE[,2], 
+                               x = 1:length(opf[[t]]$OmegaIndex)), 
+                           color = "darkblue")+ xlab("iteration")+ylab("MeanSq")+
+                theme_minimal())
+        
+        print(ggplot()+
+                geom_point(aes(y = opf[[t]]$MSE[,3], 
+                               x = 1:length(opf[[t]]$OmegaIndex)), 
+                           color = "darkred")+
+                geom_point(aes(y = opf[[t]]$MSE[,4], 
+                               x = 1:length(opf[[t]]$OmegaIndex)), 
+                           color = "darkblue")+ xlab("iteration")+ylab("MeanSq subset")+
+                theme_minimal())  
+      }
       
-      print(ggplot()+
-              geom_point(aes(y = opf[[t]]$MSE[,3], 
-                             x = 1:length(opf[[t]]$OmegaIndex)), 
-                         color = "darkred")+
-              geom_point(aes(y = opf[[t]]$MSE[,4], 
-                             x = 1:length(opf[[t]]$OmegaIndex)), 
-                         color = "darkblue")+ xlab("iteration")+ylab("MeanSq subset")+
-              theme_minimal())
-      # print(data.frame(MSE2 = opf[[t]]$MSE[,2],MSE1 = opf[[t]]$MSE[,1],
-      #                  OmegaIdx = opf[[t]]$OmegaIndex,
-      #                  seqDat = 1:length(opf[[t]]$OmegaIndex)) %>% 
-      #         ggplot()+
-      #         geom_point(aes(x = seqDat, y = MSE2), size = 0.01, color = "darkblue") + 
-      #         geom_point(aes(x = seqDat, y = OmegaIdx), size = 0.01, color = "darkgreen") +
-      #         scale_y_continuous( name = "MeanSq error 2",
-      #                             sec.axis = sec_axis(~.*0.1,name ="Omega Index")))
-      #       coord_cartesian(xlim = c(100,350), ylim = c(0,1.1), clip = "off") +
-      #geom_magnify(from=c(124,130,0.9,1), to = c(120,250,0.1,0.8), axes = "xy"))
-      #xlim(100, 350)+ylim(0,1.1)+
-      #geom_magnify(from=c(130,150,0.8,1), to = c(175,250,0.3,0.8))+
-      #geom_magnify(aes(from = opf[[t]]$MSE[,2] > 100 & opf[[t]]$OmegaIndex > 0.8,
-      #                                               to = opf[[t]]$MSE[,2] < 150 & opf[[t]]$OmegaIndex <= 1))+
-      #theme_minimal())
+      if(k_in+k_out > 0){
+        
+        df <- as.data.frame(opf[[t]]$Acc) %>%
+          mutate(seq = 1:length(opf[[t]]$Acc[,1])) %>%
+          pivot_longer(!seq)
+        print(df %>% ggplot()+
+                geom_line(aes(x = seq, 
+                              y = value,
+                              color = name),
+                          alpha =0.5)+
+                theme_minimal())
+        
+        
+      }
+      
       
       ## Original overlap assignment
       origoverlap <- as.data.frame(matrix(0, ncol = EG[t,4], nrow = N ))
@@ -293,7 +352,7 @@ printplots <- function(opf, GTll, EG, G, printFlg  = TRUE){
                                                   size = 0.5, linetype = "solid"))+
             facet_grid( nc ~ alphaLL))
   }
-  return(list(comp, llDF))
+  return(list(comp, llDF, allAccuracy))
 }
 
 igraphplots <- function(G, mem, memoverlap,origoverlap, nc, t, lo = match.fun(layout_nicely),
@@ -338,8 +397,8 @@ igraphplots <- function(G, mem, memoverlap,origoverlap, nc, t, lo = match.fun(la
 #3,7,11
 
 sim <- 1
-S <- as.data.frame(readRDS("../InitParam6.rds"))
-EGip <- expand.grid(1:5,
+S <- as.data.frame(readRDS("../InitParamBin3.rds"))
+EGip <- expand.grid(1:10,
                     S[sim,]$alpha, 
                     S[sim,]$alphaLL, 
                     S[sim,]$nc,
@@ -366,142 +425,255 @@ gbg <- printplots(opf = op[[1]], GTll = op[[5]], EG = EGip, G = op[[3]])
 
 
 ```{r, fig.width= 14, fig.height=8}
-getwd()
-S <- as.data.frame(readRDS("../InitParam3.rds"))
-S$ol <- rep(rep(c("a","b"), each = 4), 2)
-S$clust <- rep(c("none","two","three","all"), times = 4 )
-S$ConnP <- rep(rep(c("0.5 all", " 0.3,0.4,0.5"), each = 4), times = 2)
-S$PctDir <- rep(c("50 pct in/out", "75 pct in 25 pct out"), each =8)
-dfcov <- as.data.frame(matrix(nrow = 0 , ncol = 13, 0))
-llcov <- as.data.frame(matrix(nrow = 0 , ncol = 7, 0))
-dfnocov <- as.data.frame(matrix(nrow = 0 , ncol = 13, 0))
-llnocov <- as.data.frame(matrix(nrow = 0 , ncol = 7, 0))
-GTll <- as.data.frame(matrix(nrow =0, ncol =2,0))
-Ncombo <- 16
-bigN <- 2
-fileStrt <- "CoDaOP/OutputFileMult"
-for(sim in 1:Ncombo){
-  op <- readRDS(paste0(fileStrt, sim,".rds"))
-  opf_cov <- op[[1]][[2]]
-  opf_noCov <- op[[2]][[2]]
-  G <- op[[3]][[2]]
-  GTlogLikcov <- op[[4]][[2]]
-  GTlogLiknoCov <- op[[5]][[2]]
-  EGip <- expand.grid(1:(S[sim,]$Nsim*bigN), 
-                      S[sim,]$alpha, 
-                      S[sim,]$alphaLL, 
-                      S[sim,]$nc)
+SummaryPlots <- function(param , fileStrt, Ncombo){
   
-  opcov <- printplots(opf_cov, GTlogLikcov,EGip,G, FALSE)
-  dfcov <- rbind(dfcov, cbind(opcov[[1]],sim, iter = 1:10, 
-                              lambda = S[sim,]$lambda, 
-                              thresh = S[sim,]$thresh,
-                              ol = S[sim,]$ol,
-                              clust = S[sim,]$clust,
-                              ConnP = S[sim,]$ConnP ,
-                              PctDir = S[sim,]$PctDir))
-  llcov <- rbind(llcov , 
-                 cbind(opcov[[2]], 
-                       i= sim,
-                       lambda = S[sim,]$lambda,
-                       thresh = S[sim,]$thresh,
-                       ol = S[sim,]$ol,
-                       grp = rep(c(1,2), c(sum(opcov[[2]][,2] %in% 1:5),
-                                           sum(opcov[[2]][,2] %in% 6:10)))))
-  
-  opnocov <- printplots(opf_noCov, GTlogLiknoCov,EGip,G, FALSE)
-  dfnocov <- rbind(dfnocov, cbind(opnocov[[1]],sim, iter = 1:10,
-                                  lambda = S[sim,]$lambda, 
-                                  thresh = S[sim,]$thresh,
-                                  ol = S[sim,]$ol))
-  llnocov <- rbind(llnocov, 
-                   cbind(opnocov[[2]], 
-                         i=sim, 
+  S <- as.data.frame(readRDS(param))
+  S$ol <- rep(rep(c("a","b"), each = 4), 2)
+  S$clust <- rep(c("none","two","three","all"), times = 4 )
+  S$ConnP <- rep(rep(c("0.5 all", " 0.3,0.4,0.5"), each = 4), times = 2)
+  S$PctDir <- rep(c("50 pct in/out", "75 pct in 25 pct out"), each =8)
+  dfcov <- as.data.frame(matrix(nrow = 0 , ncol = 13, 0))
+  llcov <- as.data.frame(matrix(nrow = 0 , ncol = 7, 0))
+  Acc <- as.data.frame(matrix(nrow = 0, ncol = S[1,]$k_in+S[1,]$k_out))
+  dfnocov <- as.data.frame(matrix(nrow = 0 , ncol = 13, 0))
+  llnocov <- as.data.frame(matrix(nrow = 0 , ncol = 7, 0))
+  GTll <- as.data.frame(matrix(nrow = 0, ncol = 2,0))
+  #Ncombo <- dim(S)[1] - 1
+  bigN <- 2
+  #fileStrt <- 
+  for(sim in Ncombo){
+    op <- readRDS(paste0(fileStrt, sim,".rds"))
+    opf_cov <- op[[1]][[2]]
+    opf_noCov <- op[[2]][[2]]
+    G <- op[[3]][[2]]
+    GTlogLikcov <- op[[4]][[2]]
+    GTlogLiknoCov <- op[[5]][[2]]
+    EGip <- expand.grid(1:(S[sim,]$Nsim*bigN), 
+                        S[sim,]$alpha, 
+                        S[sim,]$alphaLL, 
+                        S[sim,]$nc,
+                        S[sim,]$k_in,
+                        S[sim,]$k_out,
+                        S[sim,]$o_in,
+                        S[sim,]$o_out,
+                        S[sim,]$N)
+    
+    opcov <- printplots(opf = opf_cov, GTll = GTlogLikcov,EG = EGip,G = G, FALSE)
+    dfcov <- rbind(dfcov, cbind(opcov[[1]],sim, iter = 1:S[sim,]$Nsim, 
+                                lambda = S[sim,]$lambda, 
+                                thresh = S[sim,]$thresh,
+                                ol = S[sim,]$ol,
+                                clust = S[sim,]$clust,
+                                ConnP = S[sim,]$ConnP ,
+                                PctDir = S[sim,]$PctDir))
+    llcov <- rbind(llcov , 
+                   cbind(opcov[[2]], 
+                         i= sim,
                          lambda = S[sim,]$lambda,
                          thresh = S[sim,]$thresh,
                          ol = S[sim,]$ol,
-                         grp = rep(c(1,2), c(sum(opnocov[[2]][,2] %in% 1:5),
-                                             sum(opnocov[[2]][,2] %in% 6:10)))))
+                         grp = rep(c(1,2), c(sum(opcov[[2]][,2] %in% (1:S[sim,]$Nsim)),
+                                             sum(opcov[[2]][,2] %in% ((S[sim,]$Nsim + 1):(S[sim,]$Nsim * bigN)))))))
+    
+    Acc <- rbind(Acc, cbind(opcov[[3]],
+                            lambda = S[sim,]$lambda,
+                            thresh = S[sim,]$thresh,
+                            ol = S[sim,]$ol,
+                            i  = sim,
+                            grp = rep(c(1,2), c(sum(opcov[[2]][,2] %in% (1:S[sim,]$Nsim)),
+                                                sum(opcov[[2]][,2] %in% ((S[sim,]$Nsim + 1):(S[sim,]$Nsim * bigN)))))))
+    
+    if(!is.null(dim(opf_noCov))){
+      opnocov <- printplots(opf_noCov, GTlogLiknoCov,EGip,G, FALSE)
+      dfnocov <- rbind(dfnocov, cbind(opnocov[[1]],sim, iter = 1:S[sim,]$Nsim,
+                                      lambda = S[sim,]$lambda, 
+                                      thresh = S[sim,]$thresh,
+                                      ol = S[sim,]$ol))
+      llnocov <- rbind(llnocov, 
+                       cbind(opnocov[[2]], 
+                             i=sim, 
+                             lambda = S[sim,]$lambda,
+                             thresh = S[sim,]$thresh,
+                             ol = S[sim,]$ol,
+                             grp = rep(c(1,2), c(sum(opcov[[2]][,2] %in% (1:S[sim,]$Nsim)),
+                                                 sum(opcov[[2]][,2] %in% ((S[sim,]$Nsim + 1):(S[sim,]$Nsim * bigN)))))))
+      
+    }
+    
+    GTll <- rbind(GTll, c(GTlogLikcov, GTlogLiknoCov))
+    
+  }
+  llcov$OmegaIdx <- as.numeric(llcov$OmegaIdx)
+  llcov$OmegaIdxfac <- as.numeric(llcov$OmegaIdxfac)
+  llcov$loglik <- as.numeric(llcov$loglik)
+  llcov$seq <- as.numeric(llcov$seq)
+  llcov$MSE1 <- as.numeric(llcov$MSE1)
+  llcov$MSE2 <- as.numeric(llcov$MSE2)
+  llcov$MSE1tot <- as.numeric(llcov$MSE1tot)
+  llcov$MSE2tot <- as.numeric(llcov$MSE2tot)
   
-  GTll <- rbind(GTll, c(GTlogLikcov, GTlogLiknoCov))
+  if(!is.null(dim(opf_noCov))){
+    llnocov$OmegaIdxfac <- as.numeric(llnocov$OmegaIdxfac)
+    llnocov$loglik <- as.numeric(llnocov$loglik)
+    llnocov$seq <- as.numeric(llnocov$seq)
+  }
+  p <- list()
   
+  if(S[1,]$k_in+S[1,]$k_out > 0 ){
+     colnames(Acc) <- c(paste0("bvin",1:S[j,]$k_in), 
+                         paste0("bvout",1:S[j,]$k_out),
+                         "iter", "sim","lambda","thresh","ol","i","grp")
+      cols.num <- c(paste0("bvin",1:S[j,]$k_in), 
+                    paste0("bvout",1:S[j,]$k_out),"iter", "sim","i") 
+      Acc[cols.num] <- sapply(Acc[cols.num],as.numeric)
+      Acc$inAvg <- rowSums(Acc[,1:3])/3
+      Acc$outAvg <- rowSums(Acc[,4:6])/3
+  }
+  
+  for(j in Ncombo){
+    
+    p[[1]] <- llcov[llcov$i == j, ] %>%
+      ggplot() +
+      geom_line(aes(y = seq, 
+                    x = round(loglik,1), 
+                    group = as.factor(sim), 
+                    color = grp),
+                show.legend = TRUE) +
+      geom_vline(aes(xintercept = GTll[j,1])) +xlab("Loglik")+ylab("Iteration")+
+      scale_x_continuous(guide = guide_axis(angle = 45)) +
+      theme_minimal()
+    
+    p[[2]] <- llcov[llcov$i == j, ] %>%
+      ggplot() +
+      geom_point(aes(y = seq, 
+                     x = round(OmegaIdx,3), 
+                     group = as.factor(sim), 
+                     color = as.factor(sim)), 
+                 size  = 0.1,
+                 show.legend = FALSE) + xlab("Omega Idx")+ylab("Iteration")+
+      scale_x_continuous(guide = guide_axis(angle = 45)) +
+      theme_minimal()
+    
+    if((S[j,]$o_in +S[j,]$o_out) > 0) {
+      p[[3]] <- llcov[llcov$i == j, ] %>%
+        ggplot() +
+        geom_point(aes(y = seq, 
+                       x = round(MSE1tot,3), 
+                       group = sim, 
+                       color = sim), 
+                   size  = 0.1,
+                   show.legend = FALSE) +
+        scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0, NA), expand = c(0,0)) +
+        scale_y_continuous(limits = c(0, NA), expand = c(0,0))+ xlab("MSE Cov 1 total")+ylab("Iteration")+
+        theme_minimal()
+      
+      p[[4]] <- llcov[llcov$i == j, ] %>%
+        ggplot() +
+        geom_point(aes(y = seq, 
+                       x = round(MSE2tot,3), 
+                       group = sim, 
+                       color = sim), 
+                   size  = 0.1,
+                   show.legend = FALSE) +
+        scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0, NA), expand = c(0,0)) + 
+        scale_y_continuous(limits = c(0, NA), expand = c(0,0))+ xlab("MSE Cov 2 total")+ylab("Iteration") +
+        theme_minimal()
+      
+      # q1 <- llcov[llcov$i == j, ] %>%
+      #   ggplot() +
+      #   geom_point(aes(y = seq, 
+      #                  x = round(MSE1,3), 
+      #                  group = sim, 
+      #                  color = sim), 
+      #              size  = 0.1,
+      #              show.legend = FALSE) +
+      #   scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0, NA), expand = c(0,0)) +
+      #   scale_y_continuous(limits = c(0, NA), expand = c(0,0))+ xlab("MSE Cov 1")+ylab("Iteration")+
+      #   theme_minimal()
+      # 
+      # q2 <- llcov[llcov$i == j, ] %>%
+      #   ggplot() +
+      #   geom_point(aes(y = seq, 
+      #                  x = round(MSE2,3), 
+      #                  group = sim, 
+      #                  color = sim), 
+      #              size  = 0.1,
+      #              show.legend = FALSE) +
+      #   scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0, NA), expand = c(0,0)) + 
+      #   scale_y_continuous(limits = c(0, NA), expand = c(0,0))+ xlab("MSE Cov 2")+ylab("Iteration") +
+      #   theme_minimal()
+      # print(ggpubr::ggarrange(p[[3]],p[[4]],q1,q2, ncol = 2, nrow = 2))
+      
+    }
+    if(S[j,]$k_in+S[j,]$k_out > 0){
+      
+      p[[3]] <- Acc[as.numeric(Acc$i) == j,] %>%
+        ggplot()+
+        geom_line(aes(x =iter, 
+                      y = inAvg, 
+                      group = as.factor(sim), 
+                      color = as.factor(sim)), 
+                  size  = 0.1,
+                  show.legend = FALSE) +
+       #scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0, NA), expand = c(0,0)) +
+        scale_y_continuous(limits = c(0.6, 1), expand = c(0,0))+ 
+        xlab("Avg Accuracy for in Cov")+ylab("Iteration") +
+        theme_minimal()
+      
+      p[[4]] <- Acc[as.numeric(Acc$i) == j,] %>%
+        ggplot() +
+        geom_line(aes(x = iter, 
+                      y = outAvg,
+                      group = as.factor(sim),
+                      color = as.factor(sim)), 
+                  size  = 0.1,
+                  show.legend = FALSE) +
+        #scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0.75, NA)) + 
+        scale_y_continuous(limits = c(0.6, 1), expand = c(0,0))+ 
+        xlab("Avg Accuracy for out Cov") + ylab("Iteration") +
+        theme_minimal()
+      
+      df <- Acc[as.numeric(Acc$i) == j, ]
+      q <- df %>%
+        pivot_longer(!c("iter","i","lambda","thresh","ol","sim","grp")) %>%
+        mutate(colVal  = if_else(name %in% c("inAvg","outAvg"),"darkred","darkblue")) %>%
+        ggplot() +
+        geom_line(aes(x = as.numeric(iter), 
+                      y = as.numeric(value),
+                      group = name,
+                      color = colVal), alpha = 0.5) + 
+        scale_color_manual(values=c("darkred","darkblue"))+
+        facet_wrap(~as.numeric(sim)) + theme_minimal()
+      print(q)
+      
+    }
+    
+    pt <- ggpubr::ggarrange(plotlist = p, ncol = 2, nrow = 2)
+    print(ggpubr::annotate_figure(pt, 
+                                  top = ggpubr::text_grob(paste0("Overlap ", S[j,]$clust, 
+                                                                 " Conn prob ", S[j,]$ConnP, 
+                                                                 " Dir ", S[j,]$PctDir ),
+                                                          color = "darkblue", 
+                                                          face = "bold", 
+                                                          size = 14)))
+    
+  }
 }
-llcov$OmegaIdx <- as.numeric(llcov$OmegaIdx)
-llcov$OmegaIdxfac <- as.numeric(llcov$OmegaIdxfac)
-llnocov$OmegaIdxfac <- as.numeric(llnocov$OmegaIdxfac)
-llcov$loglik <- as.numeric(llcov$loglik)
-llnocov$loglik <- as.numeric(llnocov$loglik)
-llcov$seq <- as.numeric(llcov$seq)
-llnocov$seq <- as.numeric(llnocov$seq)
-llcov$MSE1 <- as.numeric(llcov$MSE1)
-llcov$MSE2 <- as.numeric(llcov$MSE2)
-
-for(j in 1:Ncombo){
-  
-  p1 <- llcov[llcov$i == j, ] %>%
-    ggplot() +
-    geom_line(aes(y = seq, 
-                  x = round(loglik,1), 
-                  group = sim, 
-                  color = grp),
-              show.legend = TRUE) +
-    geom_vline(aes(xintercept = GTll[j,1])) +xlab("Loglik")+ylab("Iteration")+
-    scale_x_continuous(guide = guide_axis(angle = 45)) +
-    theme_minimal()
-  
-  p2 <- llcov[llcov$i == j, ] %>%
-    ggplot() +
-    geom_point(aes(y = seq, 
-                   x = round(OmegaIdx,3), 
-                   group = sim, 
-                   color = sim), 
-               size  = 0.1,
-               show.legend = TRUE) + xlab("Omega Idx")+ylab("Iteration")+
-    scale_x_continuous(guide = guide_axis(angle = 45)) +
-    theme_minimal()
-  
-  p3 <- llcov[llcov$i == j, ] %>%
-    ggplot() +
-    geom_point(aes(y = seq, 
-                   x = round(MSE1,3), 
-                   group = sim, 
-                   color = sim), 
-               size  = 0.1,
-               show.legend = TRUE) +
-    scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0, NA), expand = c(0,0)) +
-    scale_y_continuous(limits = c(0, NA), expand = c(0,0))+ xlab("MSE Cov 1")+ylab("Iteration")+
-    theme_minimal()
-  
-  p4 <- llcov[llcov$i == j, ] %>%
-    ggplot() +
-    geom_point(aes(y = seq, 
-                   x = round(MSE2,3), 
-                   group = sim, 
-                   color = sim), 
-               size  = 0.1,
-               show.legend = TRUE) +
-    scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0, NA), expand = c(0,0)) + 
-    scale_y_continuous(limits = c(0, NA), expand = c(0,0))+ xlab("MSE Cov 2")+ylab("Iteration") +
-    theme_minimal()
-  p <- ggpubr::ggarrange(p1,p2,p3,p4, ncol = 2, nrow = 2)
-  print(ggpubr::annotate_figure(p, 
-                                top = ggpubr::text_grob(paste0("Overlap ", S[j,]$clust, 
-                                                               " Conn prob ", S[j,]$ConnP, 
-                                                               " Dir ", S[j,]$PctDir ),
-                                                        color = "darkblue", 
-                                                        face = "bold", 
-                                                        size = 14)))
-  
-}
-
-# dfcov %>%
-#   ggplot()+
-#   geom_jitter(aes(x = FinOmegaIdx,
-#                   y = accuracy,
-#                   color = as.factor(ol))) +
-#   theme_minimal() + facet_grid(thresh~lambda)
-
 ```
+
+```{r, fig.width=10, fig.height=7}
+SummaryPlots(param = "../InitParamCont1.rds",fileStrt = "CoDaOP/OutputFileCont1_", 1:16 )
+```
+
+```{r, fig.width=10, fig.height=7}
+SummaryPlots(param = "../InitParamBin1.rds", fileStrt = "CoDaOP/OutputFileBin1_", 1:15 )
+```
+
+
+```{r, fig.width=10, fig.height=7}
+SummaryPlots(param = "../InitParamCont2.rds", fileStrt = "CoDaOP/OutputFileCont2_", c(1:4,7:12,16) )
+```
+
 
 ```{r}
 ## Check if there is correlation between incoming/outgoing membership or other factors with predictions
@@ -516,31 +688,31 @@ for(i in 1:nc){
 }
 colnames(origoverlap) <- letters[1:nc]
 ### Overlap results of CODA+covariates
- memoverlap <- as.data.frame(matrix(0, ncol = nc, nrow = N ))
-  for (i in 1:N) {
-    memoverlap[i, ] <- as.numeric(Ffin[i, ] > delta)
-  }
- cor <- 0
- tot <- 0
- for(i in 1:nc){
-   cor <- cor + sum((memoverlap[,i] == 1) & (origoverlap[,i] == 1))
-   tot <- tot + sum(origoverlap[,i] == 1)
- }
- percorin <- cor/tot
- 
- memoverlap <- as.data.frame(matrix(0, ncol = nc, nrow = N ))
-  for (i in 1:N) {
-    memoverlap[i, ] <- as.numeric(Hfin[i, ] > delta)
-  }
-  cor <- 0
- tot <- 0
- for(i in 1:nc){
-   cor <- cor + sum((memoverlap[,i] == 1) & (origoverlap[,i] == -1))
-   tot <- tot + sum(origoverlap[,i] == -1)
- }
- percorout <- cor/tot
+memoverlap <- as.data.frame(matrix(0, ncol = nc, nrow = N ))
+for (i in 1:N) {
+  memoverlap[i, ] <- as.numeric(Ffin[i, ] > delta)
+}
+cor <- 0
+tot <- 0
+for(i in 1:nc){
+  cor <- cor + sum((memoverlap[,i] == 1) & (origoverlap[,i] == 1))
+  tot <- tot + sum(origoverlap[,i] == 1)
+}
+percorin <- cor/tot
 
- 
+memoverlap <- as.data.frame(matrix(0, ncol = nc, nrow = N ))
+for (i in 1:N) {
+  memoverlap[i, ] <- as.numeric(Hfin[i, ] > delta)
+}
+cor <- 0
+tot <- 0
+for(i in 1:nc){
+  cor <- cor + sum((memoverlap[,i] == 1) & (origoverlap[,i] == -1))
+  tot <- tot + sum(origoverlap[,i] == -1)
+}
+percorout <- cor/tot
+
+
 ```
 
 

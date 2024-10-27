@@ -1,4 +1,4 @@
-source("Code/CESNA.R")
+source("Code/CoDACov.R")
 
 # args=commandArgs(trailingOnly = TRUE)
 # if (length(args)==0) {
@@ -10,11 +10,11 @@ source("Code/CESNA.R")
 SaveCoDASim <- function(simvec){
   sim <- TRUE
   dir <- TRUE
-  #simvec <- 3
-  S <- as.data.frame(readRDS("InitParam6.rds"))
+  
+  S <- as.data.frame(readRDS("InitParamBin3.rds"))
   
   if (sim == TRUE) {
-    
+    printFlg <<- FALSE
     Sim <- data.frame(S[simvec,])
     ## Number of simulations
     Nsim <- Sim$Nsim
@@ -37,6 +37,7 @@ SaveCoDASim <- function(simvec){
     CovNamesLPout <- c()
     CovNamesLinin <- c()
     CovNamesLinout <- c()
+    
     if(k_in > 0 ){
       CovNamesLPin <- paste0("bvin", 1:k_in)
     }
@@ -118,11 +119,13 @@ SaveCoDASim <- function(simvec){
     TimeTaken <- list()
     
     for(m in 1:bigN){
-      ## Generating netowrk with covariates and overlapping clusters
+      ## Generating network with covariates and overlapping clusters
       NWlst <- genBipartite(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
                             CovNamesLPin,CovNamesLPout,CovNamesLinin,CovNamesLinout,
                             pConn,dir,dirPct,epsilon,missing)
       G <- NWlst[[1]]
+      #gbg <- as.data.frame(vertex_attr(G))
+      #gbg <- cbind(gbg, opf_cov[[1]]$Ffin, opf_cov[[1]]$Hfin, ol)
       ## find the ground truth loglikelihood
       GTlogLikcov <- GTLogLik(G,nc,pConn,NULL,
                               CovNamesLinin, CovNamesLinout,
@@ -166,18 +169,18 @@ SaveCoDASim <- function(simvec){
         print(paste0("iteration ",lvl," alpha ",alpha,  " alphaLL ",alphaLL," num cmnty ",nc))
         if (dir == TRUE) {
           start <- Sys.time()
-          opf_cov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),
-            N,alpha,lambda,thresh,nitermax,orig,randomize = TRUE,
-            CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout,
-            alphaLL = NULL,test = TRUE)
+          opf_cov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
+                                 lambda,thresh,nitermax,orig,randomize = TRUE,
+                                 CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout,
+                                 alphaLL = NULL,test = TRUE)
           tme <- Sys.time() - start
           print(paste0("Total time take ", tme))
-          TimeTaken[[lvl]] <- tme 
+          TimeTaken[[lvl]] <- tme
           # opf_noCov[[lvl]] <- CoDA(G,nc,k = c(0, 0),o = c(0, 0),N,alpha,
           #   lambda,thresh ,nitermax,orig,randomize = TRUE,
           #   CovNamesLinin = c(),CovNamesLinout = c(),CovNamesLPin = c(),
           #   CovNamesLPout = c(),alphaLL = NULL,test = TRUE)
-        } 
+        }
         # else{
         #   op <- CESNA(
         #     G,
@@ -208,7 +211,7 @@ SaveCoDASim <- function(simvec){
     
   }
   saveRDS(list(opf_cov, opf_noCov,G, GTlogLikcov, GTlogLiknoCov),
-          paste0("Code/CoDAOP/OutputFile10_8", simvec,".rds"))
+          paste0("Code/CoDAOP/OutputFileAllWtsBin", simvec,".rds"))
   #OutputFile10_7 for Thursday meeting ## 2nd continuous var is very different distribution
   #OutputFile10_8 for Thursday meeting ##  2nd continuous var has same distribution
   
