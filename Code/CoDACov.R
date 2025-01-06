@@ -97,10 +97,10 @@ SetBinarycov <- function(G, k, N,nc, k_start, Cnew,connType, pC,CovNamesLP, miss
     }
   }
   binVal_orig <- binVal
-  if (missing > 0) {
-    
+  #if (missing > 0) {
+   if(!is.null(missing)) {
     for (j in 1:k) {
-      binVal[sample(1:N, round(missing * N / 100)), j] <- NA
+      binVal[sample(1:N, round(missing[j] * N / 100)), j] <- NA
       G <- G %>%
         set_vertex_attr(name = CovNamesLP[j], value = c(binVal[, j]))
     }
@@ -130,9 +130,10 @@ SetContinuousCov <- function(G,o, N,nc, o_start, C, connType, dist,CovNamesLin,m
   }
   
   
-  if(missing >0 ){
+  #if(missing >0 ){
+  if(!is.null(missing)) {
     for (j in 1:o) {
-      contVal[sample(1:N, round(missing * N / 100)), j] <- NA
+      contVal[sample(1:N, round(missing[j] * N / 100)), j] <- NA
       G <- G %>% set_vertex_attr(name = CovNamesLin[j],
                                  value = c(contVal[, j]))
     }
@@ -159,7 +160,7 @@ genNested <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
 
 genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
                          CovNamesLPin,CovNamesLPout,CovNamesLinin,CovNamesLinout,
-                         pConn, dir,dirPct, epsilon,missing, alpha, beta) {
+                         pConn, dir,dirPct, epsilon,missing, alpha, beta,Type, pClustOL) {
   C <- 0
   while (length(table(C)) < nc) {
     C <- sample(
@@ -178,25 +179,55 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   fin <- c()
   for (i in 2:(nc - 1)) {
     c <- t(combn(letters[1:nc], i))
-    for (j in 1:dim(c)[1]) {
-      com <- which(C %in% c[j, ])
-      fin <- c(fin, com)
-      print(c[j, ])
-      print(pClust[nc + i + j - 2])
-      idx <- sample(com , size = length(com) * pClust[nc + i + j - 2], replace = FALSE)
-      print(idx)
-      Cnew[idx, c[j, ]] <- 1
-      
-      ## sampled outgoing membership by percentage
-      #sampOut <- sample(idx,
-      #                  size = length(idx) * dirPctInt[j],
-      #                  replace = FALSE)
-      #Cnew[sampOut, c[j,1]] <- -1
+    if(Type == "Nested"){ ## For nested network currently only 3 communities are supported.
+      l <- 1
+      for (j in seq(from =1, to = (dim(c)[1]*2), by = 2)){#1:(dim(c)[1]*2)) {
+        com1 <- which(C %in% c[l,1]) ## Finding the original assigned nodes to community 1
+        com2 <- which(C %in% c[l,2]) ## Finding the original assigned nodes to community 2
+        
+        ## Number of nodes to be assigned to community 2 from community 1
+        idx1 <- sample(com1 , size = length(com1) * pClustOL[j], replace = FALSE)
+        
+        ## Number of nodes to be assigned to community 1 from community 2
+        idx2 <- sample(com2 , size = length(com2) * pClustOL[j + 1], replace = FALSE)
+        
+        Cnew[idx1, c[l,2 ]] <- 1 ## Assiging values in community 2 based on overlap with community 1
+        Cnew[idx2, c[l,1 ]] <- 1 ## Assiging values in community 1 based on overlap with community 0
+        l <- l + 1
+      }
+    }
+    if(Type == "Cohesive") {
+      l <- 1
+      for(j in 1:dim(c)[1]){
+        com <- which(C %in% c[j, ])
+        fin <- c(fin, com)
+        idx <- sample(com , size = length(com) * pClustOL[l], replace = FALSE)
+        Cnew[idx, c[j, ]] <- 1
+        l <- l + 1
+      }
+    }
+    if(Type == "2-Mode"){ ## For 2-Mode network currently only 3 communities are supported.
+      ## For this type there should be two cohesive communities and one community that is only outgoing
+      l <- 1
+      for (j in seq(from =1, to = (dim(c)[1]*2), by = 2)){#1:(dim(c)[1]*2)) {
+        com1 <- which(C %in% c[l,1]) ## Finding the original assigned nodes to community 1
+        com2 <- which(C %in% c[l,2]) ## Finding the original assigned nodes to community 2
+        
+        ## Number of nodes to be assigned to community 2 from community 1
+        idx1 <- sample(com1 , size = length(com1) * pClustOL[j], replace = FALSE)
+        
+        ## Number of nodes to be assigned to community 1 from community 2
+        idx2 <- sample(com2 , size = length(com2) * pClustOL[j+1], replace = FALSE)
+        
+        Cnew[idx1, c[l,2 ]] <- 1 ## Assiging values in community 2 based on overlap with community 1
+        Cnew[idx2, c[l,1 ]] <- 1 ## Assiging values in community 1 based on overlap with community 0
+        l <- l + 1
+      }
     }
   }
   ## percentage overlapping all the communities
   idx <- sample(unique(fin),
-                size = length(unique(fin)) * pClust[length(pClust)],
+                size = length(unique(fin)) * pClustOL[length(pClustOL)],
                 replace = FALSE)
   Cnew[idx, ] <- 1
   
@@ -204,12 +235,30 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   ## -1 for outgoing membership and +1 for incoming membership
   Cold <- Cnew
   if (dir == "directed") {
-    for (i in 1:nc) {
-      ## sampled outgoing membership by percentage
-      sampOut <- sample(which(Cnew[, i] == 1),
-                        size = length(which(Cnew[, i] == 1)) * dirPct[i],
-                        replace = FALSE)
-      Cnew[sampOut, i] <- -1
+    if(Type == "2-Mode"){
+      c <- t(combn(letters[1:nc], 2))
+      #for (j in seq(from =1, to = (dim(c)[1]*2), by = 2)){
+      idx <- which(Cnew[,c[1,1]] == 1 & Cnew[,c[1,2]] == 1)
+      Cnew[idx, c[1,1]] <- -1
+      #}
+      sampOut <- sample( which(Cnew[,c[1,2]] == 1 ) ,
+                         size = length(which(Cnew[, c[1,2]] == 1)) * dirPct[1], 
+                         replace = FALSE)
+      Cnew[sampOut, c[1,2]] <- -1
+      
+      sampOut <- sample( which(Cnew[,c[2,2]] == 1 ) ,
+                         size = length(which(Cnew[, c[2,2]] == 1)) * dirPct[2], 
+                         replace = FALSE)
+      Cnew[sampOut, c[2,2]] <- -1
+      
+    } else{
+      for (i in 1:nc) {
+        ## sampled outgoing membership by percentage
+        sampOut <- sample(which(Cnew[, i] == 1),
+                          size = length(which(Cnew[, i] == 1)) * dirPct[i],
+                          replace = FALSE)
+        Cnew[sampOut, i] <- -1
+      }
     }
   }
   
@@ -249,12 +298,13 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   covVal_orig <- 0
   if (c("binary") %in% covTypes) {
     if (length(CovNamesLPin) > 0) {
-      op <- SetBinarycov(g.sim, k_in, N, nc, k_start = 0, Cold, 
-                            connType = 1,pC, CovNamesLPin, missing)
+      op <- SetBinarycov(g.sim,k_in,N,nc,k_start=0,Cold,connType=1,pC,
+                         CovNamesLPin,missing)
     }
     if (length(CovNamesLPout) > 0) {
-      op <- SetBinarycov(g.sim, k = k_out, N, nc, k_start = k_in, Cold, 
-                            connType = 1, pC, CovNamesLPout, missing)
+      op <- SetBinarycov(g.sim,k=k_out,N,nc,k_start=k_in,Cold,connType=1,pC,
+                         CovNamesLPout,missing)
+      
     }
     g.sim <- op[[1]]
     covVal_orig <- op[[2]]
@@ -919,7 +969,7 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
 CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh, 
                  nitermax, orig,randomize = TRUE, CovNamesLinin = c(),
                  CovNamesLinout = c(),CovNamesLPin = c(),CovNamesLPout = c(), dir, 
-                 alphaLL = NULL,test = TRUE,missing = 0, covOrig, epsilon) {
+                 alphaLL = NULL,test = TRUE,missing = NULL, covOrig, epsilon) {
   if(printFlg == TRUE){
     print("In CoDA Func")
   }
@@ -1135,7 +1185,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
         accuracy_out <- accuCalc(k_out,Wout,Ftot,Htot,covOrig,dir)
         ## Missing data prediction accuracy
         #accuracy_outMD <- c(rep(0,  k_in + k_out))
-        if(missing > 0){
+        if(!is.null(missing)){
         accuracy_outMD <- accuCalc(k_out,Wout,
                                    Ftot[as.logical(rowSums(missValsout)),],
                                    Htot[as.logical(rowSums(missValsout)),],
