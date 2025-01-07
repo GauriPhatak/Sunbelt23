@@ -6,16 +6,16 @@ source("Code/CoDACov.R")
 # }
 # simvec <- as.integer(gsub("[\r\n]", "",args[1]))
 # print(paste0("the simulation number ", simvec))
-
+getwd()
 SaveCoDASim <- function(simvec, sim, InitParamFile){
   
-  S <- as.data.frame(readRDS(InitParamFile))
+  S <- as.data.frame(readRDS(paste0(getwd(),InitParamFile)))
   
   if (sim == TRUE) {
     printFlg <<- FALSE
     Sim <- data.frame(S[simvec,])
     ## Number of simulations
-    Nsim <- Sim$Nsim
+    Nsim <- 1#Sim$Nsim
     
     ##Directed graph yes? No?
     dir <- Sim$DirType
@@ -73,7 +73,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     randomize <- Sim$randomize
     
     ## Percent of missing data in covariates
-    missing <- Sim$missing
+    missing <- Sim$missing[[1]]
     
     ## Number of nodes
     N <- Sim$N
@@ -99,6 +99,16 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     ## Maximum number iterations in the stopping criterion
     nitermax <- Sim$nitermax
     
+    ## Beta distribution alpha and beta values
+    a <- Sim$a
+    b <- Sim$b
+    
+    ## Type of network
+    Type <- Sim$Type
+    
+    ## Cluster Overlap proportion
+    pClustOL <- Sim$pClustOL[[1]]
+    
     ## All test output is saved in these lists
     opf_cov <- list()
     opf_noCov <- list()
@@ -111,7 +121,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     lvl <- 1
     ncVal <- nc
     
-    bigN <- 1
+    bigN <- 1#Sim$bigN
     Gtot<- list() 
     GTlogLikcovtot<- list() 
     GTlogLiknoCovtot <- list()
@@ -123,8 +133,17 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
       ## Generating network with covariates and overlapping clusters
       NWlst <- genBipartite(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
                             CovNamesLPin,CovNamesLPout,CovNamesLinin,CovNamesLinout,
-                            pConn,dir= "directed",dirPct,epsilon,missing)
+                            pConn,dir= "directed",dirPct,epsilon,missing, 
+                            a, b, Type, pClustOL)
       G_orig <- NWlst[[1]]
+      orig_Cov <- NWlst[[2]]
+      F_u <- NWlst[[3]]
+      H_u <- NWlst[[4]]
+      igraph::plot.igraph(G_orig,vertex.label = NA, vertex.size = 5,
+                          vertex.color = as.factor(V(G_orig)$Cluster),
+                          edge.arrow.size= 0.1, edge.color = "grey28")
+      
+      # View(cbind(V(G_orig)$bvout1, V(G_orig)$bvout2, V(G_orig)$bvout3))
       # Run all the algorithms 
       # BigClam: Undirected + No Covariates
       # CoDA: Directed + No Covariates
@@ -134,26 +153,40 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
       # CoDA Miss: Directed + Missing Covariate Imputation
       
       for(dir in c("directed", "undirected")){
-        
+        print(paste0("This is ", dir, " network."))
         if(dir == "undirected"){
           G <- convertToUndir(G_orig, nc)
-          alpha <- 0.0001
+          F_u_tot <- F_u + H_u
+          F_u <- F_u_tot
+          H_u <- F_u_tot
+          #alpha <- 0.0001
+          #thresh <- 0.0001
         }else{
           G <- G_orig
           }
         
-        gbg <- as.data.frame(vertex_attr(G))
+        #gbg <- as.data.frame(vertex_attr(G))
+        #print(table(gbg$Cluster, gbg$bvout1))
+        #print(table(gbg$Cluster, gbg$bvout2))
+        #print(table(gbg$Cluster, gbg$bvout3))
+        
         #plot.igraph(G, vertex.color = as.factor(V(G)$Cluster), vertex.label = NA)
         #gbg <- cbind(gbg, Ftot,Htot)#opf_cov[[1]]$Ffin, opf_cov[[1]]$Hfin, ol)
         ## find the ground truth loglikelihood
-        GTlogLikcov <- GTLogLik(G,nc,pConn,NULL,
+        GTlogLikcovLst <- GTLogLik(G,nc,pConn,NULL,
                                 CovNamesLinin, CovNamesLinout,
                                 CovNamesLPin,CovNamesLPout,
-                                k_in,k_out,o_in,o_out, epsilon, dir)
-        GTlogLiknoCov <- GTLogLik(G,nc,pConn,NULL,
+                                k_in,k_out,o_in,o_out, epsilon, dir, 
+                                orig_Cov, F_u, H_u)
+        GTlogLikcov <- GTlogLikcovLst[[1]]
+        GTlogLikcovSep <- GTlogLikcovLst[[2]]
+        GTlogLiknoCovLst <- GTLogLik(G,nc,pConn,NULL,
                                   CovNamesLinin=c(), CovNamesLinout =c(),
                                   CovNamesLPin=c(),CovNamesLPout=c(),
-                                  k_in =0 ,k_out =0 ,o_in=0,o_out=0, epsilon, dir)
+                                  k_in =0 ,k_out =0,o_in=0,o_out=0,epsilon,dir,
+                                  orig_Cov, F_u, H_u)
+        GTlogLiknocov <- GTlogLiknoCovLst[[1]]
+        GTlogLiknocovSep <- GTlogLiknoCovLst[[2]]
         orig <<- V(G)$Cluster
         
         ## cluster assignments based on covariate assisted clustering.
@@ -164,7 +197,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
         
         if (length(Z) > 0) {
           cov <- Z
-          if (missing > 0) {
+          if (!is.null(missing)) {
             mns <- colMeans(cov, na.rm  = TRUE)
             for (i in 1:o) {
               cov[is.na(cov[, i]), i] <- mns[i]
@@ -174,7 +207,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
         }
         if (length(X) > 0) {
           cov <- X
-          if (missing > 0) {
+          if (!is.null(missing)) {
             for (i in 1:k) {
               cov[is.na(cov[, i]), i] <- mode(cov[, i])
             }
@@ -192,106 +225,121 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
           opf_cov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
                                  lambda,thresh,nitermax,orig,randomize = TRUE,
                                  CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
-                                 alphaLL = NULL,test = TRUE)
+                                 alphaLL = NULL,test = TRUE,missing = missing, covOrig = orig_Cov, 
+                                 epsilon =0 )
           tme <- Sys.time() - start
-          print(paste0("Total time take ", tme))
-          TimeTaken[[lvl]] <- tme
+          print(paste0("Total time take algo with covariates", tme))
+          #TimeTaken[[lvl]] <- tme
           ## Algorithm without covariates + possible missing data
+          start <- Sys.time()
           opf_noCov[[lvl]] <- CoDA(G,nc,k = c(0, 0),o = c(0, 0),N,alpha,
                                    lambda,thresh ,nitermax,orig,randomize = TRUE,
                                    CovNamesLinin = c(),CovNamesLinout = c(),CovNamesLPin = c(),
-                                   CovNamesLPout = c(),dir,alphaLL = NULL,test = TRUE)
+                                   CovNamesLPout = c(),dir,alphaLL = NULL,test = TRUE,
+                                   missing = missing, covOrig = orig_Cov, epsilon =0)
+          tme <- Sys.time() - start
+          print(paste0("Total time take algo without covariates", tme))
+          
           lvl <- lvl + 1
         }
-        Gtot <-  list(Gtot, G)
-        GTlogLikcovtot <-  list(GTlogLikcovtot, GTlogLikcov)
-        GTlogLiknoCovtot <- list(GTlogLiknoCovtot, GTlogLiknoCov)
+        Gtot <-  append(Gtot, list(G))
+        GTlogLikcovtot <-  append(GTlogLikcovtot, GTlogLikcov)
+        GTlogLiknoCovtot <- append(GTlogLiknoCovtot, GTlogLiknocov)
       }
     }
-    opf_covtot <- opf_cov#list(opf_covtot, opf_cov)
-    opf_noCovtot <- opf_noCov#list(opf_noCovtot, opf_noCov)
+    opf_covtot <- opf_cov #list(opf_covtot, opf_cov)
+    opf_noCovtot <- opf_noCov #list(opf_noCovtot, opf_noCov)
   }
   
-  ### Use the igraph for week 50-2020
-  if (sim == FALSE) {
-    iGraph_op <- readRDS("Code/iGraph_NW.rds")
-    G <- iGraph_op[["50-2020"]]
-    G <- as.undirected(G, mode = "collapse")
-    covTypes <- c()#c("continuous")#c("binary")#c("continuous")
-    CovNamesLin <- c()#c("covVal")
-    CovNamesLP <- c()
-    k <- length(CovNamesLP)
-    o <- length(CovNamesLin)
-    nc <- c(3, 4)#4
-    alpha <- c(0.0005, 0.0008, 0.001)#c(0.0002,0.0005,0.0008,0.001)#0.0002
-    alphaLL <- c(1)#c(0.7)#c(0, 0.3, 0.5, 0.7, 0.9, 1)#c(0.2,0.5,0.7)#0.5
-    lambda <- 0.001
-    thresh <- 0.0001
-    randomize = TRUE
-    N <- gorder(G)
-    #RegSpectralClust(G,nc)
-    cov <- V(G)$covVal
-    cov[is.na(V(G)$covVal)] <- mean(V(G)$covVal, na.rm  = TRUE)
-    cov <- as.matrix(cov, ncol = 1)
-    # Setting iterations if log likelihood is taking too long
-    nitermax <- 800
-    Nsim <- 10
-    #opf <- list()
-    ARIV <- rep(0, Nsim)
-    arilst <- list()
-    ## saving the final cluster list
-    cLst <- c(V(G)$Cluster)
-    mse <- matrix(nrow = Nsim, ncol = o + k, 0)
-    lvl <- 1
-    for (a3 in nc) {
-      ncVal <- a3
-      for (a1 in alphaLL) {
-        for (a2 in alpha) {
-          for (j in 1:Nsim) {
-            print(paste0(
-              "iteration ",
-              lvl,
-              " alpha ",
-              a2,
-              " alphaLL ",
-              a1,
-              " num cmnty ",
-              ncVal
-            ))
-            orig <- RegSpectralClust(G, ncVal)
-            origCov <-  CovAssistedSpecClust(G, cov, ncVal, alpha = 0.5)
-            op <- CESNA(
-              G,
-              ncVal,
-              k,
-              o,
-              N,
-              a2,
-              lambda,
-              thresh,
-              nitermax,
-              randomize,
-              orig,
-              CovNamesLin,
-              CovNamesLP,
-              a1
-            )
-            opf[[lvl]] <- op
-            lvl <- lvl + 1
-          }
-        }
-      }
-    }
-    #EG <- expand.grid(1:Nsim, alpha, alphaLL, nc)
-  }
   return(list(opf_covtot, opf_noCovtot,Gtot, GTlogLikcovtot, GTlogLiknoCovtot))
   #return(0)
 }
 
 
-lst <- SaveCoDASim(simvec = 1, 
+lst2 <- SaveCoDASim(simvec = 2, 
                    sim = TRUE, 
-                   InitParamFile = "InitParamMiss_1.rds")
+                   InitParamFile = "/Code/InitParamMiss_Cohesive_MCAR.rds")
 
-saveRDS(lst, paste0(file,"_OP", simvec,".rds"))
+# lst2 <- SaveCoDASim(simvec = 1, 
+#                     sim = TRUE, 
+#                     InitParamFile = "/Code/InitParamMiss_Nested.rds")
+# 
+# lst3 <- SaveCoDASim(simvec = 1, 
+#                     sim = TRUE, 
+#                     InitParamFile = "/Code/InitParamMiss_2-Mode.rds")
 
+#saveRDS(lst, paste0(file,"_OP", simvec,".rds"))
+## Real Data OLD CODE:
+
+### Use the igraph for week 50-2020
+# if (sim == FALSE) {
+#   iGraph_op <- readRDS("Code/iGraph_NW.rds")
+#   G <- iGraph_op[["50-2020"]]
+#   G <- as.undirected(G, mode = "collapse")
+#   covTypes <- c()#c("continuous")#c("binary")#c("continuous")
+#   CovNamesLin <- c()#c("covVal")
+#   CovNamesLP <- c()
+#   k <- length(CovNamesLP)
+#   o <- length(CovNamesLin)
+#   nc <- c(3, 4)#4
+#   alpha <- c(0.0005, 0.0008, 0.001)#c(0.0002,0.0005,0.0008,0.001)#0.0002
+#   alphaLL <- c(1)#c(0.7)#c(0, 0.3, 0.5, 0.7, 0.9, 1)#c(0.2,0.5,0.7)#0.5
+#   lambda <- 0.001
+#   thresh <- 0.0001
+#   randomize = TRUE
+#   N <- gorder(G)
+#   #RegSpectralClust(G,nc)
+#   cov <- V(G)$covVal
+#   cov[is.na(V(G)$covVal)] <- mean(V(G)$covVal, na.rm  = TRUE)
+#   cov <- as.matrix(cov, ncol = 1)
+#   # Setting iterations if log likelihood is taking too long
+#   nitermax <- 800
+#   Nsim <- 10
+#   #opf <- list()
+#   ARIV <- rep(0, Nsim)
+#   arilst <- list()
+#   ## saving the final cluster list
+#   cLst <- c(V(G)$Cluster)
+#   mse <- matrix(nrow = Nsim, ncol = o + k, 0)
+#   lvl <- 1
+#   for (a3 in nc) {
+#     ncVal <- a3
+#     for (a1 in alphaLL) {
+#       for (a2 in alpha) {
+#         for (j in 1:Nsim) {
+#           print(paste0(
+#             "iteration ",
+#             lvl,
+#             " alpha ",
+#             a2,
+#             " alphaLL ",
+#             a1,
+#             " num cmnty ",
+#             ncVal
+#           ))
+#           orig <- RegSpectralClust(G, ncVal)
+#           origCov <-  CovAssistedSpecClust(G, cov, ncVal, alpha = 0.5)
+#           op <- CESNA(
+#             G,
+#             ncVal,
+#             k,
+#             o,
+#             N,
+#             a2,
+#             lambda,
+#             thresh,
+#             nitermax,
+#             randomize,
+#             orig,
+#             CovNamesLin,
+#             CovNamesLP,
+#             a1
+#           )
+#           opf[[lvl]] <- op
+#           lvl <- lvl + 1
+#         }
+#       }
+#     }
+#   }
+#   #EG <- expand.grid(1:Nsim, alpha, alphaLL, nc)
+# }
