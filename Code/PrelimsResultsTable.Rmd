@@ -1,0 +1,517 @@
+---
+title: "PrelimTables"
+output: pdf_document
+date: "2024-11-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(igraph)
+library(network)
+library(intergraph)
+library(ergm)
+library(gridExtra)
+library(RColorBrewer)
+library(ggpubr)
+library(kableExtra)
+```
+
+## Reading and plotting results data - MCAR Cohesive
+
+```{r}
+#getwd()
+param <- "InitParamMiss_Cohesive_MCAR.rds"
+param_c <- "InitParamMiss_Cohesive_MCAR.rds"
+fileStrt <- "CoDaOP/MCAR/InitParamMiss_Cohesive_MCAR_OP"
+Ncombo <- c(1,2, 4:46, 48:72, 74:144)
+my.plots <- vector(length(Ncombo), mode='list')
+
+S <- as.data.frame(readRDS(param))
+
+## Might have to change the below based on the simulation param combo
+S$pC <- rep(rep(c("High", "Med", "Low"), each = 6), times = 8)
+S$pClust <- rep(rep(c("equal","unequal"), each = 18),times = 4)
+S$pClustOL <- rep(c("NoOL","2OL","3OL","allOL"), each = 36)
+S$missing <- rep(c(0,5,10,15,25,35), times = 24)
+## Creating empty dataframes for saving output
+## Full data dataframes
+## Number of columns depends on the number of clusters and covariates.
+## The 4 is to save all the log likelihoods separately.
+FinCov <- as.data.frame(matrix(nrow= 0 , ncol = 1+1+4+1+1+(S[1,]$k_out*2)+ 1,0))
+
+## Dataframes for no covariates runs
+FinnoCov <- as.data.frame(matrix(nrow= 0 , ncol = 1+1+4+1+1+1, 0))
+## NWdir total
+## Setting up plot rds
+plotRDS <- list()
+ploti <- 1
+
+
+NWDirT <- as.data.frame(matrix(nrow = 0, ncol = 9, 0))
+pdf("SumaryPlots.pdf")
+for(i in Ncombo){
+  FdatCov <- as.data.frame(matrix(nrow = 0 , 
+                                  ncol = 1+1+4+1+1+(S[i,]$k_out*2)+1,
+                                  0))
+  FdatnoCov <- as.data.frame(matrix(nrow = 0 , 
+                                    ncol = 1+1+4+1+1+1, 
+                                    0))
+  
+  op <- readRDS(paste0(fileStrt, i,".rds"))
+  NWDir <- expand_grid(1:S[i,]$bigN,
+                       c("dir", "undir"),
+                       1:S[i,]$Nsim,
+                       S[i,]$pC,
+                       S[i,]$pClust,
+                       S[i,]$pClustOL,
+                       S[i,]$missing)
+  colnames(NWDir) <- c("BigN","DirType","Nsim","pC","pClust","OL","Missing")
+  NWDir$j <- 1:dim(NWDir)[1]
+  NWDir$i <- i
+  ## save the Log likelihood, Omega Index, ARI, Acc or MSE 
+  covType <- as.character(S[i,]$covType)
+  
+  
+  for(j in 1:dim(NWDir)[1]){
+    ## Saving simulation with covariates
+    if(covType == "binary"){
+      datCov <- cbind(i,j,op[[1]][[j]]$Loglik, 
+                      op[[1]][[j]]$OmegaIndex, 
+                      op[[1]][[j]]$ARI, 
+                      op[[1]][[j]]$Acc,
+                      c(1:dim(op[[1]][[j]]$Loglik)[1]))
+      
+      if(nrow(op[[1]][[j]]$AccMD) > 0 ){
+        datCov <- cbind(datCov, op[[1]][[j]]$AccMD)
+      }else{
+        datCov <- cbind(datCov, 0,0,0)
+      }
+      
+      ## Saving the final value of the simulation
+      FinCov <- rbind(FinCov, datCov[dim(datCov)[1],])
+    }
+    ## Saving simulations without covariates
+    datnoCov <- cbind(i,j, op[[2]][[j]]$Loglik, 
+                      op[[2]][[j]]$OmegaIndex, 
+                      op[[2]][[j]]$ARI,
+                      1:dim(op[[2]][[j]]$Loglik)[1])
+    
+    ## Saving the final value of the simulation
+    FinnoCov <- rbind(FinnoCov, datnoCov[dim(datnoCov)[1],])
+    
+    FdatCov <- rbind(FdatCov , datCov)
+    FdatnoCov <- rbind(FdatnoCov, datnoCov)
+  }
+  ## Adding to NW list
+  NWDirT <- rbind(NWDirT, NWDir)
+  ## Setting column names for all the above 
+  ## Simulation with covariates
+  colnames(FdatCov) <- c("i","j","LLFull", "LLG","LLX","LLZ","OI","ARI",
+                         paste0("Acc",1:S[i,]$k_out ), "seq",
+                         paste0("AccMD",1:S[i,]$k_out ))
+  FdatCov <- left_join(FdatCov, NWDir, by = c("j" = "j", "i" = "i"))
+  
+  #Simulation w/o covariates
+  colnames(FdatnoCov) <- c("i" ,"j","LLFull", "LLG","LLX","LLZ","OI","ARI","seq")
+  FdatnoCov <- left_join(FdatnoCov, NWDir, by = c("j" = "j", "i" = "i"))
+  
+  ## Setting up the prelims plots Covariate data
+  p <- list()
+  r <- list()
+  p[[1]] <- FdatCov %>%
+    ggplot() +
+    geom_line(aes(y = seq, 
+                  x = round(LLFull,1), 
+                  color = as.factor(BigN),
+                  group = as.factor(j)),
+              show.legend = FALSE) +
+    #geom_vline(aes(xintercept = GTll[j,1])) +
+    xlab("total Loglikelihood") + ylab("Iteration")+
+    scale_x_continuous(guide = guide_axis(angle = 45)) +
+    facet_wrap(~DirType)+
+    theme_minimal()
+  
+  r[[1]] <- FdatCov %>%
+    ggplot() +
+    geom_line(aes(y = seq, 
+                  x = round(LLFull,1), 
+                  color = as.factor(BigN),
+                  group = as.factor(j)),
+              show.legend = FALSE) +
+    #geom_vline(aes(xintercept = GTll[j,1])) +
+    xlab("total Loglikelihood") + ylab("Iteration")+
+    scale_x_continuous(guide = guide_axis(angle = 45)) +
+    facet_wrap(~DirType)+
+    theme_minimal()
+  
+  r[[2]] <- FdatCov %>%
+    ggplot() +
+    geom_line(aes(y = seq, 
+                  x = round(LLG,1), 
+                  color = as.factor(BigN),
+                  group = as.factor(j)),
+              show.legend = FALSE) +
+    #geom_vline(aes(xintercept = GTll[j,1])) +
+    xlab("Graph Loglikelihood") + ylab("Iteration")+
+    scale_x_continuous(guide = guide_axis(angle = 45)) +
+    facet_wrap(~DirType)+
+    theme_minimal()
+  
+  r[[3]] <- FdatCov %>%
+    ggplot() +
+    geom_line(aes(y = seq, 
+                  x = round(LLX,1), 
+                  color = as.factor(BigN),
+                  group = as.factor(j)),
+              show.legend = FALSE) +
+    #geom_vline(aes(xintercept = GTll[j,1])) +
+    xlab("Binary Loglikelihood") + ylab("Iteration")+
+    scale_x_continuous(guide = guide_axis(angle = 45)) +
+    facet_wrap(~DirType)+
+    theme_minimal()
+  
+  p[[2]] <- FdatCov %>%
+    ggplot() +
+    geom_point(aes(y = seq, 
+                   x = round(OI,3), 
+                   color = as.factor(BigN), 
+                   group = as.factor(j)), 
+               size  = 0.1,
+               show.legend = FALSE) + xlab("Omega Idx")+ylab("Iteration")+
+    scale_x_continuous(guide = guide_axis(angle = 45)) +
+    facet_wrap(~DirType)+
+    theme_minimal()
+  
+  if(S[j,]$k_in+S[j,]$k_out > 0){
+    FdatCov$AccAvg <- (FdatCov$Acc1 +FdatCov$Acc2 + FdatCov$Acc3)/3
+    FdatCov$AccMDAvg <- (FdatCov$AccMD1 +FdatCov$AccMD2 + FdatCov$AccMD3)/3
+    
+    p[[3]] <- FdatCov %>%
+      ggplot() +
+      geom_line(aes(x = seq, 
+                    y = AccAvg,
+                    color = as.factor(BigN),
+                    group = as.factor(j)), 
+                size  = 0.1,
+                show.legend = FALSE) +
+      #scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0.75, NA)) + 
+      #scale_y_continuous(limits = c(0.3, 1), expand = c(0,0))+ 
+      xlab("Avg Accuracy for Cov") + ylab("Iteration") + 
+      facet_wrap(~DirType) +
+      theme_minimal()
+    
+    p[[4]] <-  FdatCov %>%
+      ggplot() +
+      geom_line(aes(x = seq, 
+                    y = AccMDAvg,
+                    group = as.factor(j),
+                    color = as.factor(BigN)), 
+                size  = 0.1,
+                show.legend = FALSE) +
+      xlab("Avg Accuracy for out Cov Missing Data") + ylab("Iteration") + facet_wrap(~DirType)+
+      theme_minimal()
+  }
+  pt <- ggpubr::ggarrange(plotlist = p, ncol = 2, nrow = 2)
+  
+  ptTot <- ggpubr::annotate_figure(pt,
+                                   top = ggpubr::text_grob(paste0("Overlap: ", S[i,]$pClustOL,
+                                                                  " Cov Corr: ", S[i,]$pC,
+                                                                  " Pct Missing: ",S[i,]$missing,
+                                                                  " Clust size: ",S[i,]$pClust),
+                                                           color = "darkblue", 
+                                                           face = "bold", 
+                                                           size = 14))
+  print(ptTot)
+  
+  rt <- ggpubr::ggarrange(plotlist = r, ncol = 2, nrow = 2)
+  rtTot <- ggpubr::annotate_figure(rt,
+                                   top = ggpubr::text_grob("Log Likelihood split",
+                                                           color = "darkblue", 
+                                                           face = "bold", 
+                                                           size = 14))
+  print(rtTot)
+  ## Setting up the prelims plots
+  pn <- list()
+  pn[[1]] <- FdatnoCov %>%
+    ggplot() +
+    geom_line(aes(y = seq, 
+                  x = round(LLFull,1), 
+                  color = as.factor(BigN),
+                  group = as.factor(j)),
+              show.legend = FALSE) +
+    #geom_vline(aes(xintercept = GTll[j,1])) +
+    xlab("total Loglikelihood") + ylab("Iteration")+
+    scale_x_continuous(guide = guide_axis(angle = 45)) +
+    facet_wrap(~DirType)+
+    theme_minimal()
+  
+  
+  pn[[2]] <- FdatnoCov %>%
+    ggplot() +
+    geom_point(aes(y = seq, 
+                   x = round(OI,3), 
+                   color = as.factor(BigN), 
+                   group = as.factor(j)), 
+               size  = 0.1,
+               show.legend = FALSE) + 
+    xlab("Omega Idx")+ylab("Iteration")+
+    scale_x_continuous(guide = guide_axis(angle = 45)) +
+    facet_wrap(~DirType)+
+    theme_minimal()
+  
+  ptn <- ggpubr::ggarrange(plotlist = pn, ncol = 2, nrow = 2)
+  
+  ptnTot <- ggpubr::annotate_figure(ptn, 
+                                    top = ggpubr::text_grob(paste0("Overlap: ", S[i,]$pClustOL, 
+                                                                   " Cov Corr: ", S[i,]$pC,
+                                                                   " Pct Missing: ",S[i,]$missing,
+                                                                   " Clust size: ",S[i,]$pClust),
+                                                            color = "darkblue", 
+                                                            face = "bold", 
+                                                            size = 14))
+  print(ptnTot)
+  plotRDS <- append(plotRDS, list(list(ptTot, rtTot, ptnTot)))
+}
+
+dev.off()
+
+colnames(FinCov) <- c("i","j","LLFull", "LLG","LLX","LLZ","OI","ARI",
+                      paste0("Acc",1:S[i,]$k_out ), "seq",
+                      paste0("AccMD",1:S[i,]$k_out ))
+#Simulation w/o covariates
+colnames(FinnoCov) <- c("i","j","LLFull", "LLG","LLX","LLZ","OI","ARI","seq")
+
+colnames(NWDirT) <- colnames(NWDir)
+
+## Joining the data frame with types for NW list
+## NW with covariates
+FinCov <- left_join(FinCov , NWDirT, by = c("j" = "j", "i" = "i"))
+
+## NW without covariates
+FinnoCov <- left_join(FinnoCov , NWDirT, by = c("j" = "j", "i" = "i"))
+FdatnoCov <- left_join(FdatnoCov, NWDirT, by = c("j" = "j", "i" = "i"))
+FinCov$AccAvg <- (FinCov$Acc1 + FinCov$Acc2 + FinCov$Acc3)/3
+FinCov$AccMDAvg <- (FinCov$AccMD1 + FinCov$AccMD2 + FinCov$AccMD3)/3
+FinCov$OL <- factor(FinCov$OL,levels = c("NoOL", "2OL", "3OL", "allOL"))
+FinCov$pC <- factor(FinCov$pC, levels = c("High", "Med","Low"))
+
+FinnoCov$OL <- factor(FinnoCov$OL,levels = c("NoOL", "2OL", "3OL", "allOL"))
+FinnoCov$pC <- factor(FinnoCov$pC, levels = c("High", "Med","Low"))
+
+## Omega Index
+pdf("SummaryBoxplots.pdf")
+print(FinCov[FinCov$pClust == "equal", ] %>%
+  ggplot()+
+  geom_boxplot(aes(y = OI, x = as.factor(Missing), 
+                   color = as.factor(DirType)))+
+  ggtitle("Equal Sized clusters w/ Covariates")+ xlab("Percentage missing")+
+  ylab("Omega Index")+labs(color ="NW direction")+lims(y = c(0.4, 1.1))+
+  theme(legend.position='bottom', 
+        strip.text.x = element_text(margin = margin(0.05,0,0.05,0, "cm"))) +
+  facet_wrap(~OL+pC, ncol =3))
+
+print(FinCov[FinCov$pClust == "unequal", ] %>%
+  ggplot()+
+  geom_boxplot(aes(y = OI, x = as.factor(Missing), 
+                   color = as.factor(DirType)))+
+  ggtitle("Unequal clusters w/ Covariates")+ xlab("Percentage missing")+
+  ylab("Omega Index")+labs(color ="NW direction")+lims(y = c(0.4, 1.1))+
+  theme(legend.position='bottom', 
+        strip.text.x = element_text(margin = margin(0.05,0,0.05,0, "cm"))) +
+  facet_wrap(~OL+pC, ncol =3))
+
+## Full accuracy
+print(FinCov[FinCov$pClust == "equal", ] %>%
+  ggplot() +
+  geom_boxplot(aes(y = AccAvg, x = as.factor(Missing), 
+                   color = as.factor(DirType))) +
+  ggtitle("Equal Sized clusters Accuracy")+ xlab("Percentage missing") +
+  ylab("Prediction Accuracy") + labs(color ="NW direction") +
+  theme(legend.position ='bottom', 
+        strip.text.x = element_text(margin = margin(0.05,0,0.05,0, "cm"))) +
+  facet_wrap(~OL+pC, ncol = 3))
+
+print(FinCov[FinCov$pClust == "unequal", ] %>%
+  ggplot() +
+  geom_boxplot(aes(y = AccAvg, x = as.factor(Missing), 
+                   color = as.factor(DirType))) +
+  ggtitle("Unequal clusters Accuracy")+ xlab("Percentage missing") +
+  ylab("Prediction Accuracy") + labs(color ="NW direction") +
+  theme(legend.position='bottom', 
+        strip.text.x = element_text(margin = margin(0.05,0,0.05,0, "cm"))) +
+  facet_wrap(~OL+pC, ncol = 3))
+
+## Missing data accuracy
+print(FinCov[FinCov$pClust == "equal", ] %>%
+  ggplot() +
+  geom_boxplot(aes(y = AccMDAvg, x = as.factor(Missing), 
+                   color = as.factor(DirType))) +
+  ggtitle("Equal Sized clusters Accuracy Missing data only")+ xlab("Percentage missing") +
+  ylab("Prediction Accuracy Missing Data") + labs(color ="NW direction") +
+  theme(legend.position ='bottom', 
+        strip.text.x = element_text(margin = margin(0.05,0,0.05,0, "cm"))) +
+  facet_wrap(~OL+pC, ncol = 3))
+
+print(FinCov[FinCov$pClust == "unequal", ] %>%
+  ggplot() +
+  geom_boxplot(aes(y = AccMDAvg, x = as.factor(Missing), 
+                   color = as.factor(DirType))) +
+  ggtitle("Unequal clusters Accuracy Missing data only")+ xlab("Percentage missing") +
+  ylab("Prediction Accuracy Missing Data") + labs(color ="NW direction") +
+  theme(legend.position='bottom', 
+        strip.text.x = element_text(margin = margin(0.05,0,0.05,0, "cm"))) +
+  facet_wrap(~OL+pC, ncol = 3))
+
+### No covariates
+print(FinnoCov[FinCov$pClust == "equal", ] %>%
+  ggplot()+
+  geom_boxplot(aes(y = OI, x = as.factor(Missing), 
+                   color = as.factor(DirType)))+
+  ggtitle("Equal Sized clusters w/o covariates")+ xlab("Percentage missing")+
+  ylab("Omega Index")+labs(color ="NW direction")+lims(y = c(0.4, 1.1))+
+  theme(legend.position='bottom', 
+        strip.text.x = element_text(margin = margin(0.05,0,0.05,0, "cm"))) +
+  facet_wrap(~OL+pC, ncol =3))
+
+print(FinnoCov[FinCov$pClust == "unequal", ] %>%
+  ggplot()+
+  geom_boxplot(aes(y = OI, x = as.factor(Missing), 
+                   color = as.factor(DirType)))+
+  ggtitle("Unequal clusters w/o covariates")+ xlab("Percentage missing")+
+  ylab("Omega Index")+labs(color ="NW direction")+ lims(y = c(0.4, 1.1))+
+  theme(legend.position='bottom', 
+        strip.text.x = element_text(margin = margin(0.05,0,0.05,0, "cm"))) +
+  facet_wrap(~OL+pC, ncol =3))
+dev.off()
+
+saveRDS(plotRDS, "SummaryPlots.rds")
+
+```
+
+
+## Reading and plotting results data - MAR Cohesive
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- ```{r} -->
+
+<!-- EG <- readRDS("../InitParamContTest_c.rds") -->
+
+<!-- EG <- EG %>% -->
+<!--   select(c("pClust","pConn","dist","dirPct")) -->
+
+<!-- EG$i <- 1:dim(EG)[1] -->
+
+<!-- dfFin <- left_join(dfFin, EG, by = join_by(i) ) -->
+
+<!-- dfFin %>% -->
+<!--   #select(c("dirPct","dist","pConn","pClust","OmegaIndex","loglik","ARI","MSE1","MSE2")) %>% -->
+<!--   select(`Percent incoming edges` = dirPct,dist,pConn,pClust,OmegaIndex,loglik,ARI,MSE1,MSE2) %>% -->
+<!--   kbl() %>% -->
+<!--   kable_paper(full_width = F) %>% -->
+<!--   column_spec(1:4, bold = T) %>% -->
+<!--   collapse_rows(columns =1:4, valign = "top") %>% -->
+<!--   footnote(general = "All simulation were run on 3 clusters, 2 continuous variables,lambda 0.1, threshold 0.0001, alpha 0.0008, epsilon value of 0.001",  -->
+<!--            general_title = "General: ", -->
+<!--            footnote_as_chunk = T,  -->
+<!--            title_format = c("italic", "underline")) -->
+<!-- #kable_styling() %>% -->
+<!-- #collapse_rows(c("pClust","pConn","dist","dirPct")) -->
+
+
+<!-- ``` -->
+
+<!-- ### Data tables with missing data  -->
+<!-- This checks the accuracy for missing binary covariate. Need to add code to perform imputation without taking the community structure into account. -->
+
+<!-- ```{r} -->
+
+<!-- EG <- readRDS("../InitParamMiss_c.rds") -->
+
+<!-- EG <- EG |> -->
+<!--   dplyr::select(missing,,pClust) -->
+<!-- EG$sim <- 1:40 -->
+<!-- ## read the output from simulations -->
+<!-- getwd() -->
+<!-- f <- "CoDAop/Missingdata/InitParamMiss_2_OP" -->
+<!-- covOP <- data.frame(matrix(0, nrow = 0, ncol = 14)) -->
+<!-- for(i in 1:40){ -->
+<!--   op <- readRDS(paste0(f, i,".rds")) -->
+<!--   covOP <- rbind(covOP, -->
+<!--                  cbind(printplots(opf = op[[1]], GTll = op[[4]][[2]],  -->
+<!--                                   EG = EGip, G = op[[3]][[2]], -->
+<!--                                   printFlg  = FALSE)[[1]],  -->
+<!--                        direction = rep(c("directed","undirected"),  -->
+<!--                                        each = 5),## Need to change this for bigN = 5  -->
+<!--                        sim = i)) -->
+<!-- } -->
+
+<!-- covOP <- covOP |> -->
+<!--   dplyr::select(c(Finari, llike, FinOmegaIdx, accuracy,NumIter, direction, sim)) -->
+
+<!-- covOP <- left_join(covOP, EG, by = join_by(sim == sim)) -->
+
+<!-- AggcovOP <- covOP |>  -->
+<!--   group_by(direction, missing, pClust) |> -->
+<!--   summarize(across(everything(),  -->
+<!--                    list(mean = mean))) #, sd = sd Can add std dev later -->
+
+<!-- #AggcovOP <- left_join(AggcovOP, EG, by = join_by(sim == sim)) -->
+
+
+<!-- ``` -->
+
+
+<!-- ## Graphs for different mmissingness levels -->
+
+<!-- ```{r} -->
+<!-- # -->
+<!-- #AggcovOP$pC <- unlist(AggcovOP$pC) -->
+<!-- AggcovOP$pClust <- unlist(AggcovOP$pClust) -->
+<!-- AggcovOP %>% ggplot() + -->
+<!--   geom_point(aes(x = as.factor(missing),  -->
+<!--                  y = FinOmegaIdx_mean,  -->
+<!--                  color = direction)) + -->
+<!--   facet_wrap(vars(pClust)) -->
+
+<!-- AggcovOP %>% ggplot() + -->
+<!--   geom_point(aes(x = as.factor(missing),  -->
+<!--                  y = accuracy_mean,  -->
+<!--                  color = direction)) + -->
+<!--   facet_wrap(vars(pClust)) -->
+<!-- ``` -->
+
+
+
+
+
+
+
+
+
+
+
+
