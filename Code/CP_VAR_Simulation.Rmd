@@ -1,0 +1,303 @@
+---
+title: "CP_VAR_Simulations"
+output: pdf_document
+date: "2024-11-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(mcp)
+library(changepoint)
+library(strucchange)
+library(readxl)
+library(RColorBrewer)
+library(imputeTS)
+library(tseries)
+library(tsDyn)
+library(vars)
+library(astsa)
+```
+
+
+## Creating a dataset of timeseries with shifted change points.
+
+Simulation code based on: https://lindeloev.github.io/mcp/articles/packages.html
+
+```{r}
+# Simulate
+set.seed(42)  # I always use 42; no fiddling
+## Length of time series
+nTS <-  150
+## Number of time series
+N <- 4
+## Number of change points for each time series
+nc <- 3
+## Set an offset for for change point in time series. the change point idx keeps increasing for consecutive time series.
+ofst <- 8
+## Set offset at 20, 55, 75
+StOfst <- c(20,45,30,55)
+
+df = data.frame(
+  x = 1:nTS
+)
+k <- 0
+for (i in 1:N) {
+  df[[paste0("y",i)]] = c(rnorm(StOfst[1]+k*ofst, 4),
+                          rnorm(StOfst[2], 0),
+                          rnorm(StOfst[3], 4),
+                          rnorm(StOfst[4]-k*ofst, 0))
+  k <- k+1
+}
+# Plot it
+#plot(df)
+#abline(v = c(20,65,95), col="red")
+df_mat <- as.matrix(df[,-1])
+df <- df %>%
+  pivot_longer(!x)
+df %>%
+  ggplot(aes(x = x, y = value))+
+  geom_point()+
+  geom_vline(xintercept = c(20, 65, 95), color = "red")+
+  geom_vline(xintercept = c(20+ofst, 65+ofst, 95+ofst), color = "blue", linetype = "dashed")+
+  geom_vline(xintercept = c(20+ofst*2, 65+ofst*2, 95+ofst*2), color = "green", linetype = "dashed")+
+  geom_vline(xintercept = c(20+ofst*3, 65+ofst*3, 95+ofst*3), color = "yellow4", linetype = "dashed")+
+  theme_minimal()+
+  facet_wrap(~name)
+
+```
+
+## Fit different models to the wastewater data. See which model works the best and use the changepoint method that works the best for that model.
+
+
+## Now trying out different types of changepoint detection algorithms
+
+### Trying the change point package using cpt.mean i.e. mean shift model
+```{r}
+cpt.mean(t(df_mat), method ="PELT", Q = 4)
+```
+
+
+### Using efp package
+
+```{r}
+op_efp <- efp(df_mat[,1] ~1, type = "OLS-CUSUM")
+plot(op_efp)
+
+bp_str <-breakpoints(df_mat[,1] ~ 1)
+breakpoints(bp_str, breaks = 3)
+breakpoints(bp_str, breaks = 4)
+plot(bp_str)
+
+```
+
+
+```{r}
+model = list(
+  value ~ 1,          # intercept + slope
+  1 + (1|name) ~ x
+  # joined slope, varying by id
+)
+#ex = mcp_example("varying")
+fit = mcp(model, df)
+plot(fit, facet_by = "name")
+
+```
+
+## Creating missingness in the data and fitting the change point models used above.
+
+```{r}
+## creating a dataframe for missing data
+df_miss <- df_mat
+
+## Number of missing data in time series
+n_miss <- 10
+
+for(i in 1:N){
+  ## set random locations for the missing data.
+  n_miss_rand <- sample(x = 1:nTS, size = n_miss)
+  
+  ## Setting the indices to NA for missing data
+  df_miss[n_miss_rand,i] <- NA
+  
+  ### OLS CUSUM changepoint det with missing data
+  op_efp <- efp(df_miss[,i] ~1, type = "OLS-CUSUM")
+  plot(op_efp)
+  
+  bp_str <-breakpoints(df_miss[,i] ~ 1)
+  print(breakpoints(bp_str, breaks = 3))
+  plot(bp_str)
+}
+
+```
+
+
+## Change point -> VAR -> Network simulations
+
+
+## Simulating VAR data
+
+$$
+y_{1t} = c1 + \pi_{11}^1y_{1,t-1} + \pi_{12}^1y_{2,t-1} +\pi_{13}^1y_{3,t-1} +\pi_{14}^1y_{4,t-1} \\
+
+y_{2t} = c2 + \pi_{21}^1y_{1,t-1} + \pi_{22}^1y_{2,t-1} +\pi_{23}^1y_{3,t-1} +\pi_{24}^1y_{4,t-1} \\
+
+y_{3t} = c3 + \pi_{31}^1y_{1,t-1} + \pi_{32}^1y_{2,t-1} +\pi_{33}^1y_{3,t-1} +\pi_{34}^1y_{4,t-1} \\
+
+y_{4t} = c4 + \pi_{41}^1y_{1,t-1} + \pi_{42}^1y_{2,t-1} +\pi_{43}^1y_{3,t-1} +\pi_{44}^1y_{4,t-1} \\
+$$
+
+lag p = 1 number of time series = 4 section = 1
+Starting with No initial values Same mean values of 1 for all the time series.
+Dependency charts for section 1
+
+$$
+\begin{bmatrix} 
+  & p_1 & p_2 & p_3 & p_4\\ 
+  p_1 & 0 & 1 & 1 & 0  \\ 
+  p_2 & 0 & 0 & 1 & 0  \\ 
+  p_3 & 0 & 0 & 0 & 1  \\ 
+  p_4 & 1 & 1 & 0 & 0\\ 
+\end{bmatrix}
+$$
+
+lag p = 1 number of time series = 4 section = 2
+
+Here we can use the previous lag values as starting values.
+Change the mean value to 2 to all the ts. Dependency chart for section 2
+
+$$
+
+\begin{bmatrix} 
+  & p_1 & p_2 & p_3 & p_4\\ 
+  p_1 & 0 & 1 & 0 & 0  \\ 
+  p_2 & 0 & 0 & 1 & 0  \\ 
+  p_3 & 1 & 0 & 0 & 1  \\ 
+  p_4 & 1 & 1 & 0 & 0 
+\end{bmatrix}
+
+$$
+
+lag p = 1 number of time series = 4 section = 3
+
+Here we can use the previous lag values as starting values.
+Change the mean value to 4 to all the ts. Dependency chart for section 3
+
+$$
+\begin{bmatrix} 
+  & p_1 & p_2 & p_3 & p_4\\ 
+  p_1 & 0 & 0 & 0 & 1  \\ 
+  p_2 & 1 & 0 & 1 & 0  \\ 
+  p_3 & 1 & 0 & 0 & 1  \\ 
+  p_4 & 0 & 1 & 0 & 0 
+\end{bmatrix}
+$$
+
+```{r}
+## Section 1
+mu.vec1 = c(1,1,1,1)
+pi1 = matrix(c(0.001, 0.5, 0.5, 0.001,
+               0.001, 0.001, 0.5, 0.001,
+               0.001, 0.001, 0.001, 0.8,
+               0.5, 0.9, 0.001, 0.001),4,4, byrow = TRUE)
+c.vec1 = as.vector((diag(4)-pi1)%*%mu.vec1)
+B1<-cbind(c.vec1, pi1)
+var1 <- VAR.sim(B=B1, n=200, include="const", 
+                lag =1)
+## Section 2
+mu.vec2 = c(5,5,5,5)
+pi2 = matrix(c(0.001, 0.001, 0.001, 0.001,
+               0.001, 0.001, 0.7, 0.001,
+               0.5, 0.001, 0.001, 0.8,
+               0.5, 0.9, 0.001, 0.001),4,4, byrow = TRUE)
+c.vec2 = as.vector((diag(4)-pi2)%*%mu.vec2)
+B2<-cbind(c.vec2, pi2)
+var2 <- VAR.sim(B = B2, n = 200, include = "const", 
+                lag = 1, 
+                starting = matrix(var1[200,], 1,4))
+## Section 3
+mu.vec3 = c(2,2,2,2)
+pi3 = matrix(c(0.001, 0.001, 0.001, 0.4,
+               0.6, 0.001, 0.7, 0.001,
+               0.7, 0.001, 0.001, 0.8,
+               0.001, 0.9, 0.001, 0.001),4,4, byrow = TRUE)
+c.vec3 = as.vector((diag(4)-pi3)%*%mu.vec3)
+B3<-cbind(c.vec3, pi3)
+var3 <- VAR.sim(B = B3, n = 200, include="const", 
+                lag = 1, 
+                starting = matrix(var2[200,], 1,4))
+#cov.mat = matrix(c(1,0.5,0.5,1),2,2)
+var <- rbind(var1, var2, var3)
+ts.plot(var, type= "l", col=c(1,2,3,4))
+#ts.plot(var[,c(1,2)], type= "l", col=c(1,2))
+#op <- VAR(var, p = 1, type = "const")
+#summary(op)
+# grangertest(y = var[,1], x = var[,2])
+# grangertest(y = var[,2], x = var[,1])
+# grangertest(y = var[,3], x = var[,4])
+# grangertest(y = var[,4], x = var[,3])
+# grangertest(y = var[,4], x = var[,2])
+```
+
+## Univariate changepoint detection
+
+```{r}
+#op_efp <- efp(var[,1] ~ 1, type = "OLS-CUSUM")
+#plot(op_efp)
+bp_str1 <-breakpoints(var[,1] ~ 1)
+plot(bp_str1)
+bp1 <- breakpoints(bp_str1, breaks = 3)
+
+bp_str2 <-breakpoints(var[,2] ~ 1)
+plot(bp_str2)
+bp2 <- breakpoints(bp_str2, breaks = 3)
+
+bp_str3 <-breakpoints(var[,3] ~ 1)
+plot(bp_str3)
+bp3 <- breakpoints(bp_str3, breaks = 3)
+
+bp_str4 <-breakpoints(var[,4] ~ 1)
+plot(bp_str4)
+bp4 <- breakpoints(bp_str4, breaks = 3)
+summary(bp1)
+```
+
+
+```{r}
+#https://www.rdocumentation.org/packages/tsDyn/versions/11.0.4.1/topics/VAR.sim
+# B1<-matrix(c(0.7, 0.2, 0.3, 0.2, 0.7, 0.3), ncol = 3)
+# var1 <- VAR.sim(B=B1, n=100, include="none", lag =1)
+# ts.plot(var1, type="l", col=c(1,2,3))
+# 
+pi1 = matrix(c(0.2,0.1,0.1,0.7),2,2)
+mu.vec = c(1,5)
+c.vec = as.vector((diag(2)-pi1)%*%mu.vec)
+cov.mat = matrix(c(1,0.5,0.5,1),2,2)
+B2<-cbind(c.vec, pi1) #rbind(c(0.2, 0.2, -0.7),
+                       #      c(0.7, 0.2, 1.3))
+#varcov<-matrix(c(1,0.2, 0.3, 1),2,2)
+var <- VAR.sim(B=B2, n=300, include="const", lag =1)#, varcov = cov.mat)
+ts.plot(var, type= "l", col=c(1,2))
+
+op <- VAR(var, p = 1, type = "const")
+summary(op)
+
+grangertest(var[,1], var[,2])
+grangertest(var[,2], var[,1])
+
+```
+
+```{r}
+# pi1 = matrix(c(0.7,0.2,0.2,0.7),2,2)
+# mu.vec = c(1,5)
+# c.vec = as.vector((diag(2)-pi1)%*%mu.vec)
+# cov.mat = matrix(c(1,0.5,0.5,1),2,2)
+# var1.mod = list(const=c.vec,ar=pi1,Sigma=cov.mat)
+# set.seed(301)
+# y.var = simulate.VAR(var1.mod,n=250,
+#                     y0=t(as.matrix(mu.vec)))
+# dimnames(y.var) = list(NULL,c("y1","y2"))
+```
+
+
+
