@@ -6,7 +6,7 @@ source("Code/CoDACov.R")
 # }
 # simvec <- as.integer(gsub("[\r\n]", "",args[1]))
 # print(paste0("the simulation number ", simvec))
-getwd()
+
 SaveCoDASim <- function(simvec, sim, InitParamFile){
   
   S <- as.data.frame(readRDS(paste0(getwd(),InitParamFile)))
@@ -15,7 +15,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     printFlg <<- FALSE
     Sim <- data.frame(S[simvec,])
     ## Number of simulations
-    Nsim <- 1#Sim$Nsim
+    Nsim <- Sim$Nsim
     
     ##Directed graph yes? No?
     dir <- Sim$DirType
@@ -110,7 +110,8 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     pClustOL <- Sim$pClustOL[[1]]
     
     ## All test output is saved in these lists
-    opf_cov <- list()
+    opf_Regcov <- list()
+    opf_StoRegcov <- list()
     opf_noCov <- list()
     
     ## Delta value threshold for assigning communities
@@ -121,11 +122,12 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     lvl <- 1
     ncVal <- nc
     
-    bigN <- 1#Sim$bigN
+    bigN <- Sim$bigN
     Gtot<- list() 
     GTlogLikcovtot<- list() 
     GTlogLiknoCovtot <- list()
-    opf_covtot <- list()
+    opf_Regcovtot <- list()
+    opf_StoRegcovtot <- list()
     opf_noCovtot <- list()
     TimeTaken <- list()
     
@@ -152,113 +154,118 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
       # CESNA Miss: Undirected + Missing Covariate Imputation
       # CoDA Miss: Directed + Missing Covariate Imputation
       
-      for(dir in c("directed", "undirected")){
-        print(paste0("This is ", dir, " network."))
-        if(dir == "undirected"){
-          G <- convertToUndir(G_orig, nc)
-          F_u_tot <- F_u + H_u
-          F_u <- F_u_tot
-          H_u <- F_u_tot
-          #alpha <- 0.0001
-          #thresh <- 0.0001
-        }else{
-          G <- G_orig
+        for(dir in c("directed", "undirected")){
+          print(paste0("This is ", dir, " network."))
+          if(dir == "undirected"){
+            G <- convertToUndir(G_orig, nc)
+            F_u_tot <- F_u + H_u
+            F_u <- F_u_tot
+            H_u <- F_u_tot
+            #alpha <- 0.0001
+            #thresh <- 0.0001
+          }else{
+            G <- G_orig
           }
-        
-        #gbg <- as.data.frame(vertex_attr(G))
-        #print(table(gbg$Cluster, gbg$bvout1))
-        #print(table(gbg$Cluster, gbg$bvout2))
-        #print(table(gbg$Cluster, gbg$bvout3))
-        
-        #plot.igraph(G, vertex.color = as.factor(V(G)$Cluster), vertex.label = NA)
-        #gbg <- cbind(gbg, Ftot,Htot)#opf_cov[[1]]$Ffin, opf_cov[[1]]$Hfin, ol)
-        ## find the ground truth loglikelihood
-        GTlogLikcovLst <- GTLogLik(G,nc,pConn,NULL,
-                                CovNamesLinin, CovNamesLinout,
-                                CovNamesLPin,CovNamesLPout,
-                                k_in,k_out,o_in,o_out, epsilon, dir, 
-                                orig_Cov, F_u, H_u)
-        GTlogLikcov <- GTlogLikcovLst[[1]]
-        GTlogLikcovSep <- GTlogLikcovLst[[2]]
-        GTlogLiknoCovLst <- GTLogLik(G,nc,pConn,NULL,
-                                  CovNamesLinin=c(), CovNamesLinout =c(),
-                                  CovNamesLPin=c(),CovNamesLPout=c(),
-                                  k_in =0 ,k_out =0,o_in=0,o_out=0,epsilon,dir,
-                                  orig_Cov, F_u, H_u)
-        GTlogLiknocov <- GTlogLiknoCovLst[[1]]
-        GTlogLiknocovSep <- GTlogLiknoCovLst[[2]]
-        orig <<- V(G)$Cluster
-        
-        ## cluster assignments based on covariate assisted clustering.
-        Z <-  as.data.frame(vertex_attr(G)) %>%
-          dplyr::select(all_of(c(CovNamesLinin, CovNamesLinout)))
-        X <-  as.data.frame(vertex_attr(G)) %>%
-          dplyr::select(all_of(c(CovNamesLPin, CovNamesLPout)))
-        
-        if (length(Z) > 0) {
-          cov <- Z
-          if (!is.null(missing)) {
-            mns <- colMeans(cov, na.rm  = TRUE)
-            for (i in 1:o) {
-              cov[is.na(cov[, i]), i] <- mns[i]
-            }
-          }
-          origCov <<-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
-        }
-        if (length(X) > 0) {
-          cov <- X
-          if (!is.null(missing)) {
-            for (i in 1:k) {
-              cov[is.na(cov[, i]), i] <- mode(cov[, i])
-            }
-          }
-          origCov <<-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
-        }
-        
-        ## Running Nsim simulations for the above settings.
-        
-        for (j in 1:Nsim) {
-          print(paste0("iteration ",lvl," alpha ",alpha,  " alphaLL ",alphaLL," num cmnty ",nc))
-          start <- Sys.time()
           
-          ## Algorithm with covariates + possible missing data
-          opf_cov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
-                                 lambda,thresh,nitermax,orig,randomize = TRUE,
-                                 CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
-                                 alphaLL = NULL,test = TRUE,missing = missing, covOrig = orig_Cov, 
-                                 epsilon =0 )
-          tme <- Sys.time() - start
-          print(paste0("Total time take algo with covariates", tme))
-          #TimeTaken[[lvl]] <- tme
-          ## Algorithm without covariates + possible missing data
-          start <- Sys.time()
-          opf_noCov[[lvl]] <- CoDA(G,nc,k = c(0, 0),o = c(0, 0),N,alpha,
-                                   lambda,thresh ,nitermax,orig,randomize = TRUE,
-                                   CovNamesLinin = c(),CovNamesLinout = c(),CovNamesLPin = c(),
-                                   CovNamesLPout = c(),dir,alphaLL = NULL,test = TRUE,
-                                   missing = missing, covOrig = orig_Cov, epsilon =0)
-          tme <- Sys.time() - start
-          print(paste0("Total time take algo without covariates", tme))
+          #gbg <- as.data.frame(vertex_attr(G))
           
-          lvl <- lvl + 1
+          #plot.igraph(G, vertex.color = as.factor(V(G)$Cluster), vertex.label = NA)
+          #gbg <- cbind(gbg, Ftot,Htot)#opf_cov[[1]]$Ffin, opf_cov[[1]]$Hfin, ol)
+          ## find the ground truth loglikelihood
+          GTlogLikcovLst <- GTLogLik(G,nc,pConn,NULL,
+                                     CovNamesLinin, CovNamesLinout,
+                                     CovNamesLPin,CovNamesLPout,
+                                     k_in,k_out,o_in,o_out, epsilon, dir, 
+                                     orig_Cov, Fm = F_u, Hm = H_u)
+          GTlogLikcov <- GTlogLikcovLst[[1]]
+          GTlogLikcovSep <- GTlogLikcovLst[[2]]
+          GTlogLiknoCovLst <- GTLogLik(G,nc,pConn,NULL,
+                                       CovNamesLinin=c(), CovNamesLinout =c(),
+                                       CovNamesLPin=c(),CovNamesLPout=c(),
+                                       k_in =0 ,k_out =0,o_in=0,o_out=0,epsilon,dir,
+                                       orig_Cov, F_u, H_u)
+          GTlogLiknocov <- GTlogLiknoCovLst[[1]]
+          GTlogLiknocovSep <- GTlogLiknoCovLst[[2]]
+          orig <<- V(G)$Cluster
+          
+          ## cluster assignments based on covariate assisted clustering.
+          Z <-  as.data.frame(vertex_attr(G)) %>%
+            dplyr::select(all_of(c(CovNamesLinin, CovNamesLinout)))
+          X <-  as.data.frame(vertex_attr(G)) %>%
+            dplyr::select(all_of(c(CovNamesLPin, CovNamesLPout)))
+          
+          if (length(Z) > 0) {
+            cov <- Z
+            if (!is.null(missing)) {
+              mns <- colMeans(cov, na.rm  = TRUE)
+              for (i in 1:o) {
+                cov[is.na(cov[, i]), i] <- mns[i]
+              }
+            }
+            origCov <<-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
+          }
+          if (length(X) > 0) {
+            cov <- X
+            if (!is.null(missing)) {
+              for (i in 1:k) {
+                cov[is.na(cov[, i]), i] <- mode(cov[, i])
+              }
+            }
+            origCov <<-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
+          }
+          
+          ## Running Nsim simulations for the above settings.
+          
+          for (j in 1:Nsim) {
+            print(paste0("iteration ",lvl," alpha ",alpha,  " alphaLL ",alphaLL," num cmnty ",nc))
+            start <- Sys.time()
+            
+            ## Algorithm with covariates + possible missing data
+            opf_Regcov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
+                                   lambda,thresh,nitermax,orig,randomize = TRUE,
+                                   CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
+                                   alphaLL = NULL,test = TRUE,missing = missing, covOrig = orig_Cov, 
+                                   epsilon =0, impType = "Reg" )
+            if(covTypes == "continunous"){
+              opf_StoRegcov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
+                                           lambda,thresh,nitermax,orig,randomize = TRUE,
+                                           CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
+                                           alphaLL = NULL,test = TRUE,missing = missing, covOrig = orig_Cov, 
+                                           epsilon =0, impType = "StochasticReg" )
+            }
+            
+            tme <- Sys.time() - start
+            print(paste0("Total time take algo with covariates", tme))
+            ## Algorithm without covariates + possible missing data
+            start <- Sys.time()
+            opf_noCov[[lvl]] <- CoDA(G,nc,k = c(0, 0),o = c(0, 0),N,alpha,
+                                     lambda,thresh ,nitermax,orig,randomize = TRUE,
+                                     CovNamesLinin = c(),CovNamesLinout = c(),CovNamesLPin = c(),
+                                     CovNamesLPout = c(),dir,alphaLL = NULL,test = TRUE,
+                                     missing = missing, covOrig = orig_Cov, epsilon =0, impType = "")
+            tme <- Sys.time() - start
+            print(paste0("Total time take algo without covariates", tme))
+            
+            lvl <- lvl + 1
+          }
+          Gtot <-  append(Gtot, list(G))
+          GTlogLikcovtot <-  append(GTlogLikcovtot, GTlogLikcov)
+          GTlogLiknoCovtot <- append(GTlogLiknoCovtot, GTlogLiknocov)
         }
-        Gtot <-  append(Gtot, list(G))
-        GTlogLikcovtot <-  append(GTlogLikcovtot, GTlogLikcov)
-        GTlogLiknoCovtot <- append(GTlogLiknoCovtot, GTlogLiknocov)
-      }
     }
-    opf_covtot <- opf_cov #list(opf_covtot, opf_cov)
-    opf_noCovtot <- opf_noCov #list(opf_noCovtot, opf_noCov)
+    opf_Regcovtot <- opf_Regcov
+    opf_StoRegcovtot <- opf_StoRegcov
+    opf_noCovtot <- opf_noCov
   }
   
-  return(list(opf_covtot, opf_noCovtot,Gtot, GTlogLikcovtot, GTlogLiknoCovtot))
+  return(list(opf_Regcovtot, opf_StoRegcovtot, opf_noCovtot,Gtot, GTlogLikcovtot, GTlogLiknoCovtot))
   #return(0)
 }
 
 
 lst2 <- SaveCoDASim(simvec = 2, 
-                   sim = TRUE, 
-                   InitParamFile = "/Code/InitParamMiss_Cohesive_MCAR.rds")
+                    sim = TRUE, 
+                    InitParamFile = "/Code/InitParamMiss_Cohesive_MCAR_C15.rds")
 
 # lst2 <- SaveCoDASim(simvec = 1, 
 #                     sim = TRUE, 
