@@ -389,6 +389,7 @@ SigmaSqCalc <- function(Z, beta, Ftot, Htot, missVals,dir) {
   }
   return(sigmaSq)
 }
+
 sdErr <- function(Z_i, beta, Fm, N){
   sdErr <- sqrt(sum((Z_i -  Fm %*% as.matrix(beta))^2)/ (N-2))
   return(sdErr)
@@ -404,45 +405,59 @@ PredictCovLin <- function(Ftot,Htot, Z, beta, missVals, dir, impType) {
   for (i in 1:dim(Z)[2]) {
     if(sum(missVals) >1 ) {
       idx <- which(missVals[, i])
-      #
       if(impType == "StochasticReg"){
         s <- sdErr(Z[-idx, i], beta[i, ], Fm[-idx,], dim(Z[-idx,])[1])
         Z[idx, i] <- (Fm[idx,] %*% as.matrix(beta[i, ])) + mean(s* rnorm(100,mean = 0,sd = 1))
       }else if(impType == "Reg"){
         Z[idx, i] <- Fm[idx,] %*% as.matrix(beta[i, ])
       }
-
-      
-    } 
-    #else{
-    #  Z[, i] <- Fm %*% as.matrix(beta[i,])
-    #}
+    }else{
+      Z[, i] <- Fm %*% as.matrix(beta[i,])
+    }
   }
   return(Z)
 }
 
-LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir, impType) {
+LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir, impType, alphaLin ) {
   if(printFlg == TRUE){
     print("In Linparamupdate Func")
   }
   beta_new <- matrix(0, nrow = dim(beta)[1], ncol = dim(beta)[2])
   if(dir =="directed"){
     Fm_n <- cbind(1, Fmat, Hmat)
-  }else{  Fm_n <- cbind(1, Fmat)}
-  #for (i in 1:dim(beta)[1]) {
-  #  beta_new <- t(MASS::ginv(t(Fm_n) %*% Fm_n) %*% (t(Fm_n) %*% Z))
-  #print(beta_new)
-  #}
+  }else{  
+    Fm_n <- cbind(1, Fmat)}
   
   ## Calculating update to the beta using gradient descent
-  y <-  PredictCovLin(Fmat,Hmat, Z, beta, missVals,dir, impType)
+  y <-    Fm_n %*% t(as.matrix(beta)) #PredictCovLin(Fmat,Hmat, Z, beta, missVals,dir, impType)
   gradient <- (t(y - Z) %*% Fm_n)/N
   #print(paste0(gradient))
-  #alpha <- 0.01
-  beta_new <-  beta - (alpha*(gradient- (lambda * sign(beta))))
+  #alpha <- 0.001
+  ## LASSO regression 
+  #beta_new <-  beta - (alpha * ( gradient - (lambda * sign(beta) ) ) )
+  ##Ridge regression
+  #lambda <-  0.1
+  beta_new <-  beta - (alphaLin * ( gradient - (2*lambda * beta ) ) )
   return(beta_new)
 }
 
+updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, impType, alphaLin){
+  if(printFlg == TRUE){
+    print("In updateLinearRegParam Func")
+  }
+  betaret <- beta
+  Zret <-  Z
+  sigmaSq <- NULL
+  if (length(beta) > 0) {
+    betaret <- LinRParamUpdt(beta, Z, Wtm1,Wtm2, alpha, lambda, N, missVals,dir, impType, alphaLin)
+    sigmaSq <-  SigmaSqCalc(Z, betaret, Wtm1,Wtm2, missVals,dir)
+    
+    if (sum(missVals) > 0) {
+      Zret <- PredictCovLin(Wtm1, Wtm2, Z, beta, missVals,dir, impType)
+    }
+  }
+  return(list(betaret,Zret,sigmaSq))
+}
 CalcQuk <- function(Fmat, Hmat, W, dir){
   
   if(dir == "directed"){
@@ -471,7 +486,7 @@ Lx_cal <- function(W, N, Fmat, Hmat, X, dir){
   return(S)
 }
 
-Lz_cal <- function(beta,N,Z,Fmat, Hmat,sigmaSq ){
+Lz_cal <- function(beta,N,Z,Fmat, Hmat,sigmaSq,dir ){
   if(printFlg == TRUE){
     print("In Lz_Calc Func")
   }
@@ -545,7 +560,7 @@ findLLDir <- function(G,  Ftot, Htot, Win = NA, Wout = NA, X_in = NA,X_out = NA,
   
   ## Calculating the L_zout part of the log likelihood for continuous covariates
   S3_out <- Lz_cal(beta = betaout,N = N,Z = Z_out,
-                   Fmat = Ftot, Hmat = Htot,sigmaSq = sigmaSqout)
+                   Fmat = Ftot, Hmat = Htot,sigmaSq = sigmaSqout,dir)
   S3 <- S3_in + S3_out
   #print(paste0(S1, " ", S2, " ", S3))
   
@@ -591,13 +606,13 @@ initW <- function(k, nc,missVals, X, Fmat, lambda, alpha, ncoef){
   return(W)
 }
 
-initbeta <- function(o, ncoef,missVals, Z, Fmat, Hmat, alpha,N, lambda,dir,impType){
+initbeta <- function(o, ncoef,missVals, Z, Fmat, Hmat, alpha,N, lambda,dir,impType, alphaLin){
   beta <- NULL
   sigmaSq <- NULL
   if (o > 0) {
     beta <- matrix(nrow = o, ncol = (ncoef) + 1, 0)
     
-    beta <- LinRParamUpdt(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir, impType)
+    beta <- LinRParamUpdt(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir, impType, alphaLin)
     sigmaSq <- SigmaSqCalc(Z, beta, Fmat,Hmat, missVals,dir)
     if (sum(missVals) > 0) {
       Z <- PredictCovLin(Fmat, Hmat, Z, beta, missVals,dir, impType)
@@ -753,23 +768,7 @@ updateWtmat <- function(G,Wtm1,Wtm2,mode,s,nc,X,Z,k,o,beta,W,alphaLL,missVals,al
   return(Wtmat)
 }
 
-updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, impType){
-  if(printFlg == TRUE){
-    print("In updateLinearRegParam Func")
-  }
-  betaret <- beta
-  Zret <-  Z
-  sigmaSq <- NULL
-  if (length(beta) > 0) {
-    betaret <- LinRParamUpdt(beta, Z, Wtm1,Wtm2, alpha, lambda, N, missVals,dir, impType)
-    sigmaSq <-  SigmaSqCalc(Z, betaret, Wtm1,Wtm2, missVals,dir)
-    
-    if (sum(missVals) > 0) {
-      Zret <- PredictCovLin(Wtm1, Wtm2, Z, beta, missVals,dir, impType)
-    }
-  }
-  return(list(betaret,Zret,sigmaSq))
-}
+
 
 accuCalc <- function(k,W,Wtm1,Wtm2,X, dir){
   print("In accu calc")
@@ -1001,7 +1000,7 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
 CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh, 
                  nitermax, orig,randomize = TRUE, CovNamesLinin = c(),
                  CovNamesLinout = c(),CovNamesLPin = c(),CovNamesLPout = c(), dir, 
-                 alphaLL = NULL,test = TRUE,missing = NULL, covOrig, epsilon, impType) {
+                 alphaLL = NULL,test = TRUE,missing = NULL, covOrig, epsilon, impType, alphaLin) {
   if(printFlg == TRUE){
     print("In CoDA Func")
   }
@@ -1039,8 +1038,8 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   X_in <- b[[1]]
   X_out <- b[[2]]
   
-  Z_in_orig <- b[[3]]
-  Z_out_orig <- b[[4]]
+  Z_in <- b[[3]]
+  Z_out <- b[[4]]
   
   missValsin <- b[[5]]
   missValsout <- b[[6]]
@@ -1056,8 +1055,12 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   }
   
   if(o_out > 0){
-    for(i in 1:dim(Z_out_orig)[2]){
-      Z_out_orig[missValsout[,i],i] <- mean(Z_out_orig[,i], na.rm =TRUE)
+    for(i in 1:dim(Z_out)[2]){
+      Z_out[missValsout[,i],i] <- mean(Z_out[,i], na.rm =TRUE)
+      
+      ## Normalizing the data to be between 0 and 1
+      Z_out[,i] <- (Z_out[,i] - min(Z_out[,i]))/(max(Z_out[,i]) - min(Z_out[,i]))
+      
     }
   }
   
@@ -1078,7 +1081,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   betain <- b#b[[1]]
   sigmaSqin <- b#b[[2]]
 
-  b <- initbeta(o_out, ncoef,missValsout, Z_out_orig, Ftot, Htot, alpha,N, lambda,dir, impType)
+  b <- initbeta(o_out, ncoef,missValsout, Z_out, Ftot, Htot, alpha,N, lambda,dir, impType, alphaLin)
   betaout <- b[[1]]
   sigmaSqout <- b[[2]]
   
@@ -1110,7 +1113,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     ## Update the log likelihood.
     LLvec <- findLLDir(G,Ftot,Htot, 
                        Win,Wout,X_in,X_out, 
-                       betain,betaout,Z_in_orig,Z_out_orig,
+                       betain,betaout,Z_in,Z_out,
                        sigmaSqin, sigmaSqout,alphaLL, 
                        Eneg, dir, epsilon)
     LLnew <- LLvec[1]
@@ -1144,18 +1147,18 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
       ## Updating F i.e. all outgoing connections
       ## We look for neighbors our node is connected to with the edges directed outward from our node.
       Ftot <- updateWtmat(G,Ftot,Htot,"out",s,nc,
-                          X_out,Z_in_orig,k_out,o_in,betain,Wout,
+                          X_out,Z_out,k_out,o_in,betain,Wout,
                           alphaLL,missValsin,alpha, start = 2, end = nc + 1, dir)
       
       
       ## Updating H i.e. all incoming connections
       ## We look for neighbors our node is connected to with the edges directed outward from our node.
       Htot <- updateWtmat(G,Htot,Ftot,"in",s,nc,
-                          X_out,Z_out_orig,k_out,o_out,betaout,Wout,
+                          X_out,Z_out,k_out,o_out,betaout,Wout,
                           alphaLL,missValsout,alpha, start = nc+2, end = nc*2+1, dir)
     } else{
       Ftot <- updateWtmat(G,Ftot,Htot,"all",s,nc,
-                          X_out,Z_in_orig,k_out,o_in,betain,Wout,
+                          X_out,Z_out,k_out,o_in,betain,Wout,
                           alphaLL,missValsin,alpha, start = 2, end = nc+1, dir)
       Htot <- Ftot
     }
@@ -1174,7 +1177,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     
     ### Updating the beta matrix for continuous covariates
     #print("Gradient for out")
-    c1 <- updateLinearRegParam(betaout,missValsout,Z_out_orig,Ftot,Htot,alpha,lambda,N,dir, impType)
+    c1 <- updateLinearRegParam(betaout,missValsout,Z_out,Ftot,Htot,alpha,lambda,N,dir, impType, alphaLin)
     betaout <- c1[[1]]
     Z_out <- c1[[2]]
     sigmaSqout <- c1[[3]]
