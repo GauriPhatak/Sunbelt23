@@ -640,7 +640,7 @@ initbeta <- function(o, ncoef,missVals, Z, Fmat, Hmat, alpha,N, lambda,dir,
 
 GraphComntyWtUpdt <- function(f_u,h_u,h_neigh, h_sum){
   ## First part of log likelihood of G based on the structure of the network
-  #a <- exp(-1 * (f_u %*% t(Fvmat)))
+  
   a <- exp(-1 * (f_u %*% t(h_neigh)))
   b <- a / (1 - a)
   llG_1 <- t(h_neigh) %*% t(b)
@@ -682,9 +682,6 @@ ContcovCmntyWtUpdt <- function(nc, Z_u, beta, f_u,h_u, sigmaSq, dir){
     f <- matrix(c(1, f_u), ncol = (nc) + 1)
     }
   
-  
-  #print(Z_u - t(beta %*% t(f)))
-  #print(t(f))
   if (length(beta) > 0) {
     ## Adding the gradient based on continuous covariates
     llZ <-  ((Z_u - t(beta %*% t(f))) / sigmaSq) %*% beta
@@ -701,7 +698,6 @@ CmntyWtUpdt <- function(f_u ,h_u ,h_neigh ,h_sum ,X_u = NULL ,W = NULL ,
                         Z_u = NULL, beta = NULL ,sigmaSq ,alpha ,alphaLL ,
                         nc ,start ,end ,mode,dir ) {
   if(printFlg == TRUE){
-    #print("In CmntyWtupdate Func")
   }
   tv <- 0.000001
   
@@ -734,20 +730,12 @@ CmntyWtUpdt <- function(f_u ,h_u ,h_neigh ,h_sum ,X_u = NULL ,W = NULL ,
     llZ <- ContcovCmntyWtUpdt(nc, Z_u, beta, f_u, h_u, sigmaSq, dir)
   }
   
-  
   ## Function to update the community weights vector using non negative matrix factorization
-  #if (is.null(alphaLL)) {
-  #[2:(nc + 1)]
-
   f_u_new <- f_u + (alpha * (t(llG) + llX[2:(nc+1)] + llZ[2:(nc+1)]))
   if(sum(is.nan(f_u_new))>0){
     print("error error")
   }
-  # } else{
-  #   f_u_new <- f_u + t((alpha * (
-  #     alphaLL * llG + (1 - alphaLL) * (llX[2:(nc + 1)] + llZ[2:(nc + 1)])
-  #   )))
-  # }
+ 
   f_u_new[f_u_new < 0] <- tv
   return(f_u_new)
 }
@@ -770,9 +758,7 @@ updateWtmat <- function(G,Wtm1,Wtm2,mode,s,nc,X,Z,k,o,beta,W,alphaLL,missVals,
     neigh <- neighbors(G, i, mode = mode)
     Wtm2_neigh <- matrix(Wtm2[neigh, ], ncol = nc)
     
-    #neighAll <- neighbors(G, i, mode = "all")
-    #Wtm2_vnot<- matrix(Wtm2[-neighAll, ], ncol = nc)
-    #Wtm2_u <- matrix(Wtm2[i, ], ncol = nc)
+   
     X_u <- NULL
     if (k > 0) {
       X_u <- matrix(X[i, ], ncol = k)
@@ -782,31 +768,24 @@ updateWtmat <- function(G,Wtm1,Wtm2,mode,s,nc,X,Z,k,o,beta,W,alphaLL,missVals,
     if (o > 0) {
       Z_u <- matrix(Z[i, ], ncol = o)
       if(mode == "in"){
-        #beta <- as.matrix(beta, ncol = nc*2+1)
-        #beta <- cbind(beta[,1], beta[,start:end], beta[,(start-nc):(end-nc)])
+   
         sigmaSq <- SigmaSqCalc(Z, beta, Wtm2,Wtm1, missVals,dir)
         
       }else{
         sigmaSq <- SigmaSqCalc(Z, beta, Wtm1,Wtm2, missVals,dir)
         
       }
-      #print(sigmaSq)
     }
     
-    # Wtmat[i, ] <- CmntyWtUpdt(Wtm1_u,Wtm2_v,Wtm2_vnot,
-    #                           X_u,W,Z_u, beta,
-    #                           sigmaSq,alpha,alphaLL,nc)
     Wtmat[i, ] <- CmntyWtUpdt(Wtm1_u,Wtm2_u,Wtm2_neigh, Wtm2_sum,
                               X_u,W,Z_u, beta,sigmaSq,alpha,alphaLL,
                               nc, start, end, mode, dir)
-   # print(Wtmat[i,])
   }
   
   return(Wtmat)
 }
 
 accuCalc <- function(k,W,Wtm1,Wtm2,X, dir){
-  #print("In accu calc")
   if(printFlg == TRUE){
     print("In accuCalc Func")
   }
@@ -880,7 +859,6 @@ getNWcov <- function(G,CovNamesLinin, CovNamesLinout,CovNamesLPin,CovNamesLPout,
 
 getDelta <- function(N){
   delta <- sqrt(-1*log(1-(1/N)))
-  #delta <- sqrt(-1*log(1-epsilon))
   return(delta)
 }
 
@@ -888,7 +866,6 @@ memOverlapCalc <- function(Fm, Hm, delta, N, nc){
   ol <- as.data.frame(matrix(0, ncol = nc, nrow = N))
   for (i in 1:N) {
     ol[i, ] <- (as.numeric(Fm[i, ] > delta) + as.numeric(Hm[i, ] > delta)) > 0
-    #memoverlap[i, ] <- as.numeric(memoverlap[i, ] > 0)
   }
   return(ol)
 }
@@ -954,7 +931,6 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
                      orig_Cov, Fm, Hm){
   
   ## Trying to use beta distribution instead of hardcoding the probability of connection
-  #alpha_c <- -1*log((1-pConn))
   comAff <-  as.data.frame(vertex_attr(G)) %>%
     dplyr::select(all_of(letters[1:nc]))
   
@@ -963,10 +939,10 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
                 k_in,k_out,o_in,o_out)
   
   X_in <- b[[1]]
-  X_out <- orig_Cov#b[[2]]
+  X_out <- orig_Cov
   
   Z_in <- b[[3]]
-  Z_out <- orig_Cov#b[[4]]
+  Z_out <- orig_Cov
   
   missValsin <- b[[5]]
   missValsout <- b[[6]]
@@ -1015,7 +991,6 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
       contLL <- contLL + as.numeric(logLik(mod))
       sigmaSqout[i] <- sigma(mod)^2
     }
-    #SigmaSqCalc(Z_out,betaout,Fm,Hm,missValsout)
   }
   
   A <- 1 - (1 * as.matrix(as_adjacency_matrix(G)))
@@ -1028,7 +1003,6 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
             betain,betaout,Z_in,Z_out,
             sigmaSqin,sigmaSqout,alphaLL,Eneg, 
             dir, epsilon)
-  #Lx_cal(W = Wout, N=100, Fmat = Fm, Hmat = Hm, X = X_out, dir= "directed")
   return(list(ll, c(binLL,contLL,GrphLL)))
 }
 
@@ -1114,8 +1088,8 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   
   #################### Setting initial values of linear regression weights
   b <- NULL#initbeta(o_in, nc,missValsin, Z_in_orig, Ftot, alpha, N, lambda)
-  betain <- b#b[[1]]
-  sigmaSqin <- b#b[[2]]
+  betain <- b
+  sigmaSqin <- b
 
   b <- initbeta(o_out, ncoef,missValsout, Z_out, Ftot, Htot, alpha,N, lambda,dir, impType, alphaLin, penalty)
   betaout <- b[[1]]
@@ -1127,13 +1101,8 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   
   ##Initial log likelihood value
   LLold <- -10000
-  # LLold <- findLLDir(G,Ftot,Htot, 
-  #                    Win, Wout,X_in,X_out,
-  #                    betain,betaout,Z_in,Z_out,
-  #                    sigmaSqin, sigmaSqout,alphaLL, Eneg)
   lllst <- matrix(nrow = 0, ncol = 4)
-  #lllst <- c(lllst, LLold)
-  
+
   arilst <- c()
   OmegaVal <- c()
   mse <- matrix(nrow = 0, ncol = (o_in+o_out))
@@ -1153,17 +1122,13 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
                        sigmaSqin, sigmaSqout,alphaLL, 
                        Eneg, dir, epsilon)
     LLnew <- LLvec[1]
-    #print(LLnew)
-    #if(any(c(((LLnew - LLold) < thresh), (iter > nitermax)))){
     pctInc <- ((LLnew - LLold) / abs(LLold)) * 100
-    #print(pctInc)
-    #if (any((pctInc < thresh), (iter > nitermax))) {
     if(is.nan(pctInc)){
       print("stop here")
     }
     if(pctInc < thresh){
       print(paste0("The final percent change ", pctInc, " ,total iterations ", iter))
-      break#continue <- FALSE
+      break
     }
     
     LLold <- LLnew
@@ -1268,8 +1233,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
       }
     }
   }
-  #print("Done with CoDA")
-  
+
   return(
     list(
       Ffin = Ffin,
