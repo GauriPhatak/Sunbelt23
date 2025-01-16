@@ -24,7 +24,7 @@ MSE <- function(Wtmat1,Wtmat2,Z,beta,N,dir){
 }
 
 NWSimBin <- function(nc, k,  pC, N, pClust, B, o, dist,dir,covTypes = c("binary", "continuous"), 
-                     CovNamesLin = c() ,CovNamesLP = c(), missing = NULL) {
+                     CovNamesLin = c(),CovNamesLP = c(), missing = NULL) {
   C <- 0
   while (length(table(C)) < nc) {
     C <- sample(
