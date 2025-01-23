@@ -13,11 +13,76 @@ library(strucchange)
 library(readxl)
 library(RColorBrewer)
 library(imputeTS)
+library(fs)
+library(glmnet)
+library(NGC)
+library(igraph)
+library(influential)
+library(simts)
+library(tseries)
+
 ```
 
-## Creating a dataset of timeseries with shifted change points.
 
-Simulation code based on: https://lindeloev.github.io/mcp/articles/packages.html
+
+## Trying out the above with the wastewater data
+
+### Reading the wastewater data 
+
+
+
+## Running experiments about prediction in time series model.
+
+Which model fits the time series the best and why?
+
+What is the sequence of basic kalman filter imputation?
+na_kalman -> StructTS
+
+Imputes time series using kalman filter
+
+na_kalman(ts, -> time series in question
+model = "StructTS", -> Using structural model fitted by ML. Look at KalmanLike
+smooth=TRUE, Kalman Smooth 
+nit= -1, 
+maxgap = Inf, ...)
+
+Fits structural model of time series by ML
+StructTS(x, 
+type = "BSM", BSM is used for frequency of TS > 1. Local trend model otherwise. 
+init = NULL, Inital value of variance parameters.
+fixed = NULL, 
+optim.control = NULL -> control prameters for optim.)
+The basic structural model, type = "BSM", is a local trend model with an additional seasonal component. Thus the measurement equation is
+
+$$x_t = \mu_t +\gamma_t+\epsilon_t, \;\; \epsilon_t \sim N(0,\sigma_\epsilon^2)$$
+
+$\gamma_t$ is the seasonal component with dynamics ,
+
+$$\gamma_{t+1}=-\gamma_{t}+...+\gamma_{t-s+2}+\omega_t, \;\; \omega_t \sim N(0,\sigma^2_\omega)$$
+
+
+We have frequency = 1 which would mean we use local linear trend model,
+Has time varying slope for $\mu_t$,
+
+$$\mu_{t+1} = \mu_t + \nu_t + \epsilon_t \;\;\; \epsilon_t \sim N(0,\sigma^2_{\epsilon}) \\
+\nu_{t+1} = \nu_t + \zeta_t \;\;\; \zeta_t \sim N(0, \sigma^2_\zeta)$$
+
+
+### Testing the big gap small gap issue with imputing time series
+
+Experimental set up.
+
+1. Create a time series using a particular model. (Seasonality, seasonal trend, start with no change point then add change points.)
+
+2. create gaps of varying sizes. 
+a. Only one data point missing but multiple of those. 
+b. Big gaps but fewer.
+c. Big gaps encompassing the change points. 
+d. Big gaps avoiding the change points.
+
+Real data experiments.
+
+1. Running the above scenarios on time series with ver few missing data points such as Corvallis.
 
 ```{r}
 # Simulate
@@ -25,7 +90,7 @@ set.seed(42)  # I always use 42; no fiddling
 ## Length of time series
 nTS <-  150
 ## Number of time series
-N <- 4
+N <- 1
 ## Number of change points for each time series
 nc <- 3
 ## Set an offset for for change point in time series. the change point idx keeps increasing for consecutive time series.
@@ -38,99 +103,721 @@ df = data.frame(
 )
 k <- 0
 for (i in 1:N) {
-  df[[paste0("y",i)]] = c(rnorm(StOfst[1]+k*ofst, 4),
-                          rnorm(StOfst[2], 0),
-                          rnorm(StOfst[3], 4),
-                          rnorm(StOfst[4]-k*ofst, 0))
+  df[[paste0("y",i)]] = c(rnorm(StOfst[1]+k*ofst, 4,1),
+                          rnorm(StOfst[2], 0,1),
+                          rnorm(StOfst[3], 4,1),
+                          rnorm(StOfst[4]-k*ofst, 0,1))
   k <- k+1
 }
-# Plot it
-#plot(df)
-#abline(v = c(20,65,95), col="red")
+
 df_mat <- as.matrix(df[,-1])
 df <- df %>%
   pivot_longer(!x)
 df %>%
   ggplot(aes(x = x, y = value))+
   geom_point()+
-  geom_vline(xintercept = c(20, 65, 95), color = "red")+
-  geom_vline(xintercept = c(20+ofst, 65+ofst, 95+ofst), color = "blue", linetype = "dashed")+
-  geom_vline(xintercept = c(20+ofst*2, 65+ofst*2, 95+ofst*2), color = "green", linetype = "dashed")+
-  geom_vline(xintercept = c(20+ofst*3, 65+ofst*3, 95+ofst*3), color = "yellow4", linetype = "dashed")+
-  theme_minimal()+
-  facet_wrap(~name)
+  geom_vline(xintercept = c(20, 65, 95), color = "red")
+
+## Simulating ARIMA model
+x <- arima.sim(n = nTS, 
+               list(order = c(1,1,0), ar = 0.5))
+#arima.sim(model = list(ar = 0.5), n = 150)
+plot.ts(x)
+
+fit <- forecast::auto.arima(x)
+plot(forecast::forecast(fit,h=50))
+
+## Code for ARIMA model
+#Create ARIMA model by setting Autoregressive term, differences, moving average term, and standard deviation
+#ARIMA_model <- ARIMA(ar = 0.5, i = 0, ma = 0.3, sigma2 = 1)
+#Create simulated data using ARIMA model
+#simtsdata <- gen_gts(n = 100, model = ARIMA_model)
+#https://rpubs.com/WillPhD/1203858
+```
+
+## Now creating missingness in the time series data
+
+```{r}
+## Single multiple data points
+
+## Number of missing data
+Nmiss <- 30
+
+## Pick random Nmiss indices in the TS
+MissIdx <- sample(1:nTS, Nmiss)
+df$orig <- df$value
+## setting these indices to NA
+df$value[MissIdx] <- NA
+
+## Trying to fit structural TS on Ts with missing data
+fit <- StructTS(df$orig)
+stats::frequency(df$orig)
+fit$coef
+#plot(fit)
+## Imputing the data
+df$imputed <- na_kalman(df$value)
 
 ```
 
-## Fit different models to the wastewater data. See which model works the best and use the changepoint method that works the best for that model.
+## Trying the above on Eugene, Canby, Corvallis data
 
-
-## Now trying out different types of changepoint detection algorithms
-
-### Trying the change point package using cpt.mean i.e. mean shift model
 ```{r}
-cpt.mean(t(df_mat), method ="PELT", Q = 4)
+corv <- df$Corvallis
+can <- df$Canby
+eug <- df$Eugene
+loc <- data.frame(cbind(corv,can,eug))
+locNA <- loc
+## Creating random missingness in The above data 
+n <-  c(2,3,4,5,10,15,20,25,30,35,40,45,50,55,60,65) # percent missingness
+nsim <- 500
+cn <- colnames(loc)
+ncolV <- ncol(loc)
+mseV <- data.frame(matrix(0, nrow = nsim, ncol = length(n)*ncolV))
+maeV <- data.frame(matrix(0, nrow = nsim, ncol = length(n)*ncolV))
+
+ls <- matrix(0,nrow =0 , ncol = (length(n)*ncolV)+ncol(loc) )
+
+longestNAstrech <- function(x) {
+  with(rle(is.na(x)), max(lengths[values]))  
+}
+
+for(k in 1:nsim){
+  c <- 1
+  for (i in 1:length(n)) {
+    for(j in 1:ncolV){
+      v <- ceiling(n[i]*nrow(loc)/100)
+      naIdx <- sample(1:nrow(loc),v)
+      loc[,paste0(cn[j],n[i])] <- loc[,cn[j]]
+      loc[naIdx,paste0(cn[j],n[i])] <- NA
+      locNA[,paste0(cn[j],n[i])] <- loc[,paste0(cn[j],n[i])]
+      loc[,paste0(cn[j],n[i])] <- na_kalman(loc[,paste0(cn[j],n[i])])
+      mseV[k,c] <- sqrt(sum((loc[naIdx,cn[j]] - loc[naIdx,paste0(cn[j],n[i])])^2,
+                            na.rm = TRUE)/v)
+      maeV[k,c] <- sum(abs(loc[naIdx,cn[j]] - loc[naIdx,paste0(cn[j],n[i])]),
+                       na.rm = TRUE)/v
+      c <- c + 1
+    }
+  }
+  ls <- rbind(ls,unlist(apply(locNA,
+                              MARGIN = 2,
+                              FUN = longestNAstrech)))
+}
+
+colnames(mseV) <- colnames(loc)[4:ncol(loc)]
+mseV$nsim <- 1:nsim
+mseV <- mseV %>% 
+  pivot_longer(!nsim, names_to = "Type", values_to = "mse") %>%
+  separate(Type,into = c("City", "PctMsng"),
+           sep = "(?<=[A-Za-z])(?=[0-9])") %>%
+  pivot_wider(names_from = City, values_from = mse)
+mseV$PctMsng <- as.numeric(mseV$PctMsng)
+
+# Density curve plots rmse
+ggplot(mseV, aes(x=corv, color = as.factor(PctMsng))) +
+  geom_density()+ xlab("Mean Sq Error Corvallis")+
+  theme_minimal()+ theme(legend.position ="bottom")+
+  labs(color='Percent missing')+ guides(colour = guide_legend(nrow = 2))
+ggsave("DensityPlotCorvallisRand.png")
+
+ggplot(mseV, aes(x=can, color = as.factor(PctMsng))) +
+  geom_density()+ xlab("Mean Sq Error Canby")+
+  theme_minimal()+ theme(legend.position="bottom")+
+  labs(color='Percent missing')+ guides(colour = guide_legend(nrow = 2))
+ggsave("DensityPlotCanbyRand.png")
+
+ggplot(mseV, aes(x=eug, color = as.factor(PctMsng))) +
+  geom_density()+ xlab("Mean Sq Error Eugene")+
+  theme_minimal()+ theme(legend.position="bottom")+
+  labs(color='Percent missing')+ guides(colour = guide_legend(nrow = 2))
+ggsave("DensityPlotEugeneRand.png")
+
+# Density curve plots MAE
+colnames(maeV) <- colnames(loc)[4:ncol(loc)]
+maeV$nsim <- 1:nsim
+maeV <- maeV %>% 
+  pivot_longer(!nsim, names_to = "Type", values_to = "mae") %>%
+  separate(Type,into = c("City", "PctMsng"),
+           sep = "(?<=[A-Za-z])(?=[0-9])") %>%
+  pivot_wider(names_from = City, values_from = mae)
+maeV$PctMsng <- as.numeric(maeV$PctMsng)
+ggplot(maeV, aes(x=corv, color = as.factor(PctMsng))) +
+  geom_density()+ xlab("MAE Corvallis")+
+  theme_minimal()+ theme(legend.position ="bottom")+
+  labs(color='Percent missing')+ guides(colour = guide_legend(nrow = 2))
+ggsave("MAEDensityPlotCorvallisRand.png")
+
+ggplot(maeV, aes(x=can, color = as.factor(PctMsng))) +
+  geom_density()+ xlab("MAE Canby")+
+  theme_minimal()+ theme(legend.position="bottom")+
+  labs(color='Percent missing')+ guides(colour = guide_legend(nrow = 2))
+ggsave("MAEDensityPlotCanbyRand.png")
+
+ggplot(maeV, aes(x=eug, color = as.factor(PctMsng))) +
+  geom_density()+ xlab("MAE Eugene")+
+  theme_minimal()+ theme(legend.position="bottom")+
+  labs(color='Percent missing')+ guides(colour = guide_legend(nrow = 2))
+ggsave("MAEDensityPlotEugeneRand.png")
+
+
+ls <- as.data.frame(ls[,4:ncol(ls)])
+ls$nsim <- 1:nsim
+gbg <- as.data.frame(ls) %>%
+  pivot_longer(!nsim, names_to = "Type", values_to = "longestMsng") %>%
+  separate(Type,into = c("City", "PctMsng"),
+           sep = "(?<=[A-Za-z])(?=[0-9])") %>%
+  pivot_wider(names_from = City, values_from = c(longestMsng))
+gbg$PctMsng <- as.numeric(gbg$PctMsng)
+gbg <- left_join(gbg, 
+                 mseV,
+                 by = c("nsim" = "nsim", 
+                        "PctMsng" = "PctMsng"))
+## Longest missing sequence plots
+gbg %>%
+  ggplot() +
+  geom_point(aes(x = corv.x, y = corv.y, 
+                 colour = as.factor(PctMsng)), 
+             alpha = 0.5) +
+  xlab("Longest Missing Sequence") + 
+  ylab("Mean Sq Error for Corvallis") +
+  theme_minimal() + 
+  theme(legend.position = "bottom") +
+  labs(color='Percent missing')+ guides(colour = guide_legend(nrow = 2))
+
+gbg %>%
+  ggplot() +
+  geom_point(aes(x = can.x, y = can.y, 
+                 colour = as.factor(PctMsng)), 
+             alpha = 0.5) +
+  xlab("Longest Missing Sequence") + 
+  ylab("Mean Sq Error for Canby") +
+  theme_minimal() + 
+  theme(legend.position = "bottom") +
+  labs(color='Percent missing')+ guides(colour = guide_legend(nrow = 2))
+
+gbg %>%
+  ggplot() +
+  geom_point(aes(x = eug.x, y = eug.y, 
+                 colour = as.factor(PctMsng)), 
+             alpha = 0.5) +
+  xlab("Longest Missing Sequence") +
+  ylab("Mean Sq Error for Eugene") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(color='Percent missing') +
+  guides(colour = guide_legend(nrow = 2))
+
+loc1 <- loc
+locNA1 <- locNA
+mseV1 <- mseV
+#loc2 <- loc
+#locNA2 <- locNA
+maeV1 <- maeV
 ```
 
 
-### Using efp package
-
 ```{r}
-op_efp <- efp(df_mat[,1] ~1, type = "OLS-CUSUM")
-plot(op_efp)
+mseVD <- mseV1 %>%
+  group_by(PctMsng) %>%
+  summarize(corD = density(corv)$x[which.max(density(corv)$y)],
+            canD = density(can)$x[which.max(density(can)$y)],
+            eugD = density(eug)$x[which.max(density(eug)$y)]) %>%
+  pivot_longer(!PctMsng)
 
-bp_str <-breakpoints(df_mat[,1] ~ 1)
-breakpoints(bp_str, breaks = 3)
-plot(bp_str)
+mseVD %>% ggplot() +
+  geom_line(aes(x = PctMsng, y = value, color = name)) +
+  geom_point(aes(x = PctMsng, y = value, color = name)) +
+  xlab("Percent missing data") +
+  scale_x_continuous(n.breaks = 20) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(color='City')
+ggsave("MaxDensityRandomMissing.png")
 
+## MAE
+maeVD <- maeV1 %>%
+  group_by(PctMsng) %>%
+  summarize(corD = density(corv)$x[which.max(density(corv)$y)],
+            canD = density(can)$x[which.max(density(can)$y)],
+            eugD = density(eug)$x[which.max(density(eug)$y)]) %>%
+  pivot_longer(!PctMsng)
+
+maeVD %>% ggplot() +
+  geom_line(aes(x = PctMsng, y = value, color = name)) +
+  geom_point(aes(x = PctMsng, y = value, color = name)) +
+  xlab("Percent missing data") +
+  scale_x_continuous(n.breaks = 20) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(color='City')
+ggsave("MAEMaxDensityRandomMissing.png")
 ```
 
 
+## Finding the longest sequence of missingness in real data and simulating long sequences in the three locations
+
 ```{r}
-model = list(
-  value ~ 1,          # intercept + slope
-  1 + (1|name) ~ x
-  # joined slope, varying by id
-)
-#ex = mcp_example("varying")
-fit = mcp(model, df)
-plot(fit, facet_by = "name")
+#set.seed(42)
+print("Longest sequence for the real data")
+unlist(apply(df[,4:ncol(df)], MARGIN = 2, FUN = longestNAstrech))
+corv <- df$Corvallis
+can <- df$Canby
+eug <- df$Eugene
+loc <- data.frame(cbind(corv,can,eug))
+locNA <- loc
+nsim <- 10000
+m <- c(2,3,4,5,6,7,8,9,10,15,20,25,30,35,40,45,50,55,60,65,70,75)
+mseV <- data.frame(matrix(0, nrow = 0, ncol = 4))
+maeV <- data.frame(matrix(0, nrow = 0, ncol = 4))
+
+c <- 1
+for(k in 1:ncolV){
+  for(i in 1:length(m)){
+    for(j in 1:(dim(loc)[1] - m[i] + 1)){
+      loc[,paste0(cn[k],m[i])] <- loc[,cn[k]]
+      loc[j:(j + m[i]-1) ,paste0(cn[k],m[i])] <- NA
+      loc[,paste0(cn[k],m[i])] <- na_kalman(loc[,paste0(cn[k],m[i])])
+      rmse <- sqrt(sum((loc[j:(j + m[i]-1),cn[k]] - loc[j:(j + m[i]-1),paste0(cn[k],m[i])])^2, na.rm = TRUE)/m[i])
+      mae <- sum(abs(loc[j:(j + m[i]-1),cn[k]] - loc[j:(j + m[i]-1),paste0(cn[k],m[i])]), na.rm = TRUE)/m[i]
+      mseV <- rbind(mseV, c(cn[k] , m[i] , j , rmse))
+      maeV <- rbind(maeV, c(cn[k] , m[i] , j , mae))
+      
+    }
+  }
+}
+
+## Root mean sq error
+colnames(mseV) <- c("City", "LengthMissing", "nsim", "RMSE")
+mseV$LengthMissing <- as.factor(as.numeric(mseV$LengthMissing))
+mseV$RMSE <- round(as.numeric(mseV$RMSE), 5)
+
+mseV %>%
+  subset(City == "corv") %>%
+  ggplot(aes(x = RMSE, colour = LengthMissing)) +
+  geom_density() + xlab("Corvallis RMSE")+
+  theme_minimal()+ theme(legend.position="bottom")+
+  labs(color="length missing")+ guides(colour = guide_legend(nrow = 2))
+ggsave("DensityPlotCorvallis.png")
+mseV %>%
+  subset(City == "can") %>%
+  ggplot(aes(x = RMSE, colour = LengthMissing)) +
+  geom_density() + xlab("Canby RMSE")+
+  theme_minimal()+ theme(legend.position="bottom")+
+  labs(color="length missing")+ guides(colour = guide_legend(nrow = 2))
+ggsave("DensityPlotCanby.png")
+
+mseV %>%
+  subset(City == "eug") %>%
+  ggplot(aes(x = RMSE, colour = LengthMissing)) +
+  geom_density() + xlab("Eugene RMSE")+
+  theme_minimal()+ theme(legend.position="bottom")+
+  labs(color="length missing")+ guides(colour = guide_legend(nrow = 2))
+ggsave("DensityPlotEugene.png")
+
+## Mean absolute error
+colnames(maeV) <- c("City", "LengthMissing", "nsim", "MAE")
+maeV$LengthMissing <- as.factor(as.numeric(maeV$LengthMissing))
+maeV$MAE <- round(as.numeric(maeV$MAE), 5)
+
+maeV %>%
+  subset(City == "corv") %>%
+  ggplot(aes(x = MAE, colour = LengthMissing)) +
+  geom_density() + xlab("Corvallis MAE")+
+  theme_minimal()+ theme(legend.position="bottom")+
+  labs(color="length missing")+ guides(colour = guide_legend(nrow = 2))
+ggsave("MAEDensityPlotCorvallis.png")
+maeV %>%
+  subset(City == "can") %>%
+  ggplot(aes(x = MAE, colour = LengthMissing)) +
+  geom_density() + xlab("Canby MAE")+
+  theme_minimal()+ theme(legend.position="bottom")+
+  labs(color="length missing")+ guides(colour = guide_legend(nrow = 2))
+ggsave("MAEDensityPlotCanby.png")
+
+maeV %>%
+  subset(City == "eug") %>%
+  ggplot(aes(x = MAE, colour = LengthMissing)) +
+  geom_density() + xlab("Eugene MAE")+
+  theme_minimal()+ theme(legend.position="bottom")+
+  labs(color="length missing")+ guides(colour = guide_legend(nrow = 2))
+ggsave("MAEDensityPlotEugene.png")
+
 
 ```
-## Creating missingness in the data and fitting the change point models used above.
 
 ```{r}
-## creating a dataframe for missing data
-df_miss <- df_mat
+mseVD <- mseV %>% 
+  pivot_wider(names_from = City, values_from = RMSE) %>%
+  group_by(LengthMissing) %>% 
+  summarize(corD = density(corv)$x[which.max(density(corv)$y)],
+            canD = density(can)$x[which.max(density(can)$y)],
+            eugD = density(eug)$x[which.max(density(eug)$y)]) %>%
+  pivot_longer(!LengthMissing)
+mseVD$LengthMissing <- as.numeric(as.character(mseVD$LengthMissing))
+mseVD %>% ggplot() +
+  geom_line(aes(x = LengthMissing, y = value, color = name)) +
+  geom_point(aes(x = LengthMissing, y = value, color = name)) +
+  xlab("Length of missing data") +
+  ylab("Max density MSE") +
+  theme_minimal() +
+  scale_x_continuous(n.breaks = 20) +
+  theme(legend.position = "bottom") +
+  labs(color='City')
+ggsave("MaxDensityLongestSequence.png")
 
-## Number of missing data in time series
-n_miss <- 10
+maeVD <- maeV %>% 
+  pivot_wider(names_from = City, values_from = MAE) %>%
+  group_by(LengthMissing) %>% 
+  summarize(corD = density(corv)$x[which.max(density(corv)$y)],
+            canD = density(can)$x[which.max(density(can)$y)],
+            eugD = density(eug)$x[which.max(density(eug)$y)]) %>%
+  pivot_longer(!LengthMissing)
+maeVD$LengthMissing <- as.numeric(as.character(maeVD$LengthMissing))
+maeVD %>% ggplot() +
+  geom_line(aes(x = LengthMissing, y = value, color = name)) +
+  geom_point(aes(x = LengthMissing, y = value, color = name)) +
+  xlab("Length of missing data") +
+  ylab("Max density MAE") +
+  theme_minimal() +
+  scale_x_continuous(n.breaks = 20) +
+  theme(legend.position = "bottom") +
+  labs(color='City')
+ggsave("MAEMaxDensityLongestSequence.png")
 
-for(i in 1:N){
-  ## set random locations for the missing data.
-  n_miss_rand <- sample(x = 1:nTS, size = n_miss)
+
+```
+
+## Trying out the auto atsm package to get the prediction matrix
+```{r}
+
+ts = data.table(date = as.Date("2016-01-01") + 1:length(t), y = t)
+stsm <- stsm_estimate(ts)
+
+stsm_fc <- stsm_forecast(stsm,ts, plot = TRUE)
+
+imputed <- na_kalman(df$Corvallis)
+
+imputeTS::ggplot_na_imputations(x_with_na = df$Corvallis, 
+                                x_with_truth = df$Corvallis, 
+                                x_with_imputations = imputed)
+
+data <- df$Corvallis
+data[1] <- data[2]
+fit1 <- StructTS(data)
+cov_mat <- fit1$coef["var1",]  
+```
+
+```{r}
+# Load necessary libraries
+library(stats)
+
+# Simulate data: Linear trend + some noise
+set.seed(42)
+dat <- df$Corvallis
+n <- length(dat)#100
+time <- 1:n
+#true_intercept <- 5
+#true_slope <- 2
+#noise <- rnorm(n, mean = 0, sd = 1)
+observed_values <- dat#true_intercept + true_slope * time + noise
+
+# Introduce missing values
+missing_indices <- sample(1:n, size = 20, replace = FALSE)  # Randomly remove 20 values
+observed_values[missing_indices] <- NA
+missing_indices <- which(is.na(observed_values))
+
+# Fit a Structural Time Series Model (Local Linear Trend)
+#dat[1] <- dat[2]
+observed_values[1] <- observed_values[2]
+fit <- StructTS(observed_values)
+
+# Extract the fitted values (filtered estimates) and residuals
+filtered_estimates <- fitted(fit)
+
+# Retrieve the state covariance matrix (this is key for prediction intervals)
+state_covariances <- fit$coef#[1, ]  # This is a simplified extraction for demonstration
+
+# Prediction intervals: Calculate the 95% CI using the filtered estimates' standard deviation
+prediction_intervals <- 1.96 * sqrt(state_covariances[1])
+
+# Create a vector to hold the imputed values
+imputed_values <- observed_values
+
+# Loop through the missing values and impute using the Kalman filter's filtered estimates
+for (i in missing_indices) {
+  imputed_values[i] <- filtered_estimates[i, "level"]  # Impute using filtered level (intercept)
+}
+
+imputeTS::ggplot_na_imputations(x_with_na = observed_values, 
+                                x_with_truth = dat, 
+                                x_with_imputations = imputed_values)
+
+
+# Plot the results
+plot(time, observed_values, type = "o", col = "red", xlab = "Time", ylab = "Value", pch = 16, ylim = range(c(observed_values, imputed_values, filtered_estimates[, "level"]), na.rm = TRUE))
+lines(time, imputed_values, col = "blue", lwd = 2)
+polygon(c(time, rev(time)), 
+        c(imputed_values - prediction_intervals, rev(imputed_values + prediction_intervals)), 
+        col = rgb(0, 0, 1, 0.2), border = NA)
+legend("topright", legend = c("Observed Data", "Imputed Values", "Prediction Interval"), 
+       col = c("red", "blue", rgb(0, 0, 1, 0.2)), lwd = c(2, 2, 4), pch = c(16, NA, NA), fill = c(NA, NA, rgb(0, 0, 1, 0.2)))
+
+```
+
+## Fitting the structTS and kalman smoothing function separately to get the uncertainty matrices at each time point.
+
+```{r}
+
+# dat <- read_excel(paste0(path_home(),
+#                          "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/11.1.24/Combined_all_data_2024-11-01.xlsx"),
+#                   sheet = "COVID",
+#                   guess_max = 10000)
+# 
+# df <- dat  %>% 
+#   filter(Study == "OHA") %>% 
+#   subset(select = c(Date, logCopies, Location))
+# 
+# epiweek <- epitools::as.week(df$Date, format  = "%m/%d/%y")
+# df$epiweek <- as.numeric(epiweek$week)
+# #df$epimonth <- month(as.Date(df$Date, format = "%m/%d/%y"))
+# df$year <- year(as.Date(df$Date, format = "%m/%d/%y"))
+# 
+# df <- df %>%
+#   group_by(Location, year, epiweek) %>%
+#   mutate(row = row_number()) %>%
+#   subset(select = c(-Date))%>%
+#   pivot_wider(names_from = Location, values_from = c(logCopies, -epiweek, -year) ) %>%
+#   ungroup() %>%
+#   arrange(year, epiweek)
+
+missingPct <- function(loc, type ="Percent"){
   
-  ## Setting the indices to NA for missing data
-  df_miss[n_miss_rand,i] <- NA
   
-  ### OLS CUSUM changepoint det with missing data
-  op_efp <- efp(df_miss[,i] ~1, type = "OLS-CUSUM")
-  plot(op_efp)
+  n <- length(loc)
+  if(type == "Percent"){
+    msngPct <- c(2,3,4,5,6,7,8,10,15,17,20,25,30,35,40,45,50)
+  }else{
+    msngPct <- c(1,2,3,4,5,6,7,8,9,10,15,20,25,30,35,40,45,50,55,65,70,75)
+  }
   
-  bp_str <-breakpoints(df_miss[,i] ~ 1)
-  print(breakpoints(bp_str, breaks = 3))
-  plot(bp_str)
+  for( p in msngPct){
+    #print(p)
+    data <- loc
+    if(type == "Sequence"){
+      initID <- sample(1:(length(loc) - p),1)
+      missing_indices <- initID:(initID + p)
+    }else{
+      missing_indices <- sample(1:n, 
+                                size = ceiling(p*n/100), 
+                                replace = FALSE)  # Randomly remove 20 values
+    }
+    
+    data[missing_indices] <- NA
+    missing_indices <- which(is.na(data))
+    data[1] <- data[which.min(is.na(data))] ## have to do this since strucTS does not acept TS with first value to be 0
+    mod <- stats::StructTS(data)$model0 ## This fit is done only to get the initial values of the parameters for thesmoothing function.
+    data[1] <- NA
+    kal <- stats::KalmanSmooth(data, mod, nit=0) ## Here we get the kalman fitted values and the 
+    erg <- kal$smooth
+    varA <- kal$var
+    karima <- erg[missing_indices, , drop = FALSE] %*% as.matrix(mod$Z)
+    imputed <-  erg %*% as.matrix(mod$Z)#data
+    #imputed[missing_indices] <- karima
+    sd <- data.frame(matrix(0, nrow=length(data), ncol =2))#rep(0, length(data))
+    for(i in 1:length(data)){
+      sd[i, ] <- c((imputed[i] - diag(as.matrix(varA[i,,])))[1], 
+                   (imputed[i] + diag(as.matrix(varA[i,,])))[1])
+    }
+    sd$Time <- 1:length(data)
+    fin <- as.data.frame(cbind(loc, data, imputed))
+    colnames(fin) <- c("Original","Missing","Imputed")
+    fin$RKalfunc <- na_kalman(fin$Missing)
+    
+    fin$Time <- 1:length(data)
+    colnames(sd) <- c("LowerBound","UpperBound")
+    
+    #fin <- fin %>%
+    #  pivot_longer(!Time)
+    fin$lower <- sd$LowerBound
+    fin$upper <- sd$UpperBound
+    fin$ksSmooth <- erg[,] %*% as.matrix(mod$Z)
+    
+    suppressWarnings(print(
+      ggplot(data = fin)+
+        geom_pointrange(aes(x = Time, y = imputed,ymin=lower, ymax=upper), 
+                        color="darkgreen", size = 0.2)+
+        geom_line(aes(x = Time, y = Original), color = "#E69F00", size= 0.2) +
+        geom_point(aes(x = Time, y = Original), color = "#E69F00", size= 0.1) +
+        ggtitle(paste0(p, type," missing data"))+
+        theme_minimal()
+    ))
+    
+    suppressWarnings(print(
+      ggplot(data = fin) + 
+        geom_segment(aes(x = Time, y = Original, xend = Time, yend = imputed), 
+                     color = "darkred")+
+        geom_point(aes(x = Time, y = Original), color = "#E69F00", size= 0.2) +
+        geom_point(aes(x = Time, y = imputed), color = "darkgreen", size= 0.2) +
+        ggtitle(paste0(p,type ," missing data"))+
+        theme_minimal()
+    ))
+  }
 }
 
 ```
 
-## Trying out the above with the wastewater data
-
-### Reading the wastewater data 
 
 ```{r}
+missingPct(df$Corvallis, "Sequence")
+```
+
+```{r}
+missingPct(df$Corvallis, "Percent")
+```
+
+```{r}
+missingPct(df$Canby, "Sequence")
+```
+
+```{r}
+missingPct(df$Canby, "Percent")
+```
+
+```{r}
+missingPct(df$Eugene, "Sequence")
+```
+
+```{r}
+missingPct(df$Eugene, "Percent")
+```
+
+
+## Implementing local linear trend model for imputing missing data using Kalman filter
+
+Explanation of the R Code:
+Initialization:
+
+We define the number of time steps (n_timesteps), the true intercept (true_intercept), and the true slope (true_slope). The true_values are generated based on the linear model.
+We simulate missing data by randomly setting some values in observations to NA.
+Kalman Filter:
+
+The function kalman_filter_missing_data implements the Kalman filter for the local linear trend model. It handles both the prediction and update steps and imputes missing values using the predicted state.
+The state vector includes both the intercept and slope. The predicted intercept is used for imputing missing values.
+Prediction Interval:
+The prediction interval is calculated as 
+x_k ± 1.96P_k, where P_k is the covariance of the predicted state. This interval represents the uncertainty around the imputed intercept values.
+Plot:
+
+The true values are plotted as a green line, the observed data as red dots, and the imputed values as a blue line.
+The shaded region around the imputed values represents the 95% prediction interval.
+Output:
+True Values: The underlying linear model.
+Observed Data: The data with missing values (red dots).
+Imputed Values: The imputed values from the Kalman filter (blue line).
+Prediction Interval: The shaded region showing the 95% prediction interval around the imputed values.
+Conclusion:
+This R implementation of the Kalman filter with a local linear trend model is able to impute missing data, handle time-varying trends, and provide prediction intervals to quantify uncertainty in the imputed value
+
+```{r}
+# Load necessary libraries
+library(ggplot2)
+
+# Set seed for reproducibility
+set.seed(42)
+
+# Initialize system parameters
+n_timesteps <- 50  # Number of time steps
+true_intercept <- 5  # True intercept of the linear model
+true_slope <- 2  # True slope of the linear model
+
+# True model: Local linear trend
+time <- 0:(n_timesteps - 1)
+true_values <- true_intercept + true_slope * time
+
+# Create missing data (set some values to NA)
+observations <- true_values
+missing_indices <- sample(n_timesteps, size = 15, replace = FALSE)
+observations[missing_indices] <- NA
+
+# Kalman Filter parameters for Local Linear Trend Model
+A <- matrix(c(1, 1, 0, 1), nrow = 2)  # State transition matrix (local linear trend model)
+H <- matrix(c(1, 0), nrow = 1)  # Observation matrix (we observe the intercept)
+Q <- matrix(c(1e-5, 0, 0, 1e-5), nrow = 2)  # Process noise covariance
+R <- 1  # Measurement noise covariance
+P <- diag(2) * 1e3  # Initial covariance estimate
+x_hat <- c(0, 0)  # Initial state estimate (intercept = 0, slope = 0)
+
+# Kalman filter with missing data imputation function
+kalman_filter_missing_data <- function(observations, A, H, Q, R, P, x_hat) {
+  n_timesteps <- length(observations)
+  predicted_states <- list()
+  predicted_covariances <- list()
+  imputed_values <- numeric(n_timesteps)
+  
+  for (k in 1:n_timesteps) {
+    # Prediction step
+    x_hat_minus <- A %*% x_hat  # Predicted state
+    P_minus <- A %*% P %*% t(A) + Q  # Predicted covariance
+    
+    # If observation is available, update the state estimate
+    if (!is.na(observations[k])) {
+      # Kalman gain
+      S <- H %*% P_minus %*% t(H) + R  # Innovation covariance
+      K <- P_minus %*% t(H) %*% solve(S)  # Kalman gain
+      
+      # Measurement residual (innovation)
+      y_k <- observations[k] - H %*% x_hat_minus
+      
+      # Update step
+      x_hat <- x_hat_minus + K %*% y_k
+      P <- P_minus - K %*% H %*% P_minus
+    } else {
+      # If observation is missing, just propagate the predicted state
+      x_hat <- x_hat_minus
+      P <- P_minus
+    }
+    
+    # Store the predicted state and covariance
+    predicted_states[[k]] <- x_hat
+    predicted_covariances[[k]] <- P
+    
+    # Impute missing data (use predicted state for imputation)
+    imputed_values[k] <- x_hat[1]  # Imputed intercept value
+  }
+  
+  return(list(imputed_values = imputed_values, predicted_states = predicted_states, predicted_covariances = predicted_covariances))
+}
+
+# Run Kalman filter for missing data imputation
+result <- kalman_filter_missing_data(observations, A, H, Q, R, P, x_hat)
+
+imputed_values <- result$imputed_values
+predicted_covariances <- result$predicted_covariances
+
+# Calculate prediction intervals (95% confidence interval)
+prediction_intervals <- 1.96 * sapply(predicted_covariances, function(P) sqrt(P[1, 1]))
+
+# Plot results
+plot(time, true_values, type = "l", col = "green", lwd = 2, ylim = range(c(true_values, observations, imputed_values), na.rm = TRUE), 
+     xlab = "Time Step", ylab = "Value", main = "Kalman Filter with Missing Data Imputation and Prediction Intervals")
+points(time, observations, col = "red", pch = 19)  # Observed data
+lines(time, imputed_values, col = "blue", lwd = 2)  # Imputed values
+
+# Add prediction intervals (shaded region)
+polygon(c(time, rev(time)), 
+        c(imputed_values - prediction_intervals, rev(imputed_values + prediction_intervals)), 
+        col = rgb(0, 0, 1, 0.2), border = NA)
+
+legend("topright", legend = c("True Values", "Observed Data", "Imputed Values", "95% Prediction Interval"), 
+       col = c("green", "red", "blue", rgb(0, 0, 1, 0.2)), lwd = c(2, NA, 2, NA), pch = c(NA, 19, NA, NA), fill = c(NA, NA, NA, rgb(0, 0, 1, 0.2)))
+
+```
+
+
+
+## Trying out the change point detection method above ols-cusum : First 24 time series with lowest rate of missing values
+```{r}
 dat <- read_excel(paste0(path_home(),
-                         "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/5.17.24/Combined_all_data_2024-05-17.xlsx"), 
+                         "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/1.14.25/Combined_all_data_2025-01-14.xlsx"),
                   sheet = "COVID",
                   guess_max = 10000)
 
@@ -153,67 +840,229 @@ df <- df %>%
   pivot_wider(names_from = Location, values_from = c(meanlogcopies, -Date) ) %>%
   ungroup() %>%
   arrange(year, epiweek)
+```
 
+```{r}
 ## Find locations that have more than 50% missing values.
+
+## Find the counties for each lcoation
+df_county <- na.omit(distinct(data.frame(loc =make.names(dat$Location), county = dat$County)))
 
 nas <- data.frame(names= colnames(df),
                   val = as.numeric(colSums(is.na(df))/dim(df)[1])*100)
-
+summary(nas$val[4:length(nas$val)])
+hist(nas$val[4:length(nas$val)], breaks = 70)
 ## removing locations that have more than 50% missing values
-pctThrs <- 50
+pctThrs <- 40
 df <- df %>% subset(select = which(nas[,2] < pctThrs))
 colnames(df) <- make.names(colnames(df))
 ## Remvoing st.Helens , Siletz and Siletz tribe ,Ontario, Ontario Prison, Redmond
 
-df <- df %>% subset(select = -c(St..Helens,Silverton, Siletz.Tribe ,Ontario, Ontario.Prison, Redmond, Siletz, Port.Orford))
+df <- df %>% subset(select = -c(St..Helens,
+                                Silverton,
+                                #Ontario,
+                                #Ontario.Prison,
+                                Siletz
+                                #Port.Orford
+))
 
 ## removing 2022 epiweek 53 
 df <- df[!(df$year == "2024" & df$epiweek == "53"),]
+nas$names <- make.names(nas$names)
 
 ```
 
+## Plotting the locations To look at missing data
 
-## Trying out the change point detection method above ols-cusum : First 24 time series with loweest rate of missing values
+```{r, fig.width=8, fig.height=5}
+df_tmp <-df
+newColnames <- left_join(data.frame(loc = colnames(df_tmp)),nas, by = join_by(loc == names ) )
+colnames(df_tmp) <- paste(newColnames$loc, round(newColnames$val, 2), sep = "_")
+AvgValue <- rowMeans(df_tmp[,4:dim(df_tmp)[2]], na.rm = TRUE)
+df_tmp$Date_0 <- mdy(df_tmp$Date_0)
+locNames <- colnames(df_tmp)[4:length(colnames(df_tmp))]
+df_plt <- df_tmp %>%
+  subset(select = -c(year_0, epiweek_0)) %>%
+  pivot_longer(-c(Date_0))
 
-```{r}
+#df_plt$Date_0 <-mdy(df_plt$Date_0)
+df_plt$year <- year(df_plt$Date_0)
+df_plt$month <- lubridate::month(df_plt$Date_0, label =TRUE)
+Avg <- data.frame(AvgValue)
+Avg$Date_0 <- df_tmp$Date_0
+#pdf("MissingdataPlots.pdf")
+for(i in seq(1,length(locNames),by =6)){
+  df_c <- df_plt[df_plt$name == locNames[i:(i+3)],]
+  print(ggplot()+
+          geom_line(data = Avg, aes(x = Date_0, y = AvgValue), linetype = 2)+
+          geom_line(data= df_c, aes(x = Date_0, y = value, color = name)) + 
+          theme(legend.position="bottom",axis.text.x = element_text(angle = 45,  hjust=1, size=6 ))+
+          ylab("log copies")+xlab("Date sampled")+ scale_x_date(date_breaks = "3 month", date_labels = "%b/%y")+
+          facet_wrap(~name))
+}
+#dev.off()
+
+```
+
+```{r, fig.width=8, fig.height=8}
 ## Find locations that have more than 50% missing values.
-Nval <- 25
-Nbrk <- 4
+Nval <- dim(df)[2]-3#27
+Nbrk <- 5
 nas <- data.frame(names= colnames(df),
                   val = as.numeric(colSums(is.na(df))/dim(df)[1])*100)
 nas <- nas[-c(1,2,3),]
 df_samp <- df[, -c(1,2,3)]
 ww_samp <- df[, nas$names[sort(nas$val, index.return=TRUE)$ix[1:Nval]]]
 ww_samp <- as.matrix(ww_samp)
-op <- list()
-col <-  colnames(ww_samp)
+op_bp <- list()
+col <-  data.frame(loc = colnames(ww_samp))
+col <- left_join(col, df_county,by = join_by(loc == loc ))
+
+bp_nat <- data.frame(matrix(ncol = 2, nrow = 0, 0))
+
+## Getting average value measured over the state
+avgVal <- rowMeans(ww_samp, na.rm = TRUE)
+
+ww_ip <- data.frame(matrix(ncol = ncol(ww_samp), nrow =nrow(ww_samp), 0))
+
 for(i in 1:dim(ww_samp)[2]){
   ### OLS CUSUM changepoint det with missing data
-  op_efp <- efp(ww_samp[,i] ~1, type = "OLS-CUSUM")
-  plot(op_efp)
   
-  bp_str <-breakpoints(ww_samp[,i] ~ 1)
-  op[[i]] <- breakpoints(bp_str, breaks = Nbrk)
-  #jpeg(paste0("Numbp",i,".jpg"), width = 350, height = 350)
-
-  plot(bp_str, main =col[i])
-  #dev.off()
+  ww_ip[,i] <- na_kalman(ww_samp[,i])
+  
+  bpIp <- data.frame(y = ww_ip[,i],
+                     y_lag1 = c(ww_ip[-1,i], NA),
+                     y_lag2 = c(ww_ip[-c(1:2),i], NA,NA)) %>%
+    drop_na()
+  
+  #op_efp <- breakpoints(y ~ y_lag1 + y_lag2, data = bpIp)#efp(y ~ y_lag1 + y_lag2  , data = bpIp, type = "OLS-CUSUM")
+  #plot(op_efp, main =col[i,1])
+  
+  ## Finding breakpoints without any lag considerations
+  op_bp[[i]] <- breakpoints(breakpoints(y ~ y_lag1 + y_lag2, h =dim(ww_samp)[2], data = bpIp), breaks = Nbrk)
+  
+  ## finding breakpoints with lag consideration
+  bp_nat <- rbind(bp_nat, cbind(col[i,1],col[i,2], c(1,op_bp[[i]]$breakpoints, dim(ww_samp)[1])))
+  
 }
 
+## finding the changepoint in average data
+bpIpavg <- data.frame(y = avgVal,
+                     y_lag1 = c(avgVal[-1], NA),
+                     y_lag2 = c(avgVal[-c(1,2)], NA,NA)) %>%
+    drop_na()
+#   ## Finding breakpoints without any lag considerations
+op_bpavg <- breakpoints(breakpoints(y ~ y_lag1 + y_lag2, h =dim(ww_samp)[2], data = bpIpavg), breaks = Nbrk)
+#bp_nat <- rbind(bp_nat, cbind("Average","value",c(1,op_bpavg$breakpoints ,dim(ww_samp)[1])))
+
+colnames(ww_ip) <- colnames(ww_samp)
+colnames(bp_nat) <- c("Location", "County","Breakpoint")
+bp_nat$Breakpoint <- as.numeric(bp_nat$Breakpoint)
+bp_nat %>% ggplot() +
+  geom_point(aes(y = interaction(Location, County), x = Breakpoint, group = Location)) +
+  geom_line(aes(y = interaction(Location, County), x = Breakpoint, group = Location)) +
+  scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0,dim(ww_samp)[1])) + 
+  ggtitle("Breakpoint distribution for locations") + 
+  ylab("Locations") + xlab("Breakpoints") +
+  theme_minimal()
+ggsave("brkpts.pdf")
+```
+
+## using the mcp package to find the chnage points
+
+```{r}
+library(mcp)
+
+model1 = list(
+  dat ~ 1 + ar(2),
+  ~ 1 + ar(2),
+  ~ 1 + ar(2),
+  ~ 1 + ar(2),
+  ~ 1 + ar(2)
+)
+
+model2 = list(
+  dat ~ 1 + ar(2),
+  ~ 0 + ar(2),
+  ~ 0 + ar(2),
+  ~ 0 + ar(2),
+  ~ 0 + ar(2)
+)
+
+model3 = list(
+  dat ~ 1 ,
+  ~ 1,
+  ~ 1,
+  ~ 1,
+  ~ 1
+)
+fit_ar1 <- list()
+fit_ar2 <- list()
+fit_ar3 <- list()
+
+##First model
+for( i in 1:dim(ww_ip)[2]){
+  ex <- data.frame(dat = ww_ip[,i], time =1:dim(ww_ip)[1])
+  fit_ar1[[i]] <- mcp(model1,ex,par_x = "time" )
+  summary(fit_ar1[[i]])
+}
+
+## 2nd model
+for( i in 1:dim(ww_ip)[2]){
+  ex <- data.frame(dat = ww_ip[,i], time =1:dim(ww_ip)[1])
+  fit_ar2[[i]] <- mcp(model2,ex,par_x = "time" )
+  summary(fit_ar2[[i]])
+}
+
+## 3rd model
+for( i in 1:dim(ww_ip)[2]){
+  ex <- data.frame(dat = ww_ip[,i], time =1:dim(ww_ip)[1])
+  fit_ar3[[i]] <- mcp(model3,ex,par_x = "time" )
+  summary(fit_ar3[[i]])
+}
+
+for(i in 1:dim(ww_ip)[2]){
+  print(plot(fit_ar1[[i]]))
+}
+
+for(i in 1:dim(ww_ip)[2]){
+  print(plot(fit_ar2[[i]]))
+}
+
+for(i in 1:dim(ww_ip)[2]){
+  print(plot(fit_ar3[[i]]))
+}
 
 ```
+
+## Fitting the data with AR(2) model using sarima
+```{r}
+library(astsa)
+for( i in 1:dim(ww_ip)[2]){
+  sarima(ww_ip[,i], p = 2, d = 0, q = 0)
+}
+
+```
+
 
 ### Ploting the output from the changepoint method
 
 ```{r}
+pdf("AllBrkPts.pdf")
 for (i in 1:dim(ww_samp)[2]) {
- ggplot()+
-          geom_line(aes(x = 1:dim(ww_samp)[1], y = ww_samp[,i]))+
-          geom_vline(xintercept = op[[i]]$breakpoints, color = "blue", linetype = "dashed")+
-          theme_minimal()+ggtitle(col[i])
- ggsave(paste0("unicp",i,".jpeg"))
+  print(ggplot() +
+          geom_line(aes(x = 1:(dim(ww_ip)[1]), 
+                        y = ww_ip[,i] ), color = "darkorange")+
+          geom_line(aes(x = 1:(dim(ww_samp)[1]), 
+                        y = ww_samp[,i])) +
+          geom_vline(xintercept = op_bp[[i]]$breakpoints, 
+                     color = "blue", 
+                     linetype = "dashed") +
+          theme_minimal() +
+          ggtitle(col[i,1]))
+  #ggsave(paste0("unicp",i,".jpeg"))
 }
-
+dev.off()
 ```
 ## Refitting the lasso VAR function to work with this dataset
 
@@ -244,7 +1093,7 @@ nodeImpfunc <- function(nw){
                       cbind(i,
                             igraph::degree(nw[[i]], mode = "in"),
                             igraph::degree(nw[[i]], mode = "out"),
-                            round(igraph::betweenness(nw[[i]]),2),
+                            round(igraph::betweenness(nw[[i]],normalized = TRUE ),2),
                             round(neighborhood.connectivity(nw[[i]], mode = "in"),2),
                             round(neighborhood.connectivity(nw[[i]], mode = "out"),2),
                             h_index(nw[[i]], mode= "in"),
@@ -267,62 +1116,66 @@ nodeImpfunc <- function(nw){
   return(Node_imp)
 }
 
-LassoVar <- function(df_split, d, retFit = FALSE){
-  edgeIx <- as.data.frame(matrix(nrow = 0, ncol = 4))
+LassoVar <- function(df_ip, d=NULL,Nbrk, retFit = FALSE){
+  #edgeIx <- as.data.frame(matrix(nrow = 0, ncol = 4))
   if(retFit ==TRUE){
     grphs <- list()
+    fits <- list()
   }
   for (m in 1:(Nbrk+1)) {
-    
-    k <- df_split[[m]] 
+    print(paste0("Subsection number ,", m))
+    k <- df_ip[[m]] 
     cityNames <- colnames(k)
     k <- t(k)
     if(any(is.na(k))){
       print("k has missing values")
     }
     fit1 = NGC::ngc(k, d=d)
-    edge <- which(fit1$estMat != 0, arr.ind = T)
-    edgeIx <- rbind(edgeIx, cbind(m, (edge)))
+    #summary(fit1)
+    #edge <- which(fit1$estMat != 0, arr.ind = T)
+    #edgeIx <- rbind(edgeIx, cbind(m, (edge)))
     
     if(retFit == TRUE){
       V(fit1$ring)$names <- cityNames
       grphs[[m]] <- fit1$ring
+      fits[[m]] <- fit1
       
     }
     
   }
   
   ## assigning the city names back to the numbered locations
-  edgeIx <- as.data.frame(edgeIx)
-  colnames(edgeIx) <- c("group","to", "from","lag")
-  cityNames <- as.data.frame(cbind(cityNames, 1:Nval))
-  colnames(cityNames) <- c("cityNames","Id")
-  cityNames$Id <- as.integer(cityNames$Id)
-  grphdf <- left_join(edgeIx, cityNames, by = join_by( to == Id))
-  grphdf <- left_join(grphdf, cityNames, by=  join_by(from == Id))
+  #edgeIx <- as.data.frame(edgeIx)
+  #colnames(edgeIx) <- c("group","to", "from","lag")
+  #cityNames <- as.data.frame(cbind(cityNames, 1:Nval))
+  #colnames(cityNames) <- c("cityNames","Id")
+  #cityNames$Id <- as.integer(cityNames$Id)
+  #grphdf <- left_join(edgeIx, cityNames, by = join_by( to == Id))
+  #grphdf <- left_join(grphdf, cityNames, by = join_by(from == Id))
   
-  grphdf <- grphdf[,c(1,4,5,6)]
-  colnames(grphdf) <- c("group","lag","to","from")
+  #grphdf <- grphdf[,c(1,4,5,6)]
+  #colnames(grphdf) <- c("group","lag","to","from")
   
-  if(retFit == TRUE){
-    return(list(grphdf, grphs))
-  }
-  return(grphdf)
+  #if(retFit == TRUE){
+  #  return(list(grphdf, grphs))
+  #}
+  return(list(grphs, fits))
 }
+
 ```
 
 
-## Combine aall the breakpoints for the different time series data.
+## Combine all the breakpoints for the different time series data.
 
 ```{r}
 
 d <- 2
-
 bp <- data.frame(matrix(nrow = 0, ncol =2))
-for(i in 1:length(op)){
-  tmp <- c(1,op[[i]]$breakpoints,dim(ww_samp)[1])
+for(i in 1:length(op_bp)){
+  tmp <- c(1,op_bp[[i]]$breakpoints,dim(ww_ip)[1])
   bp <- rbind(bp, cbind(rep(i, length(tmp)),tmp, df$Date[tmp]))
 }
+
 colnames(bp) <- c("TS","BkPtS", "Date")
 bp$BkPtS <- as.numeric(bp$BkPtS)
 bp <- bp %>% 
@@ -331,8 +1184,10 @@ bp <- bp %>%
   filter(!is.na(BkPtE)) %>%
   mutate(range = paste0(BkPtS,"-",BkPtE)) %>%
   ungroup()%>%
-  mutate(xRangeL =round(rep(seq(from = min(rowMeans(ww_samp, na.rm = TRUE)), to = max(rowMeans(ww_samp, na.rm = TRUE)), 
-                                length.out= length(unique(bp$TS))), each = 5), 2) ) %>%
+  mutate(xRangeL =round(rep(seq(from = min(rowMeans(ww_ip, na.rm = TRUE)), 
+                                  to = max(rowMeans(ww_ip, na.rm = TRUE)), 
+                                length.out= length(unique(bp$TS))), 
+                            each =Nbrk+1), 2) ) %>%
   mutate(xRangeH = rep(c(unique(xRangeL)[-1], 5.5) , each = Nbrk+1))%>%
   mutate(id = rep(1:(Nbrk+1), times = Nval)) %>%
   ungroup()
@@ -343,20 +1198,15 @@ ggplot()+
   geom_rect(aes(xmin = as.numeric(bp$BkPtS), xmax = as.numeric(bp$BkPtE), 
                 ymin = bp$xRangeL, ymax = bp$xRangeH,
                 fill = as.factor(bp$id)), alpha = 0.6) +
-  #geom_line(aes(y = apply(ww_samp, 1, FUN = min, na.rm = TRUE), x = as.numeric(1:dim(ww_samp)[1])), alpha =0.3)+
-  #geom_line(aes(y = apply(ww_samp, 1, FUN = max, na.rm = TRUE), x = as.numeric(1:dim(ww_samp)[1])), alpha = 0.3)+
-  geom_line(aes(y = rowMeans(ww_samp[,1:24], na.rm = TRUE), x = as.numeric(1:dim(ww_samp)[1])))+ #as.numeric(1:dim(ww_samp)[1])
-   #scale_x_discrete(breaks = levels(df$Date)[c(T, rep(F, 9))])+
-  geom_text(aes(x = 5, y =as.numeric(unique(bp$xRangeL)), label = col), 
+  geom_line(aes(y = rowMeans(ww_ip, na.rm = TRUE), x = as.numeric(1:dim(ww_ip)[1])))+
+  geom_text(aes(x = 5, y =as.numeric(unique(bp$xRangeL)), label = col$loc), 
             size = 3, vjust = 0, hjust = 0, color = "blue4")+
   scale_fill_brewer(palette="Dark2")+
   xlab("Sample week")+ ylab("Average mean log copies.")+
- # scale_x_date(date_breaks  ="3 month")+
   theme_minimal() + 
   theme(legend.position = "none") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
   ggtitle("Mean value of all cities")
-
-ggsave("CPperCity.jpeg")
+ggsave("CPperCity.pdf")
 
 ```
 
@@ -379,7 +1229,7 @@ for (i in 1:Nval) {
     bp_ss <- bp[bp$TS ==i,]
     strt <- bp_ss[bp_ss$id==j,]$BkPtS
     end <- bp_ss[bp_ss$id==j,]$BkPtE
-    t = ww_samp[strt:end,i]
+    t = ww_ip[strt:end,i]
     rngstrt <- rng[j,]$minV   
     rngend <- rng[j,]$maxV
     ## Front padding
@@ -392,26 +1242,49 @@ for (i in 1:Nval) {
     if(ep >0){
       t <- c(t, rep(NA,ep))
     }
-    # Example 5:  Perform imputation with KalmanSmooth and user created model
-    g[[j]] <- na_kalman(t) ## eventually need to replace this with multiple imputation
+    # Example 5:  Perform imputation with KalmanSmooth and user created model. This imputes the missing data
+    ## eventually need to replace this with multiple imputation
+    g[[j]] <- na_kalman(t) 
   }
   TSsec[i] <- list(g)
 }
 
+df_split <- list()
+for(i in 1:length(TSsec[[i]])){
+  df_split[[i]] <- as.matrix(sapply(TSsec,"[[",i)) 
+  colnames(df_split[[i]]) <- col$loc
+}
+StatDat <- list()
+
+## Data frame for saving output from dickey fuller test
+adfOp <- data.frame(matrix(ncol = 1+1+2+2, nrow = 0, 0))
 
 
 ## check if individual sections are stationary
-
-## If not then take difference and check pacf to see lag.
-
-## If the above is OK, run VAR using LASSO
-df_split <- list()
-for(i in 1:length(TSsec[[1]])){
-  df_split[[i]] <- as.matrix(sapply(TSsec,"[[",1)) 
-  colnames(df_split[[i]]) <- col
+for(i in 1:length(df_split)){
+  print(paste0("Subsection,", i))
+  dd <- df_split[[i]]
+  cn <- colnames(dd)
+  diffedDat <- matrix(ncol = ncol(dd), nrow = nrow(dd)-1,0)
+  for(j in 1:dim(dd)[2]){
+    diffedDat[,j] <- diff(dd[,j])
+    #acf(diffedDat[,j], lag.max = length(diffedDat[,j]), 
+    #    xlab = "lag #", ylab = 'ACF',
+    #   main=paste0("Subsection, ", i, " Location, ",cn[j]))
+    ## Running dickey fuller test on the original data 
+    origTst <- adf.test(dd[,j])
+    ## Running dickey fuller on differenced data
+    diffTst <- adf.test(diffedDat[,j])
+    
+    adfOp <- rbind(adfOp, c(i,cn[j],origTst$statistic[[1]], origTst$p.value, diffTst$statistic[[1]], diffTst$p.value ))
+  }
+  colnames(diffedDat) <- cn
+  StatDat[[i]] <- diffedDat
 }
-
-op <- LassoVar(df_split,d, retFit = TRUE)
+colnames(adfOp) <- c("Subsection","Timeseries", "origStat","origPval","diffStat","diffpVal")
+## If not then take difference and check pacf to see lag.
+## If the above is OK, run VAR using LASSO
+op <- LassoVar(df_ip = StatDat,d = d,Nbrk = Nbrk, retFit = TRUE)
 
 
 ```
@@ -419,25 +1292,41 @@ op <- LassoVar(df_split,d, retFit = TRUE)
 
 ```{r}
 ## Create maps using the LASSO penalty
-G <- op[[2]]
+G <- op[[1]]
 nodeImp <- nodeImpfunc(G)
+
+## find the max values for different node importance measures
+maxImp <- nodeImp %>%
+  group_by(Section) %>%
+  summarise(maxOutdegree = max(Outdegree),
+            #maxOutdegCity = City[which(Outdegree == max(Outdegree))],
+            maxIndegree = max(Indegree),
+           # maxIndegCity = City[which(Indegree == max(Indegree))],
+            maxBetweenness = max(Betweenness),
+            maxBetCity = City[which(Betweenness == max(Betweenness))]
+            )
 
 ## creating network based on lat lon of the locations
 grphDat <- readRDS("GraphData.rds")
 g <- grphDat$WWgrph
-l <- data.frame(names = make.names(V(g)$name) , lat = as.numeric(V(g)$lat), lon = as.numeric(V(g)$lon))
+l <- data.frame(names = make.names(V(g)$name),
+                lat = as.numeric(V(g)$lat),
+                lon = as.numeric(V(g)$lon))
 ## adding missing cities
-l <- data.frame(rbind(as.matrix(l),rbind(c("Rock.Creek",-122.8808,45.5554),c("Dallas",-123.3170,44.9193),c("Sunriver",-121.4334,43.8694))))
-nameVal <- data.frame(names = V(G[[2]])$names)
+l <- data.frame(rbind(as.matrix(l),
+                      rbind(c("Rock.Creek",-122.8808,45.5554),
+                            c("Dallas",-123.3170,44.9193),
+                            c("Sunriver",-121.4334,43.8694))))
+nameVal <- data.frame(names = make.names(V(G[[2]])$names))
 layout <- left_join(nameVal, l, join_by(names == names))
 ## Setting labels for the nodes that have highest outdegree and indegree with different color code
 ```
 
 ```{r}
 
-lvl <- 2
-var <- c("Outdegree","Closeness","Eigen")
-
+lvl <- 1
+var <- c("Outdegree","Indegree","Closeness","Eigen")
+#pdf("NodeImpPlots.pdf")
 for(v in var){
   gbg <- nodeImp %>% 
     group_by(Section) %>%
@@ -452,26 +1341,211 @@ for(v in var){
   for(i in 1:(Nbrk+1)){
     V(G[[i]])$label1 = gbg$label1[gbg$Section == i]
     V(G[[i]])$color1 = gbg$color1[gbg$Section == i]
-    jpeg(paste0(v,i,".jpg"), width = 350, height = 350)
+    #jpeg(paste0(v,i,".jpg"), width = 350, height = 350)
+    #  par(mar=c(0,0,0,0)+.8)
+     par(mar=c(0.8,0,0.8,0))
     plot.igraph(igraph::simplify(G[[i]]),directed = T,
                 main = paste(rng$minDate[i],"-", rng$maxDate[i]," Node measure",v),
                 edge.arrow.size = 0.3,
                 edge.width = 0.5,
-                edge.color = "gray60",
+                edge.color = "gray40",
                 edge.alpha =0.5,
                 layout = cbind(as.numeric(layout$lat),
                                as.numeric(layout$lon)),
                 vertex.label = V(G[[i]])$label1,
                 vertex.size = 5,
                 vertex.color = V(G[[i]])$color1,
+                 vertex.label.dist=1,
                 vertex.frame.color = NULL,
                 vertex.label.size=0.001)
-    dev.off()
+    
+  }
+}
+#dev.off()
+```
+
+
+
+## fitting the changepoint method on average data and then lasso on the entire dataset using the average chnagepoints
+
+
+
+```{r}
+## finding the changepoint in average data
+bpIpavg <- data.frame(y = avgVal,
+                     y_lag1 = c(avgVal[-1], NA),
+                     y_lag2 = c(avgVal[-c(1,2)], NA,NA)) %>%
+    drop_na()
+## Finding breakpoints without any lag considerations
+op_bpavg <- breakpoints(breakpoints(y ~ y_lag1 + y_lag2, h =dim(ww_samp)[2], data = bpIpavg), breaks = Nbrk)
+#bp_nat <- rbind(bp_nat, cbind("Average","value",c(1,op_bpavg$breakpoints ,dim(ww_samp)[1])))
+b <- c(1,as.numeric(op_bpavg$breakpoints), length(avgVal))
+avgSplt <- list()
+
+for(i in 1:(length(b)-1)){
+  avgSplt[[i]] <- apply(ww_ip[b[i]:b[i+1],], 2, diff)
+}
+
+op <- LassoVar(df_ip = avgSplt ,d = d,Nbrk = Nbrk, retFit = TRUE)
+
+ggplot()+geom_line(aes(x = 1:length(avgVal), y = avgVal))+
+  geom_vline(aes(xintercept = b), color = "darkblue", linetype = 2)+
+  theme_minimal()
+
+ww_ip %>%
+  mutate(seq = 1:dim(ww_ip)[1]) %>%
+  pivot_longer(-c(seq)) %>%
+  ggplot() + 
+  geom_line(aes(x = seq, y = value, color = name),show.legend = FALSE)+
+  geom_line(data = data.frame(seq = 1:length(avgVal), avg = avgVal ), aes(x = seq, y = avg))+
+  geom_vline(data = data.frame(b = b), aes(xintercept = b), color = "darkblue", linetype = 2)+
+  theme_minimal()
+op <- LassoVar(df_ip = avgSplt,d = d,Nbrk = Nbrk, retFit = TRUE)
+
+
+```
+
+
+## Creating ego networks for each node at different time chunks
+
+plot ngc
+
+```{r}
+#' Plot DAG of network or ring graph showing Granger causality
+#' param fit object of class ngc
+#' param ngc.type type of plot to create
+plot.ngc <- function(
+    fit, #object of class ngc
+    ngc.type = "dag", #"dag" or "granger"
+    sparsify = FALSE #whether to remove covariates with no edges in the high-dimensional case
+  ){
+    if (class(fit) != "ngc")
+    {
+      stop("Class of argument must be ngc")
+    }
+    p <- fit$p
+    d <- fit$d
+    if (ngc.type == "dag" & p > 20)
+    {
+      cat("Warning: plot.ngc is not designed for plotting networks of more than 20 covariates.")
+      if (sparsify)
+      {
+        cat("plot.ngc will remove covariates with no edges in order to plot the network.")
+      }
+    }
+    covNames <- fit$covNames
+    group <- fit$group
+    if (ngc.type == "granger")
+    {
+      plot_ring(fit$ring, p, d)
+    }
+    else
+    {
+      plot_network(fit$dag, p, d, group, fit$fitMethod == "lasso", sparsify)
+    }
+    if (!is.null(covNames))
+    {
+      legend(d+1.5, p, paste(1:p, covNames, sep = " - "), cex = labelCex, ncol = p%/%10 + 1, title = "Legend")
+    }
+  }
+
+plot_ring <- function(g, p, d)
+{
+  if (is.null(E(g)$weight))
+  {
+    edgeThickness = 0
+  }
+  else
+  {
+    edgeThickness = E(g)$weight^2/mean(E(g)$weight^2)
+  }
+  #control maximum and minimum thickness
+  edgeThickness <- ifelse(edgeThickness > 0.2, edgeThickness, 0.2)
+  edgeThickness <- ifelse(edgeThickness < 5, edgeThickness, 5)
+  labelCex <- max(min(10/p, 1), 0.3)
+  arrowSize <- 0.5*labelCex
+  plot(simplify(g), layout = layout_in_circle(g),  vertex.label = V(g)$names,
+       edge.arrow.size = arrowSize, vertex.shape = "none", edge.width = edgeThickness)
+}
+
+
+plot_network <- function(g, p, d, group =  NULL, signed = TRUE, sparsify = FALSE, title = NULL)
+{
+  edgeTails <- tail_of(g, E(g))
+  edgeHeads <- head_of(g, E(g))
+  if (sparsify)
+  {
+    nodes <- as.numeric(unique(c(edgeHeads%%p, edgeTails%%p)))
+    nodes[nodes==0] <- p
+    nodes <- sort(nodes)
+    toRemove <- (1:p)[-nodes] + rep(seq(0, p*d, p), each = p - length(nodes))
+    g <- delete_vertices(g, toRemove)
+    p <- length(nodes)
+    vertexLabels <- rep(nodes, d+1)
+  }
+  else
+  {
+    vertexLabels <- rep(1:p, d+1)
+  }
+  xcoords = rep(1:(d+1), each=p)
+  ycoords = rep(p:1, d+1) 
+  layout_matrix = matrix(c(xcoords, ycoords), ncol=2)
+  groupList <- NULL
+  if (!is.null(group))
+  {
+    groupList <- lapply(unique(group),function(x){which(group==x)})
+  }
+  par(mar=c(2.5, 2.5, 2.5, 2.5))
+  if (signed)
+  {
+    edgeColor = ifelse(E(g)$weight > 0, "blue", "red")
+  }
+  else
+  {
+    edgeColor = NULL
+  }
+  if (is.null(E(g)$weight))
+  {
+    edgeThickness = 0
+  }
+  else
+  {
+    edgeThickness <- E(g)$weight^2/mean(E(g)$weight^2)
+  }
+  #control maximum and minimum thickness
+  edgeThickness <- ifelse(edgeThickness > 0.2, edgeThickness, 0.2)
+  edgeThickness <- ifelse(edgeThickness < 5, edgeThickness, 5)
+  labelCex <- max(min(10/p, 1), 0.3)
+  arrowSize <- 0.5*labelCex
+  #curve edges that are more than 1 lag
+  edgeCurvature <- (edgeTails <= p*(d-1))*0.25
+  edgeCurvature <- edgeCurvature*(-1)^((head_of(g, E(g)) %% p) < (edgeTails %% p))
+  aRatio <- ((d+3)/p)/2
+  plot(g, asp = aRatio, layout = layout_matrix, main = title,
+       mark.groups = groupList, mark.border = NA,
+       vertex.label.cex = labelCex,
+       vertex.label = vertexLabels, vertex.shape = "none",
+       edge.color = edgeColor, edge.width = edgeThickness,
+       edge.arrow.size = arrowSize, edge.curved = edgeCurvature,
+       rescale = FALSE, xlim = c(0, d+2), ylim = c(0, p))
+  text(0, -0.25*labelCex, "Lag", cex = labelCex)
+  lagStep <- ifelse(d < 10, 1, 5)
+  for (i in seq(lagStep, d, lagStep))
+  {
+    text(i, -0.25*labelCex, d-i+1, cex = labelCex)
   }
 }
 ```
 
-## Creating ego networks for each node at different time chunks
+```{r, fig.width=8, fig.height=8}
+for(i in 1:length(op[[2]])){
+  V(op[[2]][[i]]$ring)$names <- cn
+  plot.ngc(op[[2]][[i]] , "granger")
+}
+
+```
+
+
 
 ```{r}
 subGrph <- list()
@@ -486,7 +1560,7 @@ for(i in 1:(Nbrk+1)){
   # for(j in 1:length(subGrph[[i]])){
   #   plot.igraph(subGrph[[i]][[j]])
   # }
-
+  
 }
 
 

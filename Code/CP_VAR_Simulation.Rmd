@@ -196,31 +196,31 @@ $$
 ```{r}
 ## Section 1
 mu.vec1 = c(1,1,1,1)
-pi1 = matrix(c(0.001, 0.5, 0.5, 0.001,
-               0.001, 0.001, 0.5, 0.001,
-               0.001, 0.001, 0.001, 0.8,
-               0.5, 0.9, 0.001, 0.001),4,4, byrow = TRUE)
+pi1 = matrix(c(0.0001, 0.5, 0.5, 0.0001,
+               0.0001, 0.0001, 0.5, 0.0001,
+               0.0001, 0.0001, 0.0001, 0.8,
+               0.5, 0.9, 0.0001, 0.0001),4,4,byrow = TRUE)
 c.vec1 = as.vector((diag(4)-pi1)%*%mu.vec1)
 B1<-cbind(c.vec1, pi1)
 var1 <- VAR.sim(B=B1, n=200, include="const", 
                 lag =1)
 ## Section 2
-mu.vec2 = c(5,5,5,5)
-pi2 = matrix(c(0.001, 0.001, 0.001, 0.001,
-               0.001, 0.001, 0.7, 0.001,
-               0.5, 0.001, 0.001, 0.8,
-               0.5, 0.9, 0.001, 0.001),4,4, byrow = TRUE)
-c.vec2 = as.vector((diag(4)-pi2)%*%mu.vec2)
+mu.vec2 = c(2.5,2.5,2.5,2.5)
+pi2 = matrix(c(0.0001, 0.3, 0.0001, 0.0001,
+               0.0001, 0.0001, 0.7, 0.0001,
+               0.5, 0.0001, 0.0001, 0.8,
+               0.5, 0.9, 0.0001, 0.0001),4,4, byrow = TRUE)
+c.vec2 = as.vector((diag(4) - pi2)%*%mu.vec2)
 B2<-cbind(c.vec2, pi2)
 var2 <- VAR.sim(B = B2, n = 200, include = "const", 
                 lag = 1, 
                 starting = matrix(var1[200,], 1,4))
 ## Section 3
-mu.vec3 = c(2,2,2,2)
-pi3 = matrix(c(0.001, 0.001, 0.001, 0.4,
-               0.6, 0.001, 0.7, 0.001,
-               0.7, 0.001, 0.001, 0.8,
-               0.001, 0.9, 0.001, 0.001),4,4, byrow = TRUE)
+mu.vec3 = c(1.5,1.5,1.5,1.5)
+pi3 = matrix(c(0.0001, 0.0001, 0.0001, 0.4,
+               0.6, 0.0001, 0.7, 0.0001,
+               0.7, 0.0001, 0.0001, 0.8,
+               0.0001, 0.9, 0.0001, 0.0001),4,4, byrow = TRUE)
 c.vec3 = as.vector((diag(4)-pi3)%*%mu.vec3)
 B3<-cbind(c.vec3, pi3)
 var3 <- VAR.sim(B = B3, n = 200, include="const", 
@@ -229,14 +229,16 @@ var3 <- VAR.sim(B = B3, n = 200, include="const",
 #cov.mat = matrix(c(1,0.5,0.5,1),2,2)
 var <- rbind(var1, var2, var3)
 ts.plot(var, type= "l", col=c(1,2,3,4))
-#ts.plot(var[,c(1,2)], type= "l", col=c(1,2))
-#op <- VAR(var, p = 1, type = "const")
-#summary(op)
-# grangertest(y = var[,1], x = var[,2])
-# grangertest(y = var[,2], x = var[,1])
-# grangertest(y = var[,3], x = var[,4])
-# grangertest(y = var[,4], x = var[,3])
-# grangertest(y = var[,4], x = var[,2])
+colnames(var) <- paste0("y",1:4)
+var <- data.frame(var)
+var$seq <- 1:dim(var)[1]
+var %>%
+  pivot_longer(!seq) %>%
+  ggplot()+
+  geom_line(aes(x = seq, y = value, color =name))+
+  geom_vline(xintercept = c(200,400))+
+  facet_wrap(~name) +theme_minimal()
+
 ```
 
 ## Univariate changepoint detection
@@ -247,19 +249,22 @@ ts.plot(var, type= "l", col=c(1,2,3,4))
 bp_str1 <-breakpoints(var[,1] ~ 1)
 plot(bp_str1)
 bp1 <- breakpoints(bp_str1, breaks = 3)
+summary(bp1)
 
 bp_str2 <-breakpoints(var[,2] ~ 1)
 plot(bp_str2)
 bp2 <- breakpoints(bp_str2, breaks = 3)
+summary(bp2)
 
 bp_str3 <-breakpoints(var[,3] ~ 1)
 plot(bp_str3)
 bp3 <- breakpoints(bp_str3, breaks = 3)
+summary(bp3)
 
 bp_str4 <-breakpoints(var[,4] ~ 1)
 plot(bp_str4)
 bp4 <- breakpoints(bp_str4, breaks = 3)
-summary(bp1)
+summary(bp4)
 ```
 
 

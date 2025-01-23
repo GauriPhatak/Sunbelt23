@@ -267,9 +267,9 @@ NWSimBin <- function(nc, k,  pC, N, pClust, B, o, dist,dir,
     binVal <- matrix(ncol = k, nrow = N, NA)
     for (i in 1:nc) {
       for (j in 1:k) {
-        binVal[which(as.numeric(net %v% 'Cluster') == i), j] <- rbinom(length(which(as.numeric(
-          net %v% 'Cluster'
-        ) == i)), 1, pC[i, j])
+        binVal[which(as.numeric(net %v% 'Cluster') == i), j] <- rbinom(length(which(as.numeric(net %v% 'Cluster') == i)), 
+                                                                       1, 
+                                                                       pC[i, j])
       }
     }
     for (j in 1:k) {
@@ -283,9 +283,9 @@ NWSimBin <- function(nc, k,  pC, N, pClust, B, o, dist,dir,
     
     for (i in 1:nc) {
       for (j in 1:o) {
-        contVal[which(as.numeric(net %v% 'Cluster') == i), j] <- rnorm(length(which(as.numeric(
-          net %v% 'Cluster'
-        ) == i)), dist[i, j][[1]][[1]], dist[i, j][[1]][[2]])
+        contVal[which(as.numeric(net %v% 'Cluster') == i), j] <- rnorm(length(which(as.numeric(net %v% 'Cluster') == i)), 
+                                                                       dist[i, j][[1]][[1]], 
+                                                                       dist[i, j][[1]][[2]])
       }
     }
     for (j in 1:o) {
@@ -298,8 +298,8 @@ NWSimBin <- function(nc, k,  pC, N, pClust, B, o, dist,dir,
     net ~ nodemix("Cluster", levels = TRUE, levels2 = TRUE),
     nsim = 1,
     coef = prob2logit(c(B)),
-    control = ergm::control.simulate(MCMC.burnin = 10000, MCMC.interval =
-                                       1000)
+    control = ergm::control.simulate(MCMC.burnin = 10000, 
+                                     MCMC.interval = 1000)
   )
   return(g.sim)
 }
@@ -316,9 +316,8 @@ mode <- function(x) {
   which.max(tabulate(x))
 }
 
-
-
 ## Network generation code
+
 SetBinarycov <- function(G, k, N,nc, k_start, Cnew,connType, pC,
                          CovNamesLP, missing) {
   ## Based on the probability matrix pC assign indicates the binary assignment of covariates to a community
@@ -567,6 +566,7 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
 }
 
 ## Graph Community Weight updates
+
 GraphComntyWtUpdt <- function(f_u,h_u,h_neigh, h_sum){
   ## First part of log likelihood of G based on the structure of the network
   
@@ -592,8 +592,8 @@ CmntyWtUpdt <- function(f_u ,h_u ,h_neigh ,h_sum ,X_u = NULL ,W = NULL ,
                         nc ,start ,end ,mode,dir ) {
   if(printFlg == TRUE){
   }
-  tv <- 0.000001
-  
+  lb <- 0.000001
+  ub <- 1
   ## Gradient function to update log likelihood of G
   #First part of Likelihood based on graph only.
   llG <- GraphComntyWtUpdt(f_u,h_u,h_neigh,h_sum)#Fvmat, Fvnot)
@@ -625,11 +625,12 @@ CmntyWtUpdt <- function(f_u ,h_u ,h_neigh ,h_sum ,X_u = NULL ,W = NULL ,
   
   ## Function to update the community weights vector using non negative matrix factorization
   f_u_new <- f_u + (alpha * (t(llG) + llX[2:(nc+1)] + llZ[2:(nc+1)]))
-  if(sum(is.nan(f_u_new))>0){
+  if(sum(is.nan(f_u_new)) > 0){
     print("error error")
   }
   
-  f_u_new[f_u_new < 0] <- tv
+  f_u_new[f_u_new < 0] <- lb
+  #f_u_new[f_u_new > 1] <- ub
   return(f_u_new)
 }
 
@@ -744,6 +745,7 @@ BincovCmntyWtUpdt <- function(ncoef, f_u,h_u, W, X_u, dir){
 }
 
 ## Continuous covariates community weights
+
 SigmaSqCalc <- function(Z, beta, Ftot, Htot, missVals,dir) {
   sigmaSq <- rep(0, dim(beta)[1])
   if(dir == "directed"){
@@ -937,7 +939,6 @@ Lg_cal <- function(G, Ftot, Htot,Eneg,epsilon, dir){
   return(S1)
 }
 
-#G,Ftot,Htot,Win, Wout,X_in, X_out,betain, betaout,Z_in, Z_out, sigmaSq,alphaLL
 findLLDir <- function(G,  Ftot, Htot, Win = NA, Wout = NA, X_in = NA,
                       X_out = NA,betain = NULL, betaout = NULL,
                       Z_in = NA, Z_out = NA,sigmaSqin = NA,sigmaSqout = NA, 
@@ -1277,5 +1278,3 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     )
   )
 }
-
-

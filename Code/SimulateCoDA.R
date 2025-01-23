@@ -15,7 +15,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     printFlg <<- FALSE
     Sim <- data.frame(S[simvec,])
     ## Number of simulations
-    Nsim <- Sim$Nsim
+    Nsim <- 1#Sim$Nsim
     
     ##Directed graph yes? No?
     dir <- Sim$DirType
@@ -58,6 +58,8 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     nc <- Sim$nc
     ## Learning rate forgradient descent
     alpha <- Sim$alpha
+    ## Seperate linear regression alpha
+    alphaLin <- Sim$alphaLin
     
     ##loglik calculation using weight for graph vs covariates
     alphaLL <- Sim$alphaLL
@@ -114,6 +116,9 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     opf_StoRegcov <- list()
     opf_noCov <- list()
     
+    ## Deciding penalty type
+    penalty <- Sim$penalty
+    
     ## Delta value threshold for assigning communities
     delta <- getDelta(N)
     
@@ -122,7 +127,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     lvl <- 1
     ncVal <- nc
     
-    bigN <- Sim$bigN
+    bigN <- 1#Sim$bigN
     Gtot<- list() 
     GTlogLikcovtot<- list() 
     GTlogLiknoCovtot <- list()
@@ -225,24 +230,25 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
                                    lambda,thresh,nitermax,orig,randomize = TRUE,
                                    CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
                                    alphaLL = NULL,test = TRUE,missing = missing, covOrig = orig_Cov, 
-                                   epsilon =0, impType = "Reg" )
+                                   epsilon =0, impType = "Reg", alphaLin, penalty )
             if(covTypes == "continunous"){
               opf_StoRegcov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
                                            lambda,thresh,nitermax,orig,randomize = TRUE,
                                            CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
-                                           alphaLL = NULL,test = TRUE,missing = missing, covOrig = orig_Cov, 
-                                           epsilon =0, impType = "StochasticReg" )
+                                           alphaLL = NULL,test = TRUE,missing = missing, covOrig = orig_Cov,
+                                           epsilon =0, impType = "StochasticReg", alphaLin, penalty )
             }
             
             tme <- Sys.time() - start
             print(paste0("Total time take algo with covariates", tme))
             ## Algorithm without covariates + possible missing data
             start <- Sys.time()
-            opf_noCov[[lvl]] <- CoDA(G,nc,k = c(0, 0),o = c(0, 0),N,alpha,
-                                     lambda,thresh ,nitermax,orig,randomize = TRUE,
-                                     CovNamesLinin = c(),CovNamesLinout = c(),CovNamesLPin = c(),
-                                     CovNamesLPout = c(),dir,alphaLL = NULL,test = TRUE,
-                                     missing = missing, covOrig = orig_Cov, epsilon =0, impType = "")
+            opf_noCov[[lvl]] <- 0
+              # CoDA(G,nc,k = c(0, 0),o = c(0, 0),N,alpha,
+              #                        lambda,thresh ,nitermax,orig,randomize = TRUE,
+              #                        CovNamesLinin = c(),CovNamesLinout = c(),CovNamesLPin = c(),
+              #                        CovNamesLPout = c(),dir,alphaLL = NULL,test = TRUE,
+              #                        missing = missing, covOrig = orig_Cov, epsilon =0, impType = "", alphaLin, penalty)
             tme <- Sys.time() - start
             print(paste0("Total time take algo without covariates", tme))
             
@@ -258,14 +264,13 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     opf_noCovtot <- opf_noCov
   }
   
-  return(list(opf_Regcovtot, opf_StoRegcovtot, opf_noCovtot,Gtot, GTlogLikcovtot, GTlogLiknoCovtot))
+  return(list(opf_Regcovtot, opf_noCovtot,opf_StoRegcovtot,Gtot, GTlogLikcovtot, GTlogLiknoCovtot))
   #return(0)
 }
 
-
-lst2 <- SaveCoDASim(simvec = 2, 
+lst3 <- SaveCoDASim(simvec = 2, 
                     sim = TRUE, 
-                    InitParamFile = "/Code/InitParamMiss_Cohesive_MCAR_C15.rds")
+                    InitParamFile = "/Code/InitParamMiss_Cohesive_MCAR.rds")
 
 # lst2 <- SaveCoDASim(simvec = 1, 
 #                     sim = TRUE, 
@@ -273,80 +278,6 @@ lst2 <- SaveCoDASim(simvec = 2,
 # 
 # lst3 <- SaveCoDASim(simvec = 1, 
 #                     sim = TRUE, 
-#                     InitParamFile = "/Code/InitParamMiss_2-Mode.rds")
+#                     InitParamFile = "/Code/InitParamMiss _2-Mode.rds")
 
 #saveRDS(lst, paste0(file,"_OP", simvec,".rds"))
-## Real Data OLD CODE:
-
-### Use the igraph for week 50-2020
-# if (sim == FALSE) {
-#   iGraph_op <- readRDS("Code/iGraph_NW.rds")
-#   G <- iGraph_op[["50-2020"]]
-#   G <- as.undirected(G, mode = "collapse")
-#   covTypes <- c()#c("continuous")#c("binary")#c("continuous")
-#   CovNamesLin <- c()#c("covVal")
-#   CovNamesLP <- c()
-#   k <- length(CovNamesLP)
-#   o <- length(CovNamesLin)
-#   nc <- c(3, 4)#4
-#   alpha <- c(0.0005, 0.0008, 0.001)#c(0.0002,0.0005,0.0008,0.001)#0.0002
-#   alphaLL <- c(1)#c(0.7)#c(0, 0.3, 0.5, 0.7, 0.9, 1)#c(0.2,0.5,0.7)#0.5
-#   lambda <- 0.001
-#   thresh <- 0.0001
-#   randomize = TRUE
-#   N <- gorder(G)
-#   #RegSpectralClust(G,nc)
-#   cov <- V(G)$covVal
-#   cov[is.na(V(G)$covVal)] <- mean(V(G)$covVal, na.rm  = TRUE)
-#   cov <- as.matrix(cov, ncol = 1)
-#   # Setting iterations if log likelihood is taking too long
-#   nitermax <- 800
-#   Nsim <- 10
-#   #opf <- list()
-#   ARIV <- rep(0, Nsim)
-#   arilst <- list()
-#   ## saving the final cluster list
-#   cLst <- c(V(G)$Cluster)
-#   mse <- matrix(nrow = Nsim, ncol = o + k, 0)
-#   lvl <- 1
-#   for (a3 in nc) {
-#     ncVal <- a3
-#     for (a1 in alphaLL) {
-#       for (a2 in alpha) {
-#         for (j in 1:Nsim) {
-#           print(paste0(
-#             "iteration ",
-#             lvl,
-#             " alpha ",
-#             a2,
-#             " alphaLL ",
-#             a1,
-#             " num cmnty ",
-#             ncVal
-#           ))
-#           orig <- RegSpectralClust(G, ncVal)
-#           origCov <-  CovAssistedSpecClust(G, cov, ncVal, alpha = 0.5)
-#           op <- CESNA(
-#             G,
-#             ncVal,
-#             k,
-#             o,
-#             N,
-#             a2,
-#             lambda,
-#             thresh,
-#             nitermax,
-#             randomize,
-#             orig,
-#             CovNamesLin,
-#             CovNamesLP,
-#             a1
-#           )
-#           opf[[lvl]] <- op
-#           lvl <- lvl + 1
-#         }
-#       }
-#     }
-#   }
-#   #EG <- expand.grid(1:Nsim, alpha, alphaLL, nc)
-# }
