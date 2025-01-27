@@ -940,7 +940,7 @@ for(i in 1:dim(ww_samp)[2]){
   
   ## Finding breakpoints without any lag considerations
   op_bp[[i]] <- breakpoints(breakpoints(y ~ y_lag1 + y_lag2, h =dim(ww_samp)[2], data = bpIp), breaks = Nbrk)
-  
+  print(confint(breakpoints(y ~ 1, h =dim(ww_samp)[2], data = bpIp, breaks = Nbrk)))
   ## finding breakpoints with lag consideration
   bp_nat <- rbind(bp_nat, cbind(col[i,1],col[i,2], c(1,op_bp[[i]]$breakpoints, dim(ww_samp)[1])))
   
@@ -958,15 +958,74 @@ op_bpavg <- breakpoints(breakpoints(y ~ y_lag1 + y_lag2, h =dim(ww_samp)[2], dat
 colnames(ww_ip) <- colnames(ww_samp)
 colnames(bp_nat) <- c("Location", "County","Breakpoint")
 bp_nat$Breakpoint <- as.numeric(bp_nat$Breakpoint)
+
+
+## Adding information about the breakpoint numbering
+bp_nat$brkpt <- rep(0:6, times = Nval)
+
+bp_nat <- bp_nat %>% group_by(brkpt) %>%
+  arrange(Breakpoint)
+
+highest_rows <- bp_nat %>%
+  filter(!(Breakpoint == 1) & !(Breakpoint ==229)) %>%
+  group_by(brkpt) %>%
+  slice_max(Breakpoint) 
+# Select lowest row within each group
+lowest_rows <- bp_nat %>%
+    filter(!(Breakpoint == 1) & !(Breakpoint ==229)) %>%
+  group_by(brkpt) %>%
+  slice_min(Breakpoint) 
+# To combine results, you can use `bind_rows`:
+combined_results <- bind_rows(highest_rows, lowest_rows)
+
+bp_nat$Location <- factor(bp_nat$Location, levels = bp_nat$Location[bp_nat$brkpt == 2])
+
+
+
+
 bp_nat %>% ggplot() +
   geom_point(aes(y = interaction(Location, County), x = Breakpoint, group = Location)) +
   geom_line(aes(y = interaction(Location, County), x = Breakpoint, group = Location)) +
+  geom_vline(data=highest_rows, aes(xintercept = Breakpoint), color = "darkblue", linetype = 2)+
+    geom_vline(data=lowest_rows, aes(xintercept = Breakpoint), color = "darkred", linetype = 2)+
   scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0,dim(ww_samp)[1])) + 
   ggtitle("Breakpoint distribution for locations") + 
   ylab("Locations") + xlab("Breakpoints") +
   theme_minimal()
-ggsave("brkpts.pdf")
+
+bp_nat %>% ggplot() +
+  geom_point(aes(y = interaction(Location), x = Breakpoint, group = Location, color = factor(brkpt))) +
+  geom_line(aes(y = interaction(Location), x = Breakpoint, group = Location), alpha =0.3) +
+  geom_vline(data=highest_rows, aes(xintercept = Breakpoint), color = "darkblue", linetype = 2)+
+    geom_vline(data=lowest_rows, aes(xintercept = Breakpoint), color = "darkred", linetype = 2)+
+  scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0,dim(ww_samp)[1])) + 
+  ggtitle("Breakpoint distribution for locations") + 
+  ylab("Locations") + xlab("Breakpoints") +
+  theme_minimal()
+#ggsave("brkpts.pdf")
 ```
+
+
+## Number of segments and length of segments of structural change models
+
+```{r}
+Tv <- 229
+h <- 27
+m <- 5
+
+## total segments
+G1 <- Tv*(Tv+1)/2
+
+## Considering the size of sgements
+
+G2 <- (h-1)*Tv -(h-2)*(h-1)/2
+
+## Final reduced segments to consider
+G3 <- Tv*(h-1)-m*h*(h-1)-(h-1)^2-h*(h-1)/2
+
+
+```
+
 
 ## using the mcp package to find the chnage points
 

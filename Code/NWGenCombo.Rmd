@@ -1,0 +1,312 @@
+---
+title: "Network Generation Combinations."
+output: pdf_document
+date: "2024-12-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+getwd()
+#source("CoDACov.R")
+```
+
+## Setting up the parameters
+
+```{r}
+NWConf <- function(simvec=2, InitParamFile, t){
+  
+  #simvec <- 1
+  #InitParamFile <- "InitParamMiss_Cohesive_MAR.rds"
+  S <- as.data.frame(readRDS(paste0(InitParamFile,".rds")))
+  Sim <- data.frame(S[simvec,])
+  ## Number of simulations
+  Nsim <- Sim$Nsim
+  ##Directed graph yes? No?
+  dir <- "directed"#Sim$DirType
+  ## Number of in and out binary covariates
+  k_out <- Sim$k_out
+  k_in <- Sim$k_in
+  k <- k_out + k_in
+  ## Number of in and out continuous covariates
+  o_out <- Sim$o_out
+  o_in <- Sim$o_in
+  o <- o_in + o_out
+  ## Types of covariates
+  covTypes <- Sim$covType#c( "continuous")
+  ## Naming the binary covariates
+  CovNamesLPin <- c()
+  CovNamesLPout <- c()
+  CovNamesLinin <- c()
+  CovNamesLinout <- c()
+  if(k_in > 0 ){CovNamesLPin <- paste0("bvin", 1:k_in)}
+  if(k_out > 0 ){CovNamesLPout <- paste0("bvout", 1:k_out)}
+  
+  ## Naming the continuous covariates
+  if(o_in > 0 ){CovNamesLinin <- paste0("cvin", 1:o_in)}
+  if(o_out > 0 ){CovNamesLinout <- paste0("cvout", 1:o_out)}
+  
+  ## Number of communities
+  nc <- Sim$nc
+  ## Learning rate forgradient descent
+  alpha <- Sim$alpha
+  ##loglik calculation using weight for graph vs covariates
+  alphaLL <- Sim$alphaLL
+  ##penalty of logistic regression
+  lambda <- Sim$lambda
+  ## Switching to percent increase. Using 0.01% increase. 
+  ## Change in loglikelihood as stopping criterion
+  thresh <- Sim$thresh
+  ## Randomize the sequence of node update or not
+  randomize <- Sim$randomize
+  ## Percent of missing data in covariates
+  missing <- Sim$missing[[1]]
+  ## Number of nodes
+  N <- Sim$N
+  # Probability of cluster assignment
+  pClust <- Sim$pClust[[1]]
+  ## Probability for covariate simulation for binary covarites
+  pC <- Sim$pC[[1]]
+  ## Probability for covariate simulation for continuous covarites
+  dist <- Sim$dist[[1]]
+  ## Probability of connection between two nodes of the same community.
+  pConn <- Sim$pConn[[1]]
+  ## Baseline probability of connection
+  epsilon <- Sim$epsilon
+  ## Percentage of outgoing edges in each cluster
+  dirPct <- Sim$dirPct[[1]]
+  #dirPctInt <- c(1,0.001,0.001) #Percentage of outgoing inter cluster edges
+  
+  ## Type of network
+  Type <- Sim$Type
+  
+  ## Cluster Overlap proportion
+  pClustOL <- Sim$pClustOL[[1]]
+  
+  #beta distribution parameters
+  a <- Sim$a
+  b <- Sim$b
+  
+  ## Maximum number iterations in the stopping criterion
+  nitermax <- Sim$nitermax
+  ## All test output is saved in these lists
+  opf_cov <- list()
+  opf_noCov <- list()
+  ## Delta value threshold for assigning communities
+  delta <- getDelta(N)
+
+  NWlst <- genBipartite(N,nc,pClust,k_in,k_out,o_in,o_out,
+                        pC,dist,covTypes,
+                        CovNamesLPin,CovNamesLPout,CovNamesLinin,
+                        CovNamesLinout,pConn,dir= "directed",
+                        dirPct,epsilon,missing, a, b, Type, pClustOL)
+  G_orig <- NWlst[[1]]
+  orig_Cov <- NWlst[[2]]
+  F_u <- NWlst[[3]]
+  H_u <- NWlst[[4]]
+  covar <- data.frame(vertex_attr(G_orig))
+  pdf(file=paste0(t,".pdf"))
+  par(mar=c(0,0,0,0)+.55)
+  igraph::plot.igraph(G_orig,vertex.label = NA, vertex.size = 5,
+                            vertex.color = as.factor(V(G_orig)$Cluster),
+                            edge.arrow.size= 0.1, edge.color = "grey28", 
+                           main  = t)
+  dev.off()
+  
+  
+
+  return(list(NWlst))
+  
+}
+
+```
+
+## Networks node distribution and Weight matrix initializations
+
+
+## Cohesive network
+
+### Non overlapping network
+
+```{r}
+
+NWlst <- NWConf(simvec = 1 , 
+                InitParamFile = "InitParamMiss_Cohesive_MCAR",
+                t = "No overlap")
+
+```
+
+
+### Overlapping network
+
+
+#### Two at a time
+
+```{r}
+
+NWlst <- NWConf(simvec = 37 , 
+                InitParamFile = "InitParamMiss_Cohesive_MCAR",
+                t = "Two cluster overlaps")
+
+```
+
+#### Three all together
+
+```{r}
+NWlst <- NWConf(simvec = 73 , 
+                InitParamFile = "InitParamMiss_Cohesive_MCAR",
+                t = "Three cluster overlaps")
+
+```
+
+
+#### All overlap
+
+```{r}
+NWlst <- NWConf(simvec = 109 , 
+                InitParamFile = "InitParamMiss_Cohesive_MCAR",
+                t = "All cluster overlaps")
+
+```
+
+### Nested Network
+
+```{r}
+## for com b and c nested in A fully use pClustOL value c(0, 1, 0, 1, 0, 0)
+
+NWlst <- NWConf(simvec = 2 ,
+                InitParamFile = "InitParamMiss_Nested_MCAR",
+                t = "Nested network")
+#gbg <- as.data.frame(vertex_attr(NWlst[[1]]))
+```
+
+## 2 - mode networks
+
+```{r}
+## Community A is the 2 -mode community with edges going from b to a and b and c are cohesive network.
+#alpha <-  5, beta 5
+NWlst <- NWConf(simvec = 1 , 
+                InitParamFile = "InitParamMiss_2-Mode_MCAR",
+                t = "2-Mode networks")
+#gbg <- as.data.frame(vertex_attr(NWlst[[1]]))
+
+```
+
+
+
+```{r}
+library(pdf)
+library("raster")
+png(filename="GraphPlots.png")
+par(mar=c(0,0,0,0)+.5)
+plot(0:2, 0:2, type = "n", xaxt = "n", yaxt = "n", xlab = "", ylab = "")
+rasterImage(readPNG(source="No overlap.png"), 0, 1, 1, 2)
+rasterImage(readPNG(source="Two cluster overlaps.png"), 1, 1, 2, 2)
+rasterImage(readPNG(source="Three cluster overlaps.png"), 0, 0, 1, 1)
+rasterImage(readPNG(source="All cluster overlaps.png"), 1, 0, 2, 1)
+dev.off()
+
+library(grid)
+library(gridExtra)
+img1 <-  rasterGrob(as.raster(readPNG("Nested network.png")), interpolate = FALSE)
+img2 <-  rasterGrob(as.raster(readPNG("2-Mode networks.png")), interpolate = FALSE)
+png(filename="Nested_2Mode.png")
+grid.arrange(img1, img2, ncol = 2)
+dev.off()
+#ggsave("Nested_2Mode.png")
+# par(mar=c(0,0,0,0)+.5)
+# plot(0:2, 0:2, type = "n", xaxt = "n", yaxt = "n", xlab = "", ylab = "")
+# #rasterImage(raster1, xleft = 0, xright = 1, ybottom = 0, ytop = 1)
+# rasterImage(readPNG(source="Nested network.png"), 0, 1, 1, 2)
+# rasterImage(readPNG(source="2-Mode networks.png"), 1, 1, 2,2)
+
+```
+
+```{r}
+## combing pdf images
+#getwd()
+#library(pdftools)
+#library(magick)
+#library(extrafont)
+#font_import()
+#loadfonts(device = "win")
+panel.ul <- image_read_pdf("No overlap.pdf")
+panel.ur <- image_read_pdf("Two cluster overlaps.pdf")
+panel.ll <- image_read_pdf("Three cluster overlaps.pdf")
+panel.lr <- image_read_pdf("All cluster overlaps.pdf")
+
+panelU <- c(panel.ul,panel.ll ) %>% 
+    image_append(stack =TRUE)
+panelL <- c(panel.ur, panel.lr) %>% 
+    image_append(stack =TRUE)
+whole <- image_append(c(panelU, panelL))
+
+pdf(file="GraphPlots.pdf")
+plot(whole) # plot the external object generated in ImageMagick to R's plotting device
+dev.off()
+#savePlot(filename = "overlapTypes", type = "pdf")
+
+
+library(magick)
+panell <- image_read_pdf("Nested network.pdf")
+panelr <- image_read_pdf("2-Mode networks.pdf")
+whole2 <- image_append(c(panell, panelr))
+pdf(file="Nested_2Mode.pdf")
+plot(whole2) # plot the external object generated in ImageMagick to R's plotting device
+dev.off()
+
+```
+
+
+## Bipartite to unipartite network projection.
+
+```{r}
+library(igraph)
+Bi_edges <- cbind(c("a","a","3","a","1","2","a","a","5","b","b","8"),
+                  c("1","2","a","4","a","a","5","6","b","6","7","b"))
+
+g <- graph_from_data_frame(Bi_edges, directed = TRUE)
+
+bipartite_mapping(g)#make_bipartite_graph(rep(0:1, length.out = 10), directed =TRUE)
+V(g)$type <- bipartite_mapping(g)$type 
+
+plot(g)
+#"a" "3" "1" "2" "5" "b" "8" "4" "6" "7"
+V(g)$color <- c("dodgerblue", rep("salmon4",4),"dodgerblue4",rep("salmon4",4))
+#ifelse(V(g)$type, "salmon4", "lightblue")
+V(g)$shape <- ifelse(V(g)$type, "circle", "square")
+E(g)$color <- "gray40"
+
+
+pdf(file="Bipartite.pdf")
+par(mar=c(0,0,0,0)+.55)
+plot(g, vertex.label.cex = 0.8, layout = layout.bipartite,
+     vertex.label.color = "black", edge.arrow.size= 0.5, 
+     edge.arrow.color = "darkred")
+dev.off()
+
+proj_edges <- rbind(c("3","2"),c("3","1"),c("3","4"),c("3","6"),
+                    c("3","5"),c("2","3"),c("1","4"),c("1","6"),
+                    c("1","5"),c("5","6"),c("5","7"), c("8","7"),c("8","6"))
+
+p_j <- graph_from_data_frame(proj_edges, directed=TRUE)
+# p_g <- bipartite_projection(g)
+grps <- list(a = as.character(1:6), b = as.character(5:8))
+pdf(file= "Projection.pdf")
+par(mar=c(0,0,0,0)+.55)
+plot(p_j, vertex.label.cex = 0.8,mark.groups = grps ,
+      vertex.label.color = "black", edge.arrow.size= 0.5, vertex.color = "salmon4",
+      edge.arrow.color = "darkred", mark.col=c("dodgerblue", "dodgerblue4"),
+     mark.border = c("dodgerblue", "dodgerblue4"))
+dev.off()
+
+eg <- watts.strogatz.game(1, 100, 1, 0.35, loops = FALSE, multiple = FALSE)
+pdf(file= "GraphEg.pdf")
+par(mar=c(0,0.2,0,0.2)+.55)
+plot(eg,vertex.color = "darkorange", vertex.label= NA, edge.arrow.size=0.02,vertex.size = 0.7)
+dev.off()
+```
+
+
+
+
+

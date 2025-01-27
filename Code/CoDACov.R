@@ -565,27 +565,6 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   return(list(g.sim, covVal_orig, F_u, H_u))
 }
 
-## Graph Community Weight updates
-
-GraphComntyWtUpdt <- function(f_u,h_u,h_neigh, h_sum){
-  ## First part of log likelihood of G based on the structure of the network
-  
-  a <- exp(-1 * (f_u %*% t(h_neigh)))
-  b <- a / (1 - a)
-  llG_1 <- t(h_neigh) %*% t(b)
-  ## 2nd part of log likelihood of G
-  llG_2 <-  as.matrix(h_sum - t(h_u) - as.matrix(colSums(h_neigh)))#as.matrix(colSums(Fvnot))
-  ## Total llG: This math has been verified
-  llG <- llG_1 - llG_2
-  ## experimental scaled version of the above llog lik
-  scale <- 1
-  llG <- scale * llG
-  if(sum(is.na(llG))>0){
-    print("graph comnty error")
-  }
-  
-  return(llG)
-}
 
 CmntyWtUpdt <- function(f_u ,h_u ,h_neigh ,h_sum ,X_u = NULL ,W = NULL ,
                         Z_u = NULL, beta = NULL ,sigmaSq ,alpha ,alphaLL ,
@@ -632,6 +611,29 @@ CmntyWtUpdt <- function(f_u ,h_u ,h_neigh ,h_sum ,X_u = NULL ,W = NULL ,
   f_u_new[f_u_new < 0] <- lb
   #f_u_new[f_u_new > 1] <- ub
   return(f_u_new)
+}
+
+
+## Graph Community Weight updates
+
+GraphComntyWtUpdt <- function(f_u,h_u,h_neigh, h_sum){
+  ## First part of log likelihood of G based on the structure of the network
+  
+  a <- exp(-1 * (f_u %*% t(h_neigh)))
+  b <- a / (1 - a)
+  llG_1 <- t(h_neigh) %*% t(b)
+  ## 2nd part of log likelihood of G
+  llG_2 <-  as.matrix(h_sum - t(h_u) - as.matrix(colSums(h_neigh)))#as.matrix(colSums(Fvnot))
+  ## Total llG: This math has been verified
+  llG <- llG_1 - llG_2
+  ## experimental scaled version of the above llog lik
+  scale <- 1
+  llG <- scale * llG
+  if(sum(is.na(llG))>0){
+    print("graph comnty error")
+  }
+  
+  return(llG)
 }
 
 updateWtmat <- function(G,Wtm1,Wtm2,mode,s,nc,X,Z,k,o,beta,W,alphaLL,missVals,
