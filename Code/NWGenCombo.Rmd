@@ -280,6 +280,7 @@ E(g)$color <- "gray40"
 pdf(file="Bipartite.pdf")
 par(mar=c(0,0,0,0)+.55)
 plot(g, vertex.label.cex = 0.8, layout = layout.bipartite,
+     edge.color = "gray40",
      vertex.label.color = "black", edge.arrow.size= 0.5, 
      edge.arrow.color = "darkred")
 dev.off()
@@ -295,15 +296,17 @@ pdf(file= "Projection.pdf")
 par(mar=c(0,0,0,0)+.55)
 plot(p_j, vertex.label.cex = 0.8,mark.groups = grps ,
       vertex.label.color = "black", edge.arrow.size= 0.5, vertex.color = "salmon4",
-      edge.arrow.color = "darkred", mark.col=c("dodgerblue", "dodgerblue4"),
+     edge.color = "gray40",
+      #edge.arrow.color = "darkred", 
+     mark.col=alpha(c("dodgerblue", "dodgerblue4"), alpha =0.7),
      mark.border = c("dodgerblue", "dodgerblue4"))
 dev.off()
 
 eg <- watts.strogatz.game(1, 100, 1, 0.35, loops = FALSE, multiple = FALSE)
-pdf(file= "GraphEg.pdf")
+#pdf(file= "GraphEg.pdf")
 par(mar=c(0,0.2,0,0.2)+.55)
 plot(eg,vertex.color = "darkorange", vertex.label= NA, edge.arrow.size=0.02,vertex.size = 0.7)
-dev.off()
+#dev.off()
 ```
 
 

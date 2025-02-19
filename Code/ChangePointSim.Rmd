@@ -825,8 +825,12 @@ df <- dat  %>%
   filter(Study == "OHA") %>% 
   subset(select = c(Date, logCopies, Location, County, Target, Site))
 
-epiweek <- epitools::as.week(df$Date, format  = "%m/%d/%y")
+epiweek <- epiweek(df$Date)#epitools::as.week(df$Date, format  = "%m/%d/%y")
 df$epiweek <- as.numeric(epiweek$week)
+#df$year <- year(as.Date(df$Date, format = "%m/%d/%y"))
+df$year <- epiyear(df$Date)#year(as.Date(df$Date, format = "%m/%d/%y"))
+
+
 df$epimonth <- month(as.Date(df$Date, format = "%m/%d/%y"))
 df$year <- year(as.Date(df$Date, format = "%m/%d/%y"))
 
@@ -901,10 +905,76 @@ for(i in seq(1,length(locNames),by =6)){
           facet_wrap(~name))
 }
 #dev.off()
+x <- 0
+for(i in 1:50){
+  x <- choose(50, i)+x
+}
+x <- x/2
+
+i <- 3
+start <- (i-1)*10000 +1
+end <- i*10000
 
 ```
 
-```{r, fig.width=8, fig.height=8}
+## inspecting the results from breakpoint algorithm 
+
+```{r}
+#Lets try with eugene since  it has the lowest level of missingness
+eu_ip <- na_kalman(df$Eugene)
+  
+euIp <- data.frame(y = eu_ip,
+                     y_lag1 = c(eu_ip[-1], NA),
+                     y_lag2 = c(eu_ip[-c(1:2)], NA,NA)) %>%
+  drop_na()
+  
+eu_op <- breakpoints(y ~ y_lag1 + y_lag2, data = euIp, h =27 )
+
+rr_triangle <- t(plyr::ldply(eu_op$RSS.triang, rbind))
+#data.frame(eu_op$RSS.triang)
+  ## Finding breakpoints without any lag considerations
+op_eu1 <- breakpoints(eu_op, breaks = 1)
+op_eu2 <- breakpoints(eu_op, breaks = 2)
+op_eu3 <- breakpoints(eu_op, breaks = 3)
+op_eu4 <- breakpoints(eu_op, breaks = 4)
+op_eu5 <- breakpoints(eu_op, breaks = 5)
+eu_bp <- c(1,breakpoints(eu_op, breaks =5)$breakpoints,227)
+## finding the coefficients for each change segment
+plot(breakpoints(y ~ 1, data = euIp, h =27 ))
+for(j in 1:5){
+  #op_eu1 <- breakpoints(eu_op, breaks = 1)
+  eu_bp <- c(1,breakpoints(eu_op, breaks = j)$breakpoints,227)
+  print(paste0("For the number of breaks ", j))
+  print(paste("the breakpoints are ", paste0(eu_bp, collapse = " ")))
+
+  for(i in 1:(j+1)){
+    dd <- euIp[eu_bp[i]:eu_bp[i+1],]
+    lm_seg <- lm(y ~ y_lag1 + y_lag2, data=dd)
+    #print(lm_seg$coefficients)
+  }
+}
+eu_opNolag <- breakpoints(y ~ 1, data = euIp, h =27 )
+for(j in 1:5){
+  #op_eu1 <- breakpoints(eu_op, breaks = 1)
+ 
+  eu_bp <- c(1,breakpoints(eu_opNolag, breaks = j)$breakpoints,227)
+  print(paste0("For the number of breaks ", j))
+  print(paste("the breakpoints are ", paste0(eu_bp, collapse = " ")))
+
+  for(i in 1:(j+1)){
+    dd <- euIp[eu_bp[i]:eu_bp[i+1],]
+    lm_seg <- lm(y ~ 1, data=dd)
+    #print(lm_seg$coefficients)
+  }
+}
+
+```
+
+
+
+
+
+```{r, fig.width=8, fig.height=6}
 ## Find locations that have more than 50% missing values.
 Nval <- dim(df)[2]-3#27
 Nbrk <- 5
@@ -930,6 +1000,10 @@ for(i in 1:dim(ww_samp)[2]){
   
   ww_ip[,i] <- na_kalman(ww_samp[,i])
   
+ # bpIp <- data.frame(y = ww_ip[,i],
+  #                   y_lag1 = stats::lag(ww_ip[,i], k=1),#c(ww_ip[-1,i], NA),
+  #                   y_lag2 = stats::lag(ww_ip[,i], k=2)) %>%  #c(ww_ip[-c(1:2),i], NA,NA)) %>%
+   # drop_na()
   bpIp <- data.frame(y = ww_ip[,i],
                      y_lag1 = c(ww_ip[-1,i], NA),
                      y_lag2 = c(ww_ip[-c(1:2),i], NA,NA)) %>%
@@ -939,20 +1013,23 @@ for(i in 1:dim(ww_samp)[2]){
   #plot(op_efp, main =col[i,1])
   
   ## Finding breakpoints without any lag considerations
-  op_bp[[i]] <- breakpoints(breakpoints(y ~ y_lag1 + y_lag2, h =dim(ww_samp)[2], data = bpIp), breaks = Nbrk)
-  print(confint(breakpoints(y ~ 1, h =dim(ww_samp)[2], data = bpIp, breaks = Nbrk)))
+  op_bp[[i]] <- breakpoints(breakpoints(y ~ y_lag1 + y_lag2, 
+                                        h =dim(ww_samp)[2], 
+                                        data = bpIp), 
+                            breaks = Nbrk)
+  #print(confint(breakpoints(y ~ 1, h =dim(ww_samp)[2], data = bpIp, breaks = Nbrk)))
   ## finding breakpoints with lag consideration
   bp_nat <- rbind(bp_nat, cbind(col[i,1],col[i,2], c(1,op_bp[[i]]$breakpoints, dim(ww_samp)[1])))
   
 }
 
 ## finding the changepoint in average data
-bpIpavg <- data.frame(y = avgVal,
-                     y_lag1 = c(avgVal[-1], NA),
-                     y_lag2 = c(avgVal[-c(1,2)], NA,NA)) %>%
-    drop_na()
-#   ## Finding breakpoints without any lag considerations
-op_bpavg <- breakpoints(breakpoints(y ~ y_lag1 + y_lag2, h =dim(ww_samp)[2], data = bpIpavg), breaks = Nbrk)
+# bpIpavg <- data.frame(y = avgVal,
+#                      y_lag1 = c(avgVal[-1], NA),
+#                      y_lag2 = c(avgVal[-c(1,2)], NA,NA)) %>%
+#     drop_na()
+# #   ## Finding breakpoints without any lag considerations
+# op_bpavg <- breakpoints(breakpoints(y ~ y_lag1 + y_lag2, h =dim(ww_samp)[2], data = bpIpavg), breaks = Nbrk)
 #bp_nat <- rbind(bp_nat, cbind("Average","value",c(1,op_bpavg$breakpoints ,dim(ww_samp)[1])))
 
 colnames(ww_ip) <- colnames(ww_samp)
@@ -963,8 +1040,8 @@ bp_nat$Breakpoint <- as.numeric(bp_nat$Breakpoint)
 ## Adding information about the breakpoint numbering
 bp_nat$brkpt <- rep(0:6, times = Nval)
 
-bp_nat <- bp_nat %>% group_by(brkpt) %>%
-  arrange(Breakpoint)
+#bp_nat <- bp_nat %>% group_by(brkpt) %>%
+#  arrange(Breakpoint)
 
 highest_rows <- bp_nat %>%
   filter(!(Breakpoint == 1) & !(Breakpoint ==229)) %>%
@@ -994,13 +1071,13 @@ bp_nat %>% ggplot() +
   theme_minimal()
 
 bp_nat %>% ggplot() +
-  geom_point(aes(y = interaction(Location), x = Breakpoint, group = Location, color = factor(brkpt))) +
+  geom_point(data =  bp_nat[!(bp_nat$Breakpoint == 1 | bp_nat$Breakpoint == 229),] ,aes(y = interaction(Location), x = Breakpoint, group = Location, color = factor(brkpt))) +
   geom_line(aes(y = interaction(Location), x = Breakpoint, group = Location), alpha =0.3) +
-  geom_vline(data=highest_rows, aes(xintercept = Breakpoint), color = "darkblue", linetype = 2)+
-    geom_vline(data=lowest_rows, aes(xintercept = Breakpoint), color = "darkred", linetype = 2)+
+  #geom_vline(data=highest_rows, aes(xintercept = Breakpoint), color = "darkblue", linetype = 2)+
+  #  geom_vline(data=lowest_rows, aes(xintercept = Breakpoint), color = "darkred", linetype = 2)+
   scale_x_continuous(guide = guide_axis(angle = 45), limits = c(0,dim(ww_samp)[1])) + 
-  ggtitle("Breakpoint distribution for locations") + 
-  ylab("Locations") + xlab("Breakpoints") +
+  ggtitle("Breakpoint distribution for locations") + labs(color = "Breakpoint number") +   guides(color = guide_legend(nrow = 1))+
+  ylab("Locations") + xlab("Breakpoints") + theme(legend.position = "bottom")
   theme_minimal()
 #ggsave("brkpts.pdf")
 ```
@@ -1107,7 +1184,7 @@ for( i in 1:dim(ww_ip)[2]){
 ### Ploting the output from the changepoint method
 
 ```{r}
-pdf("AllBrkPts.pdf")
+#pdf("AllBrkPts.pdf")
 for (i in 1:dim(ww_samp)[2]) {
   print(ggplot() +
           geom_line(aes(x = 1:(dim(ww_ip)[1]), 
@@ -1121,7 +1198,7 @@ for (i in 1:dim(ww_samp)[2]) {
           ggtitle(col[i,1]))
   #ggsave(paste0("unicp",i,".jpeg"))
 }
-dev.off()
+#dev.off()
 ```
 ## Refitting the lasso VAR function to work with this dataset
 
@@ -1175,7 +1252,7 @@ nodeImpfunc <- function(nw){
   return(Node_imp)
 }
 
-LassoVar <- function(df_ip, d=NULL,Nbrk, retFit = FALSE){
+LassoVar <- function(df_ip, d, Nbrk, retFit = FALSE){
   #edgeIx <- as.data.frame(matrix(nrow = 0, ncol = 4))
   if(retFit ==TRUE){
     grphs <- list()
@@ -1265,7 +1342,7 @@ ggplot()+
   theme_minimal() + 
   theme(legend.position = "none") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
   ggtitle("Mean value of all cities")
-ggsave("CPperCity.pdf")
+#ggsave("CPperCity.pdf")
 
 ```
 
@@ -1326,7 +1403,7 @@ for(i in 1:length(df_split)){
   cn <- colnames(dd)
   diffedDat <- matrix(ncol = ncol(dd), nrow = nrow(dd)-1,0)
   for(j in 1:dim(dd)[2]){
-    diffedDat[,j] <- diff(dd[,j])
+    diffedDat[,j] <- diff(dd[,j], lag =1)#diff(diff(dd[,j]))#diff(dd[,j],  differences = 2)
     #acf(diffedDat[,j], lag.max = length(diffedDat[,j]), 
     #    xlab = "lag #", ylab = 'ACF',
     #   main=paste0("Subsection, ", i, " Location, ",cn[j]))
@@ -1384,8 +1461,8 @@ layout <- left_join(nameVal, l, join_by(names == names))
 ```{r}
 
 lvl <- 1
-var <- c("Outdegree","Indegree","Closeness","Eigen")
-#pdf("NodeImpPlots.pdf")
+var <- c("Outdegree")#,"Indegree","Closeness","Eigen")
+#pdf("SegmentPlots.pdf")
 for(v in var){
   gbg <- nodeImp %>% 
     group_by(Section) %>%
@@ -1407,13 +1484,13 @@ for(v in var){
                 main = paste(rng$minDate[i],"-", rng$maxDate[i]," Node measure",v),
                 edge.arrow.size = 0.3,
                 edge.width = 0.5,
-                edge.color = "gray40",
+                edge.color = "gray30",
                 edge.alpha =0.5,
                 layout = cbind(as.numeric(layout$lat),
                                as.numeric(layout$lon)),
-                vertex.label = V(G[[i]])$label1,
+                vertex.label = NA,
                 vertex.size = 5,
-                vertex.color = V(G[[i]])$color1,
+                vertex.color =V(G[[i]])$color1,
                  vertex.label.dist=1,
                 vertex.frame.color = NULL,
                 vertex.label.size=0.001)
