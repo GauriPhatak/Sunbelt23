@@ -15,7 +15,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     printFlg <<- FALSE
     Sim <- data.frame(S[simvec,])
     ## Number of simulations
-    Nsim <- 1#Sim$Nsim
+    Nsim <- Sim$Nsim
     
     ##Directed graph yes? No?
     dir <- Sim$DirType
@@ -127,7 +127,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     lvl <- 1
     ncVal <- nc
     
-    bigN <- 1#Sim$bigN
+    bigN <- Sim$bigN
     Gtot<- list() 
     GTlogLikcovtot<- list() 
     GTlogLiknoCovtot <- list()
@@ -231,16 +231,18 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
                                    CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
                                    alphaLL = NULL,test = TRUE,missing = missing, covOrig = orig_Cov, 
                                    epsilon =0, impType = "Reg", alphaLin, penalty )
-            if(covTypes == "continunous"){
-              opf_StoRegcov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
+            tme <- Sys.time() - start
+            print(paste0("Total time take algo with covariates and simple regression", tme))
+            
+            start <- Sys.time()
+            opf_StoRegcov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
                                            lambda,thresh,nitermax,orig,randomize = TRUE,
                                            CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
                                            alphaLL = NULL,test = TRUE,missing = missing, covOrig = orig_Cov,
-                                           epsilon =0, impType = "StochasticReg", alphaLin, penalty )
-            }
-            
+                                           epsilon = 0, impType = "StochasticReg", alphaLin, penalty )
             tme <- Sys.time() - start
-            print(paste0("Total time take algo with covariates", tme))
+            print(paste0("Total time take algo with covariates and stochastic regression", tme))
+            
             ## Algorithm without covariates + possible missing data
             start <- Sys.time()
             opf_noCov[[lvl]] <- 0
@@ -268,7 +270,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
   #return(0)
 }
 
-lst3 <- SaveCoDASim(simvec = 2, 
+lst2 <- SaveCoDASim(simvec = 2, 
                     sim = TRUE, 
                     InitParamFile = "/Code/InitParamMiss_Cohesive_MCAR.rds")
 

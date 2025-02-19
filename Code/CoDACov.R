@@ -688,7 +688,7 @@ sigmoid <- function(W, Ftotn) {
   return(Q)
 }
 
-LRParamUpdt <- function(W, X, Ftot,Htot, alpha, lambda, missing, dir) {
+LRParamUpdt <- function(W, X, Ftot,Htot, alphaLR, lambda, missing, dir) {
   
   ## Do nto add penalty to the intercept hence removing the 1 from the Ftotn matrix
   if(dir =="directed"){
@@ -701,32 +701,36 @@ LRParamUpdt <- function(W, X, Ftot,Htot, alpha, lambda, missing, dir) {
   W_grad <- t(X - t(Q)) %*% Ftotn
   W_new <- W
   #alpha = 0.0001
-  W_new[,-c(1)] <- W[,-c(1)] + alpha * (W_grad[,-c(1)] - lambda * (sign(W[,-c(1)])))
+  W_new[,-c(1)] <- W[,-c(1)] + alphaLR * (W_grad[,-c(1)] - lambda * (sign(W[,-c(1)])))
   return(W_new)
 }
 
-PredictCovLR <- function(X, W, Fmat, Hmat, missing,dir) {
+PredictCovLR <- function(X, W, Fmat, Hmat, missing,dir, impType) {
   if(dir =="directed"){
     Ftotn <- cbind(1, Fmat, Hmat)
   } else{
     Ftotn <- cbind(1, Fmat)
   }
-  
+  size <- 100
   for (i in 1:dim(X)[2]) {
-    X[which(missing[, i]), i] <- as.numeric(sigmoid(W[i, ], Ftotn[which(missing[, i]), ]) > 0.5)## This uses sigmoid function 
+    if(impType == "StochasticReg"){
+      X[which(missing[, i]), i] <- as.numeric((rbinom(1,size,sigmoid(W[i, ], Ftotn[which(missing[, i]), ]))/size) > 0.5)
+    }else{
+      X[which(missing[, i]), i] <- as.numeric(sigmoid(W[i, ], Ftotn[which(missing[, i]), ]) > 0.5)## This uses sigmoid function 
+    }
   }
   return(X)
 }
 
-updateLogisticParam <- function(W,X,Wtm,Wtm2, missVals, lambda,alpha, dir){
+updateLogisticParam <- function(W,X,Wtm,Wtm2, missVals, lambda,alphaLR, dir, impType){
   Wret <- W
   Xret <- X
   if (length(W) > 0) {
     if (sum(missVals) > 0) {
-      Wret <-  LRParamUpdt(W, X, Wtm,Wtm2 ,alpha, lambda, missVals, dir)
-      Xret <-  PredictCovLR(X, W, Wtm,Wtm2, missVals, dir)
+      Wret <-  LRParamUpdt(W, X, Wtm,Wtm2 ,alphaLR, lambda, missVals, dir)
+      Xret <-  PredictCovLR(X, W, Wtm,Wtm2, missVals, dir, impType)
     } else{
-      Wret <-  LRParamUpdt(W, X, Wtm,Wtm2, alpha, lambda, missVals, dir)
+      Wret <-  LRParamUpdt(W, X, Wtm,Wtm2, alphaLR, lambda, missVals, dir)
     }
   }
   
@@ -780,7 +784,7 @@ PredictCovLin <- function(Ftot,Htot, Z, beta, missVals, dir, impType) {
       idx <- which(missVals[, i])
       if(impType == "StochasticReg"){
         s <- sdErr(Z[-idx, i], beta[i, ], Fm[-idx,], dim(Z[-idx,])[1])
-        Z[idx, i] <- (Fm[idx,] %*% as.matrix(beta[i, ])) + mean(s* rnorm(100,mean = 0,sd = 1))
+        Z[idx, i] <- (Fm[idx,] %*% as.matrix(beta[i, ])) + mean(rnorm(100,mean = 0,sd = s))
       }else if(impType == "Reg"){
         Z[idx, i] <- Fm[idx,] %*% as.matrix(beta[i, ])
       }
@@ -1145,7 +1149,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
                        sigmaSqin, sigmaSqout,alphaLL, 
                        Eneg, dir, epsilon)
     LLnew <- LLvec[1]
-    pctInc <- ((LLnew - LLold) / abs(LLold)) * 100
+    pctInc <- abs((LLnew - LLold) /(LLold)) * 100
     if(is.nan(pctInc)){
       print("stop here")
     }
@@ -1198,7 +1202,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     # X_in <- b1[[2]]
     ## outgoing correlated covariates
     b2 <- updateLogisticParam(W = Wout,X = X_out , Wtm = Ftot ,Wtm2 = Htot,missVals = missValsout,
-                              lambda = lambda,alpha = alpha, dir = dir)
+                              lambda = lambda,alphaLR = alphaLin, dir = dir, impType)
     Wout <- b2[[1]]
     X_out <- b2[[2]]
     
