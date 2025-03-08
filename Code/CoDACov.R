@@ -5,6 +5,7 @@ library(network)
 library(intergraph)
 library(ergm)
 library(RColorBrewer)
+library(clustAnalytics)
 
 #source("Code/HelperFuncs.R")
 source(paste0(getwd(),"/Code/HelperFuncs.R"))
@@ -397,7 +398,7 @@ genNested <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
 genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
                          CovNamesLPin,CovNamesLPout,CovNamesLinin,
                          CovNamesLinout,pConn, dir,dirPct, epsilon,missing, 
-                         alpha, beta,Type, pClustOL) {
+                         a, b,Type, pClustOL) {
   C <- 0
   while (length(table(C)) < nc) {
     C <- sample(
@@ -418,32 +419,30 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
     c <- t(combn(letters[1:nc], i))
     if(Type == "Nested"){ ## For nested network currently only 3 communities are supported.
       l <- 1
-      for (j in seq(from =1, to = (dim(c)[1]*2), by = 2)){#1:(dim(c)[1]*2)) {
-        com1 <- which(C %in% c[l,1]) ## Finding the original assigned nodes to community 1
-        com2 <- which(C %in% c[l,2]) ## Finding the original assigned nodes to community 2
-        
-        ## Number of nodes to be assigned to community 2 from community 1
-        idx1 <- sample(com1 , size = length(com1) * pClustOL[j], replace = FALSE)
-        
-        ## Number of nodes to be assigned to community 1 from community 2
-        idx2 <- sample(com2 , size = length(com2) * pClustOL[j + 1], replace = FALSE)
-        
-        Cnew[idx1, c[l,2 ]] <- 1 ## Assiging values in community 2 based on overlap with community 1
-        Cnew[idx2, c[l,1 ]] <- 1 ## Assiging values in community 1 based on overlap with community 0
-        l <- l + 1
-      }
-    }
-    if(Type == "Cohesive") {
-      l <- 1
       for(j in 1:dim(c)[1]){
         com <- which(C %in% c[j, ])
         fin <- c(fin, com)
         idx <- sample(com , size = length(com) * pClustOL[l], replace = FALSE)
-        Cnew[idx, c[j, ]] <- 1
+        Cnew[idx, c[j,1 ]] <- 1
         l <- l + 1
       }
-    }
-    if(Type == "2-Mode"){ ## For 2-Mode network currently only 3 communities are supported.
+      #Cnew$a <- 1
+      #l <- 1
+      # for (j in seq(from =1, to = (dim(c)[1]*2), by = 2)){#1:(dim(c)[1]*2)) {
+      #   com1 <- which(C %in% c[l,1]) ## Finding the original assigned nodes to community 1
+      #   com2 <- which(C %in% c[l,2]) ## Finding the original assigned nodes to community 2
+      #   
+      #   ## Number of nodes to be assigned to community 2 from community 1
+      #   idx1 <- sample(com1 , size = length(com1) * pClustOL[j], replace = FALSE)
+      #   
+      #   ## Number of nodes to be assigned to community 1 from community 2
+      #   idx2 <- sample(com2 , size = length(com2) * pClustOL[j + 1], replace = FALSE)
+      #   
+      #   Cnew[idx1, c[l,2 ]] <- 1 ## Assiging values in community 2 based on overlap with community 1
+      #   Cnew[idx2, c[l,1 ]] <- 1 ## Assiging values in community 1 based on overlap with community 0
+      #   l <- l + 1
+      # }
+    }else if(Type == "2-Mode"){ ## For 2-Mode network currently only 3 communities are supported.
       ## For this type there should be two cohesive communities and one community that is only outgoing
       l <- 1
       for (j in seq(from =1, to = (dim(c)[1]*2), by = 2)){#1:(dim(c)[1]*2)) {
@@ -460,6 +459,15 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
         Cnew[idx2, c[l,1 ]] <- 1 ## Assiging values in community 1 based on overlap with community 0
         l <- l + 1
       }
+    }else if(Type == "Cohesive"){
+      l <- 1
+      for(j in 1:dim(c)[1]){
+        com <- which(C %in% c[j, ])
+        fin <- c(fin, com)
+        idx <- sample(com , size = length(com) * pClustOL[l], replace = FALSE)
+        Cnew[idx, c[j, ]] <- 1
+        l <- l + 1
+      }
     }
   }
   ## percentage overlapping all the communities
@@ -470,6 +478,7 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   
   ## Determine the direction of the community membership. i.e. if it is is incoming or outgoing community affiliation.
   ## -1 for outgoing membership and +1 for incoming membership
+  
   Cold <- Cnew
   if (dir == "directed") {
     if(Type == "2-Mode"){
@@ -503,10 +512,10 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   F_u <- matrix(0,nrow = N, ncol = nc)
   H_u <- matrix(0,nrow = N, ncol = nc)
   if( dir == "directed" ){
-    F_u[Cnew > 0] <- rbeta(sum(Cnew > 0),alpha,beta)
-    H_u[Cnew < 0] <- rbeta(sum(Cnew < 0),alpha,beta)
+    F_u[Cnew > 0] <- rbeta(sum(Cnew > 0),a,b)
+    H_u[Cnew < 0] <- rbeta(sum(Cnew < 0),a,b)
   }else {
-    F_u[Cnew > 0] <- rbeta(sum(Cnew > 0),alpha,beta)
+    F_u[Cnew > 0] <- rbeta(sum(Cnew > 0),a,b)
     H_u <- F_u
   }
   
@@ -518,7 +527,7 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
       #p_uv <- 1 - prod(1 - ((as.numeric(Cnew[i, ] - Cnew[j, ] > 1)) * pConn)) + epsilon
       p_uv <- 1 - exp(-1 * sum(F_u[i, ] * H_u[j, ])) + epsilon
       Apuv[i, j] <- p_uv
-      A[i, j] <- rbinom(1,1,p_uv)#purrr::rbernoulli(1, p_uv)
+      A[i, j] <- rbinom(1,1,p_uv)#median(rbinom(25,1,p_uv))#purrr::rbernoulli(1, p_uv)
     }
   }
   
@@ -565,6 +574,29 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   return(list(g.sim, covVal_orig, F_u, H_u))
 }
 
+
+NetworkMetrics <- function(G ,dirT ){
+  # INTERNAL COHESION
+  ## Internal Density, 
+  ## Edges Inside, 
+  ## Average Degree in and out degree, 
+  ## Fraction over median degree(FOMD) total, in or out degree,  
+  ## Triangle Participation Ratio(TPR) cyclic or acyclic triangle, 
+  ## Clustering Coefficient, calculated using directed triangles.
+  
+  # EXTERNAL SEPARATION
+  ## Expansion, OUTGOING OR INCOMING EDGES 
+  ## Maximum-ODF (Out Degree Fraction), suited for directed NW
+  ## Average ODF, Suited for directed NW
+  ## Flake-ODF, Suited for directed NW
+  ## Conductance, incoming and outgoing or both 
+  ## Cut Ratio, for directed NW number of directed edges between the community and the rest of the network divided by the maximum possible number of directed edges
+  ## Normalized Cut, incoming and outgoing or both 
+  
+  # GLOBAL QUALITY
+  ## Modularity, 
+  ## Surprise, calculate the probability of observing the number of directed edges within communities under a random model that preserves the directed degree sequence
+}
 
 CmntyWtUpdt <- function(f_u ,h_u ,h_neigh ,h_sum ,X_u = NULL ,W = NULL ,
                         Z_u = NULL, beta = NULL ,sigmaSq ,alpha ,alphaLL ,
