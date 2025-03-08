@@ -317,7 +317,7 @@ for(i in Ncombo){
                                                             face = "bold",
                                                             size = 14))
   print(ptnTot)
- plotRDS <- append(plotRDS, list(list(ptTot, rtTot, ptnTot, qtTot1, qtTot2)))
+  plotRDS <- append(plotRDS, list(list(ptTot, rtTot, ptnTot, qtTot1, qtTot2)))
 }
 saveRDS(plotRDS, file = "MCARplots.rds")
 dev.off()
@@ -330,20 +330,18 @@ q <- list()
 r <- list()
 #pdf("CommDet3rdanalysisPlots.pdf")
 for(i in c(44,52,74,125)){
- #q[[i]] <- rdsDat[[i]][[4]]
-#  r[[i]] <- rdsDat[[i]][[5]]
-#  if(i %in% c(44,52,74,125)){
-    print(rdsDat[[i]][[1]])
-    print(rdsDat[[i]][[2]])
-    print(rdsDat[[i]][[5]])
-   # print(rdsDat[[i]][[3]])
-#  }
+  #q[[i]] <- rdsDat[[i]][[4]]
+  #  r[[i]] <- rdsDat[[i]][[5]]
+  #  if(i %in% c(44,52,74,125)){
+  print(rdsDat[[i]][[1]])
+  print(rdsDat[[i]][[2]])
+  print(rdsDat[[i]][[5]])
+  # print(rdsDat[[i]][[3]])
+  #  }
 }
 #dev.off()
 ## 44, 125, 74, 52, 46
 ```
-
-
 
 ```{r}
 colnames(FinCov) <- c("i","j","LLFull", "LLG","LLX","LLZ","OI","ARI",
@@ -725,7 +723,6 @@ df_op %>% ggplot()+geom_point(aes(x = seq, y = MSE3))
 
 ```
 
-
 ## Reading and plotting results data - MAR Cohesive
 
 Data is missing depending on the covariates
@@ -1095,114 +1092,173 @@ dev.off()
 
 ```
 
+```{r}
+
+param <- "InitParamMiss_Cohesive_MCAR_B15_LASSO.rds"
+param_c <- "InitParamMiss_Cohesive_MCAR_B15_LASSO_comb.rds"
+fileName <- list.files("CoDAOP/CohesiveMCAR_B15_LASSO/")
+#Ncombo <- c(1:144)#c(1,2, 4:46, 48:72, 74:144)
+S <- as.data.frame(readRDS(param_c))
+
+S$missing <- rep(c(0,5,10,25,45), each =2)
+
+df_op <- data.frame(matrix(ncol = 10,nrow = 0,0))
+#idx <- c()
+
+getData <- function(df){
+  lens <- unlist(lapply(df, function(x ) length(x$OmegaIndex)))
+  OI <- unlist(lapply(df, function(x ) last(x$OmegaIndex)))
+  ARI <- unlist(lapply(df, function(x ) last(x$ARI)))
+  
+  if(dim(df[[1]]$Acc)[1] > 0){
+    Acc1 <- unlist(lapply(df, function(x ) last(x$Acc[,1])))
+    Acc2 <- unlist(lapply(df, function(x ) last(x$Acc[,2])))
+    Acc3 <- unlist(lapply(df, function(x ) last(x$Acc[,3])))
+  }else{
+    Acc1 <- 0
+    Acc2 <- 0
+    Acc3 <- 0
+  }
+  iter <- rep(1:(length(df)/2),each=2)
+  return(cbind(lens,OI,ARI,Acc1,Acc2,Acc3,iter))
+}
+
+
+for(i in fileName){
+  idx <- str_extract_all(i, "\\d+")[[1]][2]
+  df <- readRDS(paste0("CoDAOP/CohesiveMCAR_B15_LASSO/",i))
+  df_reg <- df[[1]]
+  df_sto <- df[[3]]
+  df_nocov <- df[[2]]
+  
+  op <- rbind( cbind(idx,Rgr = "Reg",dir = c("D","U"), getData(df_reg)),
+               cbind(idx,Rgr = "Sto",dir = c("D","U"), getData(df_sto)),
+               cbind(idx,Rgr = "NoCov",dir = c("D","U"), getData(df_nocov)))
+  
+  df_op <- rbind(df_op, op)
+  
+}
+
+df_op$idx <- as.integer(df_op$idx)
+S$idx <- 1:dim(S)[1]
+
+df_op <- left_join(df_op, S, by = join_by(idx == idx))
+
+df_op$pC <- unlist(df_op$pC)
+df_op$pClust <- unlist(df_op$pClust)
+df_op$pConn <- unlist(df_op$pConn)
+df_op$dirPct <- unlist(df_op$dirPct)
+df_op$pClustOL <- unlist(df_op$pClustOL)
+df_op$OI <- as.numeric(df_op$OI)
+df_op$ARI <- as.numeric(df_op$ARI)
+df_op$Acc1 <- as.numeric(df_op$Acc1)
+df_op$Acc2 <- as.numeric(df_op$Acc2)
+df_op$Acc3 <- as.numeric(df_op$Acc3)
+df_op$lens <- as.numeric(df_op$lens)
+
+
+df_op$Accavg <- (df_op$Acc1+df_op$Acc2+df_op$Acc3)/3
+
+df_op$pC <- factor(df_op$pC)
+levels(df_op$pC) <- c("High","Low","Med")
+df_op$pC <- factor(df_op$pC, levels = c("High", "Med","Low"))
+
+df_op$pClustOL <- factor(df_op$pClustOL, levels = c( "NoOL","2GrpOL","3GrpOL","allOL"))
+
+```
+
+
+```{r, fig.width=15, fig.height=9}
+library(RColorBrewer)
+c <- expand.grid(unique(S$alphaLin), unique(S$missing), unique(S$lambda), unique(S$pClust))
+
+for( i in 1:dim(c)[1]){
+  p <- list()
+  title <- paste0(c[i, 4]," clust with ",c[i,2] ," missing data and lambda ", c[i,3], " alphaLin", c[i,1])
+  d <-  df_op %>%
+    filter(pClust == c[i,4], alphaLin == c[i,1], missing == c[i,2], lambda == c[i,3])
+  if(dim(d)[1] > 0 ){
+    p[[1]] <- d %>%
+      ggplot()+
+      geom_boxplot(aes(x = pC, y = OI, color = Rgr))+ 
+      #ggtitle(title)+ 
+      ylab("Omega Index") + xlab("Correlation level")+ scale_color_brewer(palette = "Dark2")+
+      theme( legend.position='none', panel.background = element_blank())+#theme_minimal()+
+      facet_grid( vars(dir),vars(pClustOL)) 
+    
+    p[[2]] <- d %>%
+      ggplot()+
+      geom_boxplot(aes(x = pC, y = ARI, color = Rgr))+ 
+      #ggtitle(title)+ 
+      ylab("ARI") + xlab("Correlation level")+ scale_color_brewer(palette = "Dark2")+
+      theme( legend.position='none', panel.background = element_blank())+#theme_minimal()+
+      facet_grid( vars(dir),vars(pClustOL))
+    
+    p[[3]] <- d %>%
+      ggplot()+
+      geom_boxplot(aes(x = pC, y = Accavg , color = Rgr))+ 
+      #ggtitle(title)+ 
+      ylab("Average accuracy") + xlab("Correlation level")+ scale_color_brewer(palette = "Dark2")+
+      theme( legend.position='none', panel.background = element_blank())+#theme_minimal()+
+      facet_grid( vars(dir),vars(pClustOL))
+    
+    p[[4]] <- d %>%
+      ggplot()+
+      geom_boxplot(aes(x = pClustOL, y = lens, color = Rgr))+ 
+      #ggtitle(title)+ 
+      xlab("overlap") + ylab("Number of iteration")+scale_color_brewer(palette = "Dark2")+
+      theme( legend.position='bottom', panel.background = element_blank())+#theme_minimal()+
+      facet_grid( vars(dir),vars(pC))
+    
+    pt <- ggpubr::ggarrange(plotlist = p, ncol = 2, nrow = 2)
+    ptTot <- ggpubr::annotate_figure(pt,top = ggpubr::text_grob(title,color = "darkblue",
+                                                                face = "bold",size = 14))
+    print(ptTot)
+  }
+}
+
+```
 
 
 
+```{r}
+## Creating the difference table for iteration between regression adn stochastic regression
+
+df_lens <- df_op %>%
+  select(idx, Rgr, dir, lens, iter) %>%
+  mutate(grp = paste0(Rgr, "_",dir))%>%
+  select(-c(Rgr, dir)) %>%
+  pivot_wider(names_from = grp, values_from = c(lens)) %>%
+  mutate(diff_SR = Sto_D - Reg_D )
+
+## Plot the difference between sto and reg
+
+df_lens %>% ggplot()+
+  geom_histogram(aes(x = diff_SR))+ scale_x_continuous(trans = "log10")
+
+
+df_OI <- df_op %>%
+  select(idx, Rgr, dir, OI, iter) %>%
+  mutate(grp = paste0(Rgr, "_",dir))%>%
+  select(-c(Rgr, dir)) %>%
+  pivot_wider(names_from = grp, values_from = c(OI)) %>%
+  mutate(diff_OI = Sto_D - Reg_D )
+
+## Plot the difference between sto and reg
+
+df_OI %>% ggplot()+
+  geom_histogram(aes(x = diff_OI))+ scale_x_continuous(trans = “log10”)
+
+```
 
 
 
+```{r}
+x <- 1:10
+p <- 1-exp(-1* x) 
 
-
-
-
-
-
-
-
-
-
-
-
-
-<!-- ```{r} -->
-
-<!-- EG <- readRDS("../InitParamContTest_c.rds") -->
-
-<!-- EG <- EG %>% -->
-<!--   select(c("pClust","pConn","dist","dirPct")) -->
-
-<!-- EG$i <- 1:dim(EG)[1] -->
-
-<!-- dfFin <- left_join(dfFin, EG, by = join_by(i) ) -->
-
-<!-- dfFin %>% -->
-<!--   #select(c("dirPct","dist","pConn","pClust","OmegaIndex","loglik","ARI","MSE1","MSE2")) %>% -->
-<!--   select(`Percent incoming edges` = dirPct,dist,pConn,pClust,OmegaIndex,loglik,ARI,MSE1,MSE2) %>% -->
-<!--   kbl() %>% -->
-<!--   kable_paper(full_width = F) %>% -->
-<!--   column_spec(1:4, bold = T) %>% -->
-<!--   collapse_rows(columns =1:4, valign = "top") %>% -->
-<!--   footnote(general = "All simulation were run on 3 clusters, 2 continuous variables,lambda 0.1, threshold 0.0001, alpha 0.0008, epsilon value of 0.001",  -->
-<!--            general_title = "General: ", -->
-<!--            footnote_as_chunk = T,  -->
-<!--            title_format = c("italic", "underline")) -->
-<!-- #kable_styling() %>% -->
-<!-- #collapse_rows(c("pClust","pConn","dist","dirPct")) -->
-
-
-<!-- ``` -->
-
-<!-- ### Data tables with missing data  -->
-<!-- This checks the accuracy for missing binary covariate. Need to add code to perform imputation without taking the community structure into account. -->
-
-<!-- ```{r} -->
-
-<!-- EG <- readRDS("../InitParamMiss_c.rds") -->
-
-<!-- EG <- EG |> -->
-<!--   dplyr::select(missing,,pClust) -->
-<!-- EG$sim <- 1:40 -->
-<!-- ## read the output from simulations -->
-<!-- getwd() -->
-<!-- f <- "CoDAop/Missingdata/InitParamMiss_2_OP" -->
-<!-- covOP <- data.frame(matrix(0, nrow = 0, ncol = 14)) -->
-<!-- for(i in 1:40){ -->
-<!--   op <- readRDS(paste0(f, i,".rds")) -->
-<!--   covOP <- rbind(covOP, -->
-<!--                  cbind(printplots(opf = op[[1]], GTll = op[[4]][[2]],  -->
-<!--                                   EG = EGip, G = op[[3]][[2]], -->
-<!--                                   printFlg  = FALSE)[[1]],  -->
-<!--                        direction = rep(c("directed","undirected"),  -->
-<!--                                        each = 5),## Need to change this for bigN = 5  -->
-<!--                        sim = i)) -->
-<!-- } -->
-
-<!-- covOP <- covOP |> -->
-<!--   dplyr::select(c(Finari, llike, FinOmegaIdx, accuracy,NumIter, direction, sim)) -->
-
-<!-- covOP <- left_join(covOP, EG, by = join_by(sim == sim)) -->
-
-<!-- AggcovOP <- covOP |>  -->
-<!--   group_by(direction, missing, pClust) |> -->
-<!--   summarize(across(everything(),  -->
-<!--                    list(mean = mean))) #, sd = sd Can add std dev later -->
-
-<!-- #AggcovOP <- left_join(AggcovOP, EG, by = join_by(sim == sim)) -->
-
-
-<!-- ``` -->
-
-
-<!-- ## Graphs for different mmissingness levels -->
-
-<!-- ```{r} -->
-<!-- # -->
-<!-- #AggcovOP$pC <- unlist(AggcovOP$pC) -->
-<!-- AggcovOP$pClust <- unlist(AggcovOP$pClust) -->
-<!-- AggcovOP %>% ggplot() + -->
-<!--   geom_point(aes(x = as.factor(missing),  -->
-<!--                  y = FinOmegaIdx_mean,  -->
-<!--                  color = direction)) + -->
-<!--   facet_wrap(vars(pClust)) -->
-
-<!-- AggcovOP %>% ggplot() + -->
-<!--   geom_point(aes(x = as.factor(missing),  -->
-<!--                  y = accuracy_mean,  -->
-<!--                  color = direction)) + -->
-<!--   facet_wrap(vars(pClust)) -->
-<!-- ``` -->
-
-
+plot(x, p)  
+```
 
 
 
