@@ -644,7 +644,7 @@ updateWtmat <- function(G,Wtm1,Wtm2,mode,s,nc,X,Z,k,o,beta,W,alphaLL,missVals,
                               nc, start, end, mode, dir)
   }
   
-  Wtmat <- cbind(1, apply(Wtmat[,2:dim(Wtmat)[2]],2,range01))
+  Wtmat <- apply(Wtmat,2,range01) #cbind(1, apply(Wtmat[,2:dim(Wtmat)[2]],2,range01))
   return(Wtmat)
 }
 
@@ -691,7 +691,7 @@ CmntyWtUpdt <- function(f_u ,h_u ,h_neigh ,h_sum ,X_u = NULL ,W = NULL ,
     print("error error")
   }
   
-  f_u_new[f_u_new < 0] <- lb
+  f_u_new[(f_u_new < 0) | (f_u_new == 0)] <- lb
   #f_u_new[f_u_new > 1] <- ub
   return(f_u_new)
 }
@@ -704,11 +704,12 @@ GraphComntyWtUpdt <- function(f_u,h_u,h_neigh, h_sum){
   
   a <- exp(-1 * (f_u %*% t(h_neigh)))
   b <- a / (1 - a)
-  llG_1 <- t(h_neigh) %*% t(b)
+  b[is.infinite(b)] <- 0
+  llG_1 <-  b %*% h_neigh #t(h_neigh) %*% t(b)
   ## 2nd part of log likelihood of G
   llG_2 <-  as.matrix(h_sum - t(h_u) - as.matrix(colSums(h_neigh)))#as.matrix(colSums(Fvnot))
   ## Total llG: This math has been verified
-  llG <- llG_1 - llG_2
+  llG <- c(llG_1) - c(llG_2)
   ## experimental scaled version of the above llog lik
   scale <- 1
   llG <- scale * llG
