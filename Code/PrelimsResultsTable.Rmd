@@ -726,7 +726,6 @@ df_op %>% ggplot()+geom_point(aes(x = seq, y = MSE3))
 ## Reading and plotting results data - MAR Cohesive
 
 Data is missing depending on the covariates
-
 ```{r}
 
 param <- "InitParamMiss_Cohesive_MAR.rds"
@@ -751,7 +750,6 @@ FinCov <- as.data.frame(matrix(nrow= 0 , ncol = 1+1+4+1+1+(S[1,]$k_out*2)+ 1,0))
 FinnoCov <- as.data.frame(matrix(nrow= 0 , ncol = 1+1+4+1+1+1, 0))
 ## NWdir total
 ## Setting up plot rds
-plotRDS <- list()
 ploti <- 1
 NWDirT <- as.data.frame(matrix(nrow = 0, ncol = 9, 0))
 i <- 1
@@ -1094,22 +1092,22 @@ dev.off()
 
 ```{r}
 
-param <- "InitParamMiss_Cohesive_MCAR_B15_LASSO.rds"
-param_c <- "InitParamMiss_Cohesive_MCAR_B15_LASSO_comb.rds"
-fileName <- list.files("CoDAOP/CohesiveMCAR_B15_LASSO/")
+param <- "InitParamMiss_Coh_MCAR_LASSO_Cont_2.rds"#"InitParamMiss_Cohesive_MCAR_B15_LASSO.rds"
+param_c <- "InitParamMiss_Coh_MCAR_LASSO_Cont_2_comp.rds"#"InitParamMiss_Cohesive_MCAR_B15_LASSO_comb.rds"
+fileName <- list.files("CoDAOP/CohesiveMCARCont_2/")#"CoDAOP/CohesiveMCAR_B15_LASSO/")
 #Ncombo <- c(1:144)#c(1,2, 4:46, 48:72, 74:144)
 S <- as.data.frame(readRDS(param_c))
 
-S$missing <- rep(c(0,5,10,25,45), each =2)
+S$missing <- rep(c(0,5,10,25,45), each =9)
 
-df_op <- data.frame(matrix(ncol = 10,nrow = 0,0))
+df_op <- data.frame(matrix(ncol = 13,nrow = 0,0))
 #idx <- c()
 
 getData <- function(df){
   lens <- unlist(lapply(df, function(x ) length(x$OmegaIndex)))
   OI <- unlist(lapply(df, function(x ) last(x$OmegaIndex)))
   ARI <- unlist(lapply(df, function(x ) last(x$ARI)))
-  
+  ## Reading accuracy
   if(dim(df[[1]]$Acc)[1] > 0){
     Acc1 <- unlist(lapply(df, function(x ) last(x$Acc[,1])))
     Acc2 <- unlist(lapply(df, function(x ) last(x$Acc[,2])))
@@ -1119,14 +1117,49 @@ getData <- function(df){
     Acc2 <- 0
     Acc3 <- 0
   }
+  
+  ## Reading Mean Sq error
+   if(dim(df[[1]]$MSE)[1] > 0){
+    MSE1 <- round(unlist(lapply(df, function(x ) last(x$MSE[,1]))), 4)
+    MSE2 <- round(unlist(lapply(df, function(x ) last(x$MSE[,2]))) , 4)
+    MSE3 <- round(unlist(lapply(df, function(x ) last(x$MSE[,3]))) , 4)
+  }else{
+    MSE1 <- 0
+    MSE2 <- 0
+    MSE3 <- 0
+  }
+  
+  ## Reading missing data specific accuracy and mean sq error
+  # Reading accuracy
+  if(dim(df[[1]]$AccMD)[1] > 0){
+    AccMD1 <- unlist(lapply(df, function(x ) last(x$AccMD[,1])))
+    AccMD2 <- unlist(lapply(df, function(x ) last(x$AccMD[,2])))
+    AccMD3 <- unlist(lapply(df, function(x ) last(x$AccMD[,3])))
+  }else{
+    AccMD1 <- 0
+    AccMD2 <- 0
+    AccMD3 <- 0
+  }
+  
+  ## Reading Mean Sq error
+   if(dim(df[[1]]$MSEMD)[1] > 0){
+    MSEMD1 <- round(unlist(lapply(df, function(x ) last(x$MSEMD[,1]))), 4)
+    MSEMD2 <- round(unlist(lapply(df, function(x ) last(x$MSEMD[,2]))) , 4)
+    MSEMD3 <- round(unlist(lapply(df, function(x ) last(x$MSEMD[,3]))) , 4)
+  }else{
+    MSEMD1 <- 0
+    MSEMD2 <- 0
+    MSEMD3 <- 0
+  }
+  
   iter <- rep(1:(length(df)/2),each=2)
-  return(cbind(lens,OI,ARI,Acc1,Acc2,Acc3,iter))
+  return(cbind(lens,OI,ARI,Acc1,Acc2,Acc3,MSE1,MSE2,MSE3,AccMD1,AccMD2,AccMD3,MSEMD1,MSEMD2,MSEMD3,iter))
 }
 
 
 for(i in fileName){
   idx <- str_extract_all(i, "\\d+")[[1]][2]
-  df <- readRDS(paste0("CoDAOP/CohesiveMCAR_B15_LASSO/",i))
+  df <- readRDS(paste0("CoDAOP/CohesiveMCARCont_2/",i))
   df_reg <- df[[1]]
   df_sto <- df[[3]]
   df_nocov <- df[[2]]
@@ -1154,11 +1187,22 @@ df_op$ARI <- as.numeric(df_op$ARI)
 df_op$Acc1 <- as.numeric(df_op$Acc1)
 df_op$Acc2 <- as.numeric(df_op$Acc2)
 df_op$Acc3 <- as.numeric(df_op$Acc3)
+df_op$MSE1 <- as.numeric(df_op$MSE1)
+df_op$MSE2 <- as.numeric(df_op$MSE2)
+df_op$MSE3 <- as.numeric(df_op$MSE3)
+df_op$AccMD1 <- as.numeric(df_op$AccMD1)
+df_op$AccMD2 <- as.numeric(df_op$AccMD2)
+df_op$AccMD3 <- as.numeric(df_op$AccMD3)
+df_op$MSEMD1 <- as.numeric(df_op$MSEMD1)
+df_op$MSEMD2 <- as.numeric(df_op$MSEMD2)
+df_op$MSEMD3 <- as.numeric(df_op$MSEMD3)
 df_op$lens <- as.numeric(df_op$lens)
 
 
-df_op$Accavg <- (df_op$Acc1+df_op$Acc2+df_op$Acc3)/3
-
+df_op$Accavg <- (df_op$Acc1 + df_op$Acc2 + df_op$Acc3)/3
+df_op$MSEavg <- (df_op$MSE1 + df_op$MSE2 + df_op$MSE3)/3
+df_op$AccavgMD <- (df_op$AccMD1 + df_op$AccMD2 + df_op$AccMD3)/3
+df_op$MSEavgMD <- (df_op$MSEMD1 + df_op$MSEMD2 + df_op$MSEMD3)/3
 df_op$pC <- factor(df_op$pC)
 levels(df_op$pC) <- c("High","Low","Med")
 df_op$pC <- factor(df_op$pC, levels = c("High", "Med","Low"))
@@ -1167,6 +1211,7 @@ df_op$pClustOL <- factor(df_op$pClustOL, levels = c( "NoOL","2GrpOL","3GrpOL","a
 
 ```
 
+## For Binary cov
 
 ```{r, fig.width=15, fig.height=9}
 library(RColorBrewer)
@@ -1218,6 +1263,115 @@ for( i in 1:dim(c)[1]){
 }
 
 ```
+
+## For continuous cov
+```{r, fig.width=12, fig.height=7}
+library(RColorBrewer)
+c <- expand.grid(unique(S$alpha), unique(S$alphaLin), unique(S$missing), unique(S$pClust))
+colnames(c) <- c("alpha","alphaLin","missing","pClust")
+gbg <- matrix(0, nrow=0, ncol = dim(c)[2])
+
+df_op$lambda <- as.factor(df_op$lambda)
+for( i in 1:dim(c)[1]){
+  p <- list()
+  title <- paste0(c$pClust[i]," clust with ",c$missing[i],"% missing data and alphaLin ", c$alphaLin[i], " alpha = ", c$alpha[i])
+  d <-  df_op %>%
+    filter(alpha == c$alpha[i] ,pClust == c$pClust[i], 
+           alphaLin == c$alphaLin[i], missing == c$missing[i])
+  if(dim(d)[1] > 0 ){
+    gbg <- rbind(gbg, c[i,])
+    p[[1]] <- d %>%
+      ggplot()+
+      geom_boxplot(aes( y = OI, x = lambda, color = Rgr))+ 
+      #ggtitle(title)+ 
+      ylab("Omega Index") + xlab("lambda")+ scale_color_brewer(palette = "Set1")+
+      theme( legend.position='none', panel.background = element_blank())+#theme_minimal()+
+      facet_grid( vars(dir),vars(pClustOL)) 
+    
+    p[[2]] <- d %>%
+      ggplot()+
+      geom_boxplot(aes( y = ARI, x = lambda, color = Rgr))+ 
+      #ggtitle(title)+ 
+      ylab("ARI") + xlab("lambda")+ scale_color_brewer(palette = "Set1")+
+      theme( legend.position='none', panel.background = element_blank())+#theme_minimal()+
+      facet_grid( vars(dir),vars(pClustOL))
+    
+    p[[3]] <- d %>%
+      filter(!(Rgr == "NoCov")) %>%
+      ggplot()+
+      geom_boxplot(aes( y = MSEavg , x = lambda, color = Rgr))+ 
+      #ggtitle(title)+ 
+      ylab("Average MSE") + xlab("Regression type")+ scale_color_brewer(palette = "Set1")+
+      theme( legend.position='none', panel.background = element_blank())+#theme_minimal()+
+      facet_grid( vars(dir),vars(pClustOL))
+    
+    p[[4]] <- d %>%
+      filter(!(Rgr == "NoCov")) %>%
+      ggplot()+
+      geom_boxplot(aes( y = MSEavgMD , x = lambda, color = Rgr))+ 
+      #ggtitle(title)+ 
+      ylab("Average MSE for missing data") + xlab("Regression type")+ scale_color_brewer(palette = "Set1")+
+      theme( legend.position='none', panel.background = element_blank())+#theme_minimal()+
+      facet_grid( vars(dir),vars(pClustOL))
+    
+    p[[5]] <- d %>%
+      ggplot()+
+      geom_boxplot(aes(x = pClustOL, y = lens, color = Rgr))+ 
+      #ggtitle(title)+ 
+      xlab("overlap") + ylab("Number of iteration")+scale_color_brewer(palette = "Set1")+
+      theme( legend.position='bottom', panel.background = element_blank())+#theme_minimal()+
+      facet_grid( vars(dir),vars(lambda))
+    
+    pt <- ggpubr::ggarrange(plotlist = p, ncol = 3, nrow = 2)
+    ptTot <- ggpubr::annotate_figure(pt,top = ggpubr::text_grob(title,color = "darkblue",
+                                                                face = "bold",size = 14))
+    print(ptTot)
+  }
+}
+
+```
+
+
+
+```{r}
+## Comparing the OI for stochastic regression vs regression
+df_2 <- data.frame(matrix(ncol = 9,nrow = 0,0))
+
+for(i in fileName){
+  idx <- str_extract_all(i, "\\d+")[[1]][2]
+  df <- readRDS(paste0("CoDAOP/CohesiveMCARCont_2/",i))
+  df_reg <- df[[1]]
+  df_sto <- df[[3]]
+  df_nocov <- df[[2]]
+  
+  df_2 <- rbind(df_2, cbind(idx, unlist(lapply(df_reg, function(x ) last(x$OmegaIndex))),
+                            unlist(lapply(df_sto, function(x ) last(x$OmegaIndex))),
+                            unlist(lapply(df_nocov, function(x ) last(x$OmegaIndex))),
+                            unlist(lapply(df_reg, function(x ) length(x$OmegaIndex))),
+                            unlist(lapply(df_sto, function(x ) length(x$OmegaIndex))),
+                            unlist(lapply(df_nocov, function(x ) length(x$OmegaIndex))),
+                            rep(1:15, each =2), 
+                            rep(c("D","U"), times = 15)
+                            ))
+  
+}
+colnames(df_2) <- c("idx","reg","sto","nocov","lenR","lenS","lenNC","iter","dir")
+df_2$reg <- as.numeric(df_2$reg)
+df_2$sto <- as.numeric(df_2$sto)
+df_2$lenR <- as.numeric(df_2$lenR)
+df_2$lenS <- as.numeric(df_2$lenS)
+df_2$OIdiff <- df_2$sto - df_2$reg
+df_2$lendiff <- df_2$lenS - df_2$lenR
+df_2 %>% ggplot() +
+  geom_point(aes(x = lendiff, y = OIdiff, color =dir))+
+  facet_wrap(~dir)
+
+## Looking specifically at iteration 10 of 107th idx. directed
+i <- fileName[10]
+df <- readRDS(paste0("CoDAOP/CohesiveMCARCont/",i))
+
+```
+
 
 
 
