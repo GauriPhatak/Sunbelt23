@@ -7,7 +7,7 @@ date: "2024-12-24"
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 getwd()
-#source("CoDACov.R")
+source("CoDACov.R")
 ```
 
 ## Setting up the parameters
@@ -130,9 +130,9 @@ NWConf <- function(simvec=2, InitParamFile, t){
 ```{r}
 
 NWlst <- NWConf(simvec = 1 , 
-                InitParamFile = "InitParamMiss_Cohesive_MCAR",
+                InitParamFile = "InitParamMiss_Cohesive_MCAR_B15_LASSO",
                 t = "No overlap")
-
+view(NWlst[[1]][[2]])
 ```
 
 
@@ -174,10 +174,163 @@ NWlst <- NWConf(simvec = 109 ,
 ## for com b and c nested in A fully use pClustOL value c(0, 1, 0, 1, 0, 0)
 
 NWlst <- NWConf(simvec = 2 ,
-                InitParamFile = "InitParamMiss_Nested_MCAR",
-                t = "Nested network")
+                InitParamFile = "InitParamMiss_Cohesive_MCAR_B15_LASSO",
+                t = "")
+G <- NWlst[[1]][[1]]
+C <- data.frame(node = 1:100,a= V(G)$a,b= V(G)$b,c= V(G)$c)
+df <- C %>%
+  pivot_longer(-c(node)) %>%
+  filter(!(value ==0)) %>% select(!c(value))
+## Create a dataframe of the overlapping groups
+C$cluster <- V(G)$Cluster
+group_ids <- lapply(df %>% split(.$name), function(grp) { grp$node })
+group_color <- brewer.pal(length(group_ids), 'Set1')
+# the fill gets an additional alpha value for transparency:
+group_color_fill <- paste0(group_color, '20')
+
+par(mar = rep(0.1, 4))   # reduce margins
+plot(G, vertex.color = factor(V(G)$Cluster),
+     layout = layout_with_fr(G),
+     vertex.size = 5,
+     vertex.label = NA,
+     edge.arrow.size = 0.1,
+     edge.color = "grey40",
+     mark.groups = group_ids,
+     mark.col = group_color_fill,
+     mark.border = group_color)
+
+## finding conbimation overlap.
+comb <- data.frame(ab = (!(C$a == 0) & C$b ==0),
+                   ac = (!(C$a == 0) & C$c ==0),
+                   bc = (!(C$c == 0) & !(C$b == 0)))
+
+
 #gbg <- as.data.frame(vertex_attr(NWlst[[1]]))
 ```
+
+```{r}
+
+## LOOK HERE ##
+#### https://igraph.org/c/html/latest/igraph-Structural.html ####
+nc <- 3
+## internal density
+NWlst <- NWConf(simvec = 2 ,
+                InitParamFile = "InitParamMiss_Cohesive_MCAR_B15_LASSO",
+                t = "")
+G <- NWlst[[1]][[1]]
+C <- data.frame(node = 1:100,a= V(G)$a,b= V(G)$b,c= V(G)$c)
+
+
+IDen <- c()
+fomd <- c()
+TPR <- c()
+dm <- median(igraph::degree(G))
+
+## OVerall properties of the graph
+plot(G)
+coreness(G)
+degree_distribution(G)
+max_degree(G)
+igraph::degree(G)
+
+## Check the node against the if the node is an overlap node.
+cbind(igraph::degree(G), rowSums(!(C[,-1] == 0)))
+
+##girth
+girth(G)
+
+## mean shortest path
+mean_distance(G, directed = TRUE)
+
+##edge density
+edge_density(G)
+
+## Assortativity
+assortativity_degree(G)
+assortativity(G, values= V(G)$Cluster)
+
+
+## Code stump of bipartite graph 
+# First need to convert the graph into bipartite graph#
+# Then find the bipartite graph matching using max_bipartite_match()
+
+## Find reciprocity
+reciprocity(G)
+
+## Transitivity or clustering coefficient
+igraph::transitivity(G, type = "global", isolates = c("zero"))
+
+## Find the vertex connectivity
+# this is the minimum number of vertices needed to remove to make the graph not strongly connected.
+vertex_connectivity(G)
+cohesion(G)
+
+## Find the number of triangles
+triangles(G)
+
+## Authority scores
+authority_score(G)
+hits_scores(G)
+
+##Closeness of graph bertex
+igraph::closeness(G)
+
+##diversity of graph
+diversity(G)
+igraph::closeness(G)
+
+##vertex betweenness
+igraph::betweenness(G)
+
+is_chordal(G)
+
+get_diameter(G)
+farthest_vertices(G)
+
+igraph::stochastic_matrix(G, sparse = TRUE)
+
+eccentricity(G)
+
+global_efficiency(G)
+
+graph_center(G)
+
+local_scan(G)
+for(i in letters[1:nc]){
+  print(i)
+  v <- C$node[!(C[[i]] == 0)]
+  Sub_G <- subgraph(G, v) 
+  #plot(Sub_G)
+  ns <- gorder(Sub_G)
+  ms <- gsize(Sub_G) # Edges inside
+  
+  ## Internal group cohesion mesures
+  IDen <- c(IDen, ms/(ns*(ns- 1))) ## Internal density
+  AD <- 2*ms/ns #Average internal density
+  fomd <- c(fomd, sum(igraph::degree(Sub_G) >  dm)/ns)
+  triad_census(Sub_G) ## Way too many options. Not sure which ones are important. 
+  TPR <- c(TPR, sum(count_triangles(Sub_G))/ns) # Triangle participation ratio
+  transitivity(Sub_G, type = "local")
+  transitivity(Sub_G, type = "global")
+
+  # External Cohesion
+  ## Expansion: number of edges that point outside the cluster.
+  # For overlapping cluster, should we consider the edges that connect from overlapped clusters also or just the single cluster assignments. 
+  
+  ## Max ODF: Maximum fraction of nodes that have edges that point outside the group.
+  
+  ## Avg ODF: Average fraction of nodes that have edges that point outside the group.
+  
+  ## Flake ODF is the fraction of nodes in S that have fewer edges pointing inside than to the outside of the cluster
+  
+  ## Cut Ratio is the fraction of existing edges (out of all possible edges)leaving the cluster
+}
+
+
+```
+
+
+
 
 ## 2 - mode networks
 
