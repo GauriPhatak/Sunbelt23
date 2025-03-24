@@ -212,6 +212,12 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
   if(o_out >0 ){
     betaout <- matrix(0, nrow = o_out, ncol = (ncoef)+1 )
     for(i in 1:dim(Z_out)[2]){
+      # Standardizing the covariates
+      a <- Z_out[,i]
+      maxs <- max(a, na.rm=TRUE)#apply(a, 2, max)
+      mins <- min(a, na.rm=TRUE)#apply(a, 2, min)
+      Z_out[,i] <- scale(a, center=(maxs+mins)/2, scale=(maxs-mins)/2)
+      
       if(dir =="undirected"){
         mod <- lm(Z_out[,i] ~ Fm[,1]+Fm[,2]+Fm[,3])
       } else{
@@ -575,9 +581,56 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   
   g.sim <- g.sim  %>%
     set_vertex_attr(name = "Cluster", value = C)
-  return(list(g.sim, covVal_orig, F_u, H_u))
+  return(list(g.sim, covVal_orig, F_u, H_u, Apuv))
 }
 
+## calculating various network metrics
+
+ClusterEntropy <- function(G, A, sigma, Nper, type){
+  ## G is the graph 
+  ## Sigma is the perturbation parameter
+  
+  ## Adjust the network edge probabilities by adjusting the values by 
+  ## selecting perturbing the probabilities between (sigma*wt ,- sigma*wt)
+  
+  ## Do this n number of times. 
+  ## calculate p_ij as in-cluster probability This probability is defined as 
+  ## the fraction of times nodes i and j have been classified in the same 
+  ## cluster during several occurrences of the clustering algorithm on 
+  ## different noisy realizations of the network.
+  ## Edges with an in-cluster probability equal to one are always within a 
+  ## cluster and edges with an in-cluster probability close to zero connect 
+  ## two different clusters. We thus define edges with an in-cluster 
+  ## probability lower than a threshold as “external edges” we typically 
+  ## choose = 0.8
+  
+  ## Number of nodes
+  N <- gorder(G)
+  
+  ## Get teh vertex attributes of the nodes
+  Attrs <- igraph::vertex_attr(G)
+  
+  ## create edges based on sigma noise added to probabilities
+  Anew <- matrix(0, nrow = N, ncol = N)
+  #Apuv <- A
+  for (i in 1:N) {
+    for (j in 1:N) {
+      ## probability of edge from node u to v
+      #p_uv <- 1 - prod(1 - ((as.numeric(Cnew[i, ] - Cnew[j, ] > 1)) * pConn)) + epsilon
+      p_uv <- A[i,j]#1 - exp(-1 * sum(F_u[i, ] * H_u[j, ])) + epsilon
+      p_new <- p_uv + runif(1, min = -1* sigma *p_uv, max = sigma *p_uv)
+      Anew[i, j] <- rbinom(1,1,p_new)#median(rbinom(25,1,p_uv))#purrr::rbernoulli(1, p_uv)
+    }
+  }
+  
+  diag(A) <- 0
+  g.sim <- graph_from_adjacency_matrix(A, mode = "directed")
+  for(i in 1:dim(Attrs)[2])
+  g.sim <- g.sim %>% igraph::set_vertex_attr(Attrs)
+  
+  return(g.sim)
+  
+}
 
 NetworkMetrics <- function(G ,dirT ){
   # INTERNAL COHESION
@@ -602,6 +655,8 @@ NetworkMetrics <- function(G ,dirT ){
   ## Surprise, calculate the probability of observing the number of directed edges within communities under a random model that preserves the directed degree sequence
 }
 
+
+## Community weight updates
 updateWtmat <- function(G,Wtm1,Wtm2,mode,s,nc,X,Z,k,o,beta,W,alphaLL,missVals,
                         alpha,start,end,dir){
   if(printFlg == TRUE){
@@ -720,6 +775,7 @@ GraphComntyWtUpdt <- function(f_u,h_u,h_neigh, h_sum){
   return(llG)
 }
 
+## Binary covariates community weight
 BincovCmntyWtUpdt <- function(ncoef, f_u,h_u, W, X_u, dir){
   llX <- rep(0, ncoef + 1)
   if (length(W) > 0) {
@@ -733,6 +789,7 @@ BincovCmntyWtUpdt <- function(ncoef, f_u,h_u, W, X_u, dir){
   return(llX)
 }
 
+## Continuous covariates community weight
 ContcovCmntyWtUpdt <- function(nc, Z_u, beta, f_u,h_u, sigmaSq, dir){
   
   if(dir =="directed"){
@@ -756,8 +813,6 @@ ContcovCmntyWtUpdt <- function(nc, Z_u, beta, f_u,h_u, sigmaSq, dir){
   return(llZ)
 }
 
-## Binary covariates community weight
-
 sigmoid <- function(W, Ftotn) {
   Q <- 1 / (1 + exp(-1 * (W %*% t(Ftotn))))
   return(Q)
@@ -776,7 +831,7 @@ LRParamUpdt <- function(W, X, Ftot,Htot, alphaLR, lambda, missing, dir) {
   W_grad <- t(X - t(Q)) %*% Ftotn
   W_new <- W
   #alpha = 0.0001
-  W_new[,-c(1)] <- W[,-c(1)] + alphaLR * (W_grad[,-c(1)] - lambda * (sign(W[,-c(1)])))
+  W_new[,-c(1)] <- W[,-c(1)] - alphaLR * (W_grad[,-c(1)] + lambda * (sign(W[,-c(1)])))
   return(W_new)
 }
 
@@ -812,9 +867,7 @@ updateLogisticParam <- function(W,X,Wtm,Wtm2, missVals, lambda,alphaLR, dir, imp
   return(list(Wret,Xret))
 }
 
-
 ## Continuous covariates community weights
-
 SigmaSqCalc <- function(Z, beta, Ftot, Htot, missVals,dir) {
   sigmaSq <- rep(0, dim(beta)[1])
   if(dir == "directed"){
@@ -830,8 +883,8 @@ SigmaSqCalc <- function(Z, beta, Ftot, Htot, missVals,dir) {
   return(sigmaSq)
 }
 
-sdErr <- function(Z_i, beta, Fm, N){
-  sdErr <- sqrt(sum((Z_i -  Fm %*% as.matrix(beta))^2)/ (N-2))
+sdErr <- function(Z_i, beta, Fm, N, p, k){
+  sdErr <- sqrt(sum((Z_i -  Fm %*% as.matrix(beta))^2)/ (N-p-k))
   return(sdErr)
 }
 
@@ -846,8 +899,11 @@ PredictCovLin <- function(Ftot,Htot, Z, beta, missVals, dir, impType) {
     if(sum(missVals) > 1 ) {
       idx <- which(missVals[, i])
       if(impType == "StochasticReg"){
-        s <- sdErr(Z[-idx, i], beta[i, ], Fm[-idx,], dim(Z[-idx,])[1])
-        Z[idx, i] <- (Fm[idx,] %*% as.matrix(beta[i, ])) + mean(rnorm(100,mean = 0,sd = s))
+        s <- sdErr(Z[-idx, i], beta[i, ], Fm[-idx,], dim(Z)[1], ncol(Z), dim(Z[idx,])[1])
+        
+        err <- mean(rnorm(100,mean = 0,sd = s))
+        #print(err)
+        Z[idx, i] <- (Fm[idx,] %*% as.matrix(beta[i, ])) + err
       }else if(impType == "Reg"){
         Z[idx, i] <- Fm[idx,] %*% as.matrix(beta[i, ])
       }
@@ -876,12 +932,12 @@ LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir,
   #alpha <- 0.001
   ## LASSO regression 
   if(penalty == "LASSO") {
-    beta_new <-  beta - ( alphaLin * (gradient - (lambda * sign(beta) ) ) )
+    beta_new <-  beta - ( alphaLin * (gradient + (lambda * sign(beta) ) ) )
     if(is.nan(beta_new[1,1])){
       print("nan beta")
     }
   }else if(penalty == "Ridge"){
-    beta_new <-  beta - (alphaLin * ( gradient - (2*lambda * beta ) ) )
+    beta_new <-  beta - (alphaLin * ( gradient + (2*lambda * beta ) ) )
   }
   ##Ridge regression
   #lambda <-  0.1
@@ -906,8 +962,6 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
   }
   return(list(betaret,Zret,sigmaSq))
 }
-
-
 
 ## Log likleihood calculations
 
@@ -955,8 +1009,8 @@ Lz_cal <- function(beta,N,Z,Fmat, Hmat,sigmaSq,dir ){
       #c(1, Fmat[i, ])
       #  S_tmp <- sum(c(S_tmp, (Z[i, j] - sum(c(1, Fmat[i, ]) * beta[j, ], na.rm = TRUE)) ^ 2),na.rm = TRUE)
       #}
-      #S <- S - (N*log(2*pi)/2) - (N * log(sigmaSq[j]) / 2) - (S_tmp / (2 * sigmaSq[j]))
-      S <- S + S_tmp
+      S <- S - (N*log(2*pi)/2) - (N * log(sigmaSq[j]) / 2) - (S_tmp / (2 * sigmaSq[j]))
+      #S <- S + S_tmp
     }
   }
   return(S)
@@ -1031,7 +1085,6 @@ findLLDir <- function(G,  Ftot, Htot, Win = NA, Wout = NA, X_in = NA,
 }
 
 ## Initialization functions
-
 initCov <- function(covtmp, CovNames) {
   X_in <- as.matrix(covtmp %>%
                       dplyr::select(all_of(CovNames)))
@@ -1041,9 +1094,10 @@ initCov <- function(covtmp, CovNames) {
   return(list(X_in, numMissVal))
 }
 
-initWtmat <- function(G, mode, N, nc){
+initWtmat <- function(G, mode, N, nc, seed){
+  set.seed(seed)
   #Wtmat <- igraph::degree(G, mode = mode) / sum(igraph::degree(G, mode = mode))
-  #Wtmat <- matrix(nrow = N, ncol = nc, 0)
+  #Wtmat <- matrix(nrow = N, ncol = nc, 0.00001)
   Wtmat <- matrix(nrow = N, ncol = nc, runif(nc * N, 0, 1))
   #Wtmat <- matrix(nrow = N, ncol = nc, 0.001)
   return(Wtmat)
@@ -1082,7 +1136,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
                  nitermax, orig,randomize = TRUE, CovNamesLinin = c(),
                  CovNamesLinout = c(),CovNamesLPin = c(),CovNamesLPout = c(), dir, 
                  alphaLL = NULL,test = TRUE,missing = NULL, covOrig, epsilon, 
-                 impType, alphaLin, penalty) {
+                 impType, alphaLin, penalty, seed) {
   if(printFlg == TRUE){
     print("In CoDA Func")
   }
@@ -1093,12 +1147,12 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   
   ## Community weights outgoing connections
   
-  Ftot <- initWtmat(G,"all",N,nc)
+  Ftot <- initWtmat(G,"all",N,nc, seed)
   Finit <- Ftot
   
   ## Community weights outgoing connections
   if(dir == "directed"){
-    Htot <- initWtmat(G,"all",N,nc)
+    Htot <- initWtmat(G,"all",N,nc, seed+10)
     Hinit <- Htot
   } else{
     Htot <- Ftot
@@ -1154,7 +1208,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
       mins <- min(a, na.rm=TRUE)#apply(a, 2, min)
       covOrig[,i] <- scale(a, center=(maxs+mins)/2, scale=(maxs-mins)/2) 
       #(Z_out[,i] - mean(Z_out[,i], na.rm = TRUE))/sd(Z_out[,i], na.rm = TRUE)
-      covOrig[missValsout[,i],i] <- mean(covOrig[,i], na.rm =TRUE)
+      #covOrig[missValsout[,i],i] <- mean(covOrig[,i], na.rm =TRUE)
     }
   }
   
@@ -1212,7 +1266,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     if(is.nan(pctInc)){
       print("stop here")
     }
-    if((pctInc < thresh) | (length(lllst) == nitermax)){
+    if((pctInc < thresh) | (dim(lllst)[1] == nitermax)){
       print(paste0("The final percent change ", pctInc, " ,total iterations ", iter))
       break
     }
@@ -1347,7 +1401,8 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
       MSE = mse,
       Acc = accuracy,
       OmegaIndex = OmegaVal,
-      AccMD = accuracyMD
+      AccMD = accuracyMD,
+      MSEMD = mseMD
     )
   )
 }
