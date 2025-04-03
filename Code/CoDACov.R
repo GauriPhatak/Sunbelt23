@@ -11,9 +11,14 @@ library(clustAnalytics)
 source(paste0(getwd(),"/Code/HelperFuncs.R"))
 
 ## Helper, error and accuracy calculations
-
 ## Set the values to be between range 0 and 1 
-range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+range01 <- function(x){
+  if(!all(x == x[1])){
+    (x-min(x))/(max(x)-min(x))
+  }else{
+    x
+    }
+  }
 
 accuCalc <- function(k,W,Wtm1,Wtm2,X, dir){
   if(printFlg == TRUE){
@@ -328,7 +333,6 @@ mode <- function(x) {
 }
 
 ## Network generation code
-
 SetBinarycov <- function(G, k, N,nc, k_start, Cnew,connType, pC,
                          CovNamesLP, missing) {
   ## Based on the probability matrix pC assign indicates the binary assignment of covariates to a community
@@ -397,18 +401,16 @@ SetContinuousCov <- function(G,o, N,nc, o_start, C, connType,
 
 genNested <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
                       CovNamesLPin,CovNamesLPout,CovNamesLinin,CovNamesLinout,
-                      pConn, dir,dirPct, epsilon,missing, alpha, beta){
+                      pConn,dir,dirPct,epsilon,missing,alpha,beta){
   
   ## Assigning the first network
   
   
 }
 
-
 genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
-                         CovNamesLPin,CovNamesLPout,CovNamesLinin,
-                         CovNamesLinout,pConn, dir,dirPct, epsilon,missing, 
-                         a, b,Type, pClustOL) {
+                         CovNamesLPin,CovNamesLPout,CovNamesLinin,CovNamesLinout,
+                         pConn,dir,dirPct,epsilon,missing,a,b,Type,pClustOL){
   C <- 0
   while (length(table(C)) < nc) {
     C <- sample(
@@ -585,7 +587,6 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
 }
 
 ## calculating various network metrics
-
 ClusterEntropy <- function(G, A, sigma, Nper, type){
   ## G is the graph 
   ## Sigma is the perturbation parameter
@@ -626,7 +627,7 @@ ClusterEntropy <- function(G, A, sigma, Nper, type){
   diag(A) <- 0
   g.sim <- graph_from_adjacency_matrix(A, mode = "directed")
   for(i in 1:dim(Attrs)[2])
-  g.sim <- g.sim %>% igraph::set_vertex_attr(Attrs)
+    g.sim <- g.sim %>% igraph::set_vertex_attr(Attrs)
   
   return(g.sim)
   
@@ -641,6 +642,11 @@ NetworkMetrics <- function(G ,dirT ){
   ## Triangle Participation Ratio(TPR) cyclic or acyclic triangle, 
   ## Clustering Coefficient, calculated using directed triangles.
   
+  ## Validation metrics
+  ## The Davies-Bouldin Index (DBI)
+  ## Calinski-Harabasz Index
+  ## silhouette coefficient for networks
+  
   # EXTERNAL SEPARATION
   ## Expansion, OUTGOING OR INCOMING EDGES 
   ## Maximum-ODF (Out Degree Fraction), suited for directed NW
@@ -654,7 +660,6 @@ NetworkMetrics <- function(G ,dirT ){
   ## Modularity, 
   ## Surprise, calculate the probability of observing the number of directed edges within communities under a random model that preserves the directed degree sequence
 }
-
 
 ## Community weight updates
 updateWtmat <- function(G,Wtm1,Wtm2,mode,s,nc,X,Z,k,o,beta,W,alphaLL,missVals,
@@ -686,10 +691,10 @@ updateWtmat <- function(G,Wtm1,Wtm2,mode,s,nc,X,Z,k,o,beta,W,alphaLL,missVals,
       Z_u <- matrix(Z[i, ], ncol = o)
       if(mode == "in"){
         
-        sigmaSq <- SigmaSqCalc(Z, beta, Wtm2,Wtm1, missVals,dir)
+        sigmaSq <- 0#SigmaSqCalc(Z, beta, Wtm2,Wtm1, missVals,dir)
         
       }else{
-        sigmaSq <- SigmaSqCalc(Z, beta, Wtm1,Wtm2, missVals,dir)
+        sigmaSq <- 0#SigmaSqCalc(Z, beta, Wtm1,Wtm2, missVals,dir)
         
       }
     }
@@ -698,8 +703,11 @@ updateWtmat <- function(G,Wtm1,Wtm2,mode,s,nc,X,Z,k,o,beta,W,alphaLL,missVals,
                               X_u,W,Z_u, beta,sigmaSq,alpha,alphaLL,
                               nc, start, end, mode, dir)
   }
-  
+  old <- Wtmat
   Wtmat <- apply(Wtmat,2,range01) #cbind(1, apply(Wtmat[,2:dim(Wtmat)[2]],2,range01))
+  if(sum(is.nan(Wtmat)) > 0){
+    print("some weight value is nan")
+  }
   return(Wtmat)
 }
 
@@ -741,37 +749,41 @@ CmntyWtUpdt <- function(f_u ,h_u ,h_neigh ,h_sum ,X_u = NULL ,W = NULL ,
   #print(llZ)
   
   ## Function to update the community weights vector using non negative matrix factorization
-  f_u_new <- f_u + (alpha * (t(llG) + llX[2:(nc+1)] + llZ[2:(nc+1)]))
+  f_u_new <- f_u + (alpha * (c(llG) + llX[2:(nc+1)] + llZ[2:(nc+1)]))
+  
+  
+  f_u_new[(f_u_new < 0) | (f_u_new == 0)] <- lb
+  
   if(sum(is.nan(f_u_new)) > 0){
     print("error error")
   }
   
-  f_u_new[(f_u_new < 0) | (f_u_new == 0)] <- lb
   #f_u_new[f_u_new > 1] <- ub
   return(f_u_new)
 }
 
-
 ## Graph Community Weight updates
-
 GraphComntyWtUpdt <- function(f_u,h_u,h_neigh, h_sum){
   ## First part of log likelihood of G based on the structure of the network
-  
-  a <- exp(-1 * (f_u %*% t(h_neigh)))
-  b <- a / (1 - a)
-  b[is.infinite(b)] <- 0
-  llG_1 <-  b %*% h_neigh #t(h_neigh) %*% t(b)
-  ## 2nd part of log likelihood of G
-  llG_2 <-  as.matrix(h_sum - t(h_u) - as.matrix(colSums(h_neigh)))#as.matrix(colSums(Fvnot))
-  ## Total llG: This math has been verified
-  llG <- c(llG_1) - c(llG_2)
-  ## experimental scaled version of the above llog lik
-  scale <- 1
-  llG <- scale * llG
-  if(sum(is.na(llG))>0){
+  ## Check if there are neighbours for this node and proceed only if there are neighbours
+  #llG <- rep(0, dim(f_u)[2])
+  #if( dim(h_neigh)[1] > 0){
+    a <- exp(-1 * (f_u %*% t(h_neigh)))
+    b <- a / (1 - a)
+    b[is.infinite(b)] <- 0
+    llG_1 <-  b %*% h_neigh #t(h_neigh) %*% t(b)
+    ## 2nd part of log likelihood of G
+    llG_2 <-  as.matrix(h_sum - t(h_u) - as.matrix(colSums(h_neigh)))#as.matrix(colSums(Fvnot))
+    ## Total llG: This math has been verified
+    llG <- c(llG_1) - c(llG_2)
+    ## experimental scaled version of the above llog lik
+    scale <- 1
+    llG <- scale * llG
+    
+  #}
+  if(sum(is.nan(llG))>0){
     print("graph comnty error")
   }
-  
   return(llG)
 }
 
@@ -803,8 +815,9 @@ ContcovCmntyWtUpdt <- function(nc, Z_u, beta, f_u,h_u, sigmaSq, dir){
   
   if (length(beta) > 0) {
     ## Adding the gradient based on continuous covariates
-    llZ <-  ((Z_u - t(beta %*% t(f))) / sigmaSq) %*% beta
-    if(any(is.nan(llZ))){
+    #llZ <-  ((Z_u - t(beta %*% t(f))) / sigmaSq) %*% beta
+    llZ <-  ((Z_u - t(beta %*% t(f)))) %*% beta
+    if(sum(is.nan(llZ)) > 0){
       print("error in cont cmnty weight")
     }
     #llZ <-  (Z_u - t(beta %*% t(f))) %*% beta
@@ -813,6 +826,7 @@ ContcovCmntyWtUpdt <- function(nc, Z_u, beta, f_u,h_u, sigmaSq, dir){
   return(llZ)
 }
 
+## Logistic covariates parameter updates
 sigmoid <- function(W, Ftotn) {
   Q <- 1 / (1 + exp(-1 * (W %*% t(Ftotn))))
   return(Q)
@@ -852,7 +866,7 @@ PredictCovLR <- function(X, W, Fmat, Hmat, missing,dir, impType) {
   return(X)
 }
 
-updateLogisticParam <- function(W,X,Wtm,Wtm2, missVals, lambda,alphaLR, dir, impType){
+updateLogisticParam <- function(W,X,Wtm,Wtm2,missVals,lambda,alphaLR,dir,impType){
   Wret <- W
   Xret <- X
   if (length(W) > 0) {
@@ -867,7 +881,7 @@ updateLogisticParam <- function(W,X,Wtm,Wtm2, missVals, lambda,alphaLR, dir, imp
   return(list(Wret,Xret))
 }
 
-## Continuous covariates community weights
+## Continuous covariates parameter updates
 SigmaSqCalc <- function(Z, beta, Ftot, Htot, missVals,dir) {
   sigmaSq <- rep(0, dim(beta)[1])
   if(dir == "directed"){
@@ -926,8 +940,8 @@ LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir,
     Fm_n <- cbind(1, Fmat)}
   
   ## Calculating update to the beta using gradient descent
-  y <-    Fm_n %*% t(as.matrix(beta)) #PredictCovLin(Fmat,Hmat, Z, beta, missVals,dir, impType)
-  gradient <- 2*(t(y - Z) %*% Fm_n)/N
+  y <-  Fm_n %*% t(as.matrix(beta)) #PredictCovLin(Fmat,Hmat, Z, beta, missVals,dir, impType)
+  gradient <- t(-1 * t(Fm_n) %*% (Z - (Fm_n %*% t(beta))))/N #(t(y - Z) %*% Fm_n)/N
   #print(paste0(gradient))
   #alpha <- 0.001
   ## LASSO regression 
@@ -954,7 +968,7 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
   sigmaSq <- NULL
   if (length(beta) > 0) {
     betaret <- LinRParamUpdt(beta, Z, Wtm1,Wtm2, alpha, lambda, N, missVals,dir, impType, alphaLin, penalty)
-    sigmaSq <-  SigmaSqCalc(Z, betaret, Wtm1,Wtm2, missVals,dir)
+    sigmaSq <-  0#SigmaSqCalc(Z, betaret, Wtm1,Wtm2, missVals,dir)
     
     if (sum(missVals) > 0) {
       Zret <- PredictCovLin(Wtm1, Wtm2, Z, beta, missVals,dir, impType)
@@ -964,7 +978,6 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
 }
 
 ## Log likleihood calculations
-
 CalcQuk <- function(Fmat, Hmat, W, dir){
   
   if(dir == "directed"){
@@ -1004,13 +1017,13 @@ Lz_cal <- function(beta,N,Z,Fmat, Hmat,sigmaSq,dir ){
   S <- 0
   if (length(beta) > 0) {
     for (j in 1:dim(beta)[1]) {
-      S_tmp <- sum(( Z[,j]  - Fin %*% beta[j, ]) ^ 2)
+      S_tmp <- sum(( Z[,j]  - Fin %*% beta[j, ]) ^ 2)/N
       #for (i in 1:N) {
       #c(1, Fmat[i, ])
       #  S_tmp <- sum(c(S_tmp, (Z[i, j] - sum(c(1, Fmat[i, ]) * beta[j, ], na.rm = TRUE)) ^ 2),na.rm = TRUE)
       #}
-      S <- S - (N*log(2*pi)/2) - (N * log(sigmaSq[j]) / 2) - (S_tmp / (2 * sigmaSq[j]))
-      #S <- S + S_tmp
+      #S <- S - (N*log(2*pi)/2) - (N * log(sigmaSq[j]) / 2) - (S_tmp / (2 * sigmaSq[j]))
+      S <- S + S_tmp
     }
   }
   return(S)
@@ -1124,7 +1137,7 @@ initbeta <- function(o, ncoef,missVals, Z, Fmat, Hmat, alpha,N, lambda,dir,
     beta <- matrix(nrow = o, ncol = (ncoef) + 1, 0)
     
     beta <- LinRParamUpdt(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir, impType, alphaLin, penalty)
-    sigmaSq <- SigmaSqCalc(Z, beta, Fmat,Hmat, missVals,dir)
+    sigmaSq <- 0#SigmaSqCalc(Z, beta, Fmat,Hmat, missVals,dir)
     if (sum(missVals) > 0) {
       Z <- PredictCovLin(Fmat, Hmat, Z, beta, missVals,dir, impType)
     }
@@ -1134,9 +1147,9 @@ initbeta <- function(o, ncoef,missVals, Z, Fmat, Hmat, alpha,N, lambda,dir,
 
 CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh, 
                  nitermax, orig,randomize = TRUE, CovNamesLinin = c(),
-                 CovNamesLinout = c(),CovNamesLPin = c(),CovNamesLPout = c(), dir, 
-                 alphaLL = NULL,test = TRUE,missing = NULL, covOrig, epsilon, 
-                 impType, alphaLin, penalty, seed) {
+                 CovNamesLinout = c(),CovNamesLPin = c(),CovNamesLPout = c(), 
+                 dir, alphaLL = NULL,test = TRUE,missing = NULL, covOrig, 
+                 epsilon,  impType, alphaLin, penalty, seed) {
   if(printFlg == TRUE){
     print("In CoDA Func")
   }
@@ -1152,7 +1165,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   
   ## Community weights outgoing connections
   if(dir == "directed"){
-    Htot <- initWtmat(G,"all",N,nc, seed+10)
+    Htot <- initWtmat(G,"all",N,nc, (seed+10))
     Hinit <- Htot
   } else{
     Htot <- Ftot
@@ -1220,7 +1233,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   ############## Setting initial values of binary covariates coefs weights ###############
   Win <- NULL#initW(k_in, nc,missValsin, X_in, Ftot, lambda, alpha)
   Win_orig <- Win
-   
+  
   Wout <- initW(k_out, nc,missValsout, X_out, Htot, lambda, alpha, ncoef)
   Wout_orig <- Wout
   
@@ -1228,7 +1241,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   b <- NULL#initbeta(o_in, nc,missValsin, Z_in_orig, Ftot, alpha, N, lambda)
   betain <- b
   sigmaSqin <- b
-
+  
   b <- initbeta(o_out, ncoef,missValsout, Z_out, Ftot, Htot, alpha,N, lambda,dir, impType, alphaLin, penalty)
   betaout <- b[[1]]
   sigmaSqout <- b[[2]]
@@ -1240,7 +1253,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   ##Initial log likelihood value
   LLold <- -10000
   lllst <- matrix(nrow = 0, ncol = 4)
-
+  
   arilst <- c()
   OmegaVal <- c()
   mse <- matrix(nrow = 0, ncol = (o_in+o_out))
@@ -1306,7 +1319,9 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
                           end = nc+1, dir)
       Htot <- Ftot
     }
-    
+    if(sum(is.nan(Htot)) >0 ){
+      print("There are Na in h matrix")
+    }
     
     ## Updating logistic paramters
     ## Incoming correlated covariates
@@ -1329,7 +1344,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     #print("Gradient for in")
     # c2 <- updateLinearRegParam(betain, missValsin, Z_in_orig, Ftot,alpha,lambda,N)
     # betain <- c2[[1]]
-     Z_in <- 0#c2[[2]]
+    Z_in <- 0#c2[[2]]
     # sigmaSqin <- c2[[3]]
     
     ## Look for Communities based on the F matrix
@@ -1371,17 +1386,17 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
         accuracy_out <- accuCalc(k_out,Wout,Ftot,Htot,covOrig,dir)
         ## Missing data prediction accuracy
         if(!is.null(missing)){
-        accuracy_outMD <- accuCalc(k_out,Wout,
-                                   Ftot[as.logical(rowSums(missValsout)),],
-                                   Htot[as.logical(rowSums(missValsout)),],
-                                   covOrig[as.logical(rowSums(missValsout)),],dir)
-        accuracyMD <- rbind(accuracyMD, cbind(accuracy_outMD))
+          accuracy_outMD <- accuCalc(k_out,Wout,
+                                     Ftot[as.logical(rowSums(missValsout)),],
+                                     Htot[as.logical(rowSums(missValsout)),],
+                                     covOrig[as.logical(rowSums(missValsout)),],dir)
+          accuracyMD <- rbind(accuracyMD, cbind(accuracy_outMD))
         }
         accuracy <- rbind(accuracy, cbind(accuracy_out))
       }
     }
   }
-
+  
   return(
     list(
       Ffin = Ffin,
