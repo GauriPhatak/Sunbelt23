@@ -263,11 +263,12 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
             ##Algorithm with mean imputation of missing covariates
             covtmp <-  as.data.frame(vertex_attr(G)) %>%
               dplyr::select(all_of(c(CovNamesLinin, CovNamesLinout, CovNamesLPin, CovNamesLPout))) %>% 
-              mutate_all(~ifelse(is.na(.x), mean(.x, na.rm = TRUE), .x))          
+              mutate_all(~ifelse(is.na(.x), mean(.x, na.rm = TRUE), .x))     
+            
+            G_mean <- G
 
             for(name in c(CovNamesLinin, CovNamesLinout, CovNamesLPin, CovNamesLPout)){
-              G_mean <- G %>% 
-                set_vertex_attr(name,index = V(G), covtmp[[name]])
+              G_mean <- set_vertex_attr(G_mean, name,index = V(G), covtmp[[name]])
             }
             start <- Sys.time()
             opf_MeanRegcov[[lvl]] <- CoDA(G_mean,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
