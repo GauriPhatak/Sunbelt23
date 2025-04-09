@@ -1094,21 +1094,21 @@ dev.off()
 
 param <- "InitParamMiss_Coh_MCAR_LASSO_Cont_2.rds"#"InitParamMiss_Cohesive_MCAR_B15_LASSO.rds"
 param_c <- "InitParamMiss_Coh_MCAR_LASSO_Cont_2_comp.rds"#"InitParamMiss_Cohesive_MCAR_B15_LASSO_comb.rds"
-fileName <- list.files("CoDAOP/CohesiveMCARCont_2/")#"CoDAOP/CohesiveMCAR_B15_LASSO/")
+fileName <- list.files("CoDAOP/CohesiveMCAR_2_NoDiag/")#"CoDAOP/CohesiveMCAR_B15_LASSO/")
 #Ncombo <- c(1:144)#c(1,2, 4:46, 48:72, 74:144)
 S <- as.data.frame(readRDS(param_c))
 
 S$missing <- rep(c(0,5,10,25,45), each =9)
 
-df_op <- data.frame(matrix(ncol = 13,nrow = 0,0))
+df_op <- data.frame(matrix(ncol = 14,nrow = 0,0))
 #idx <- c()
 
 getData <- function(df){
-  lens <- unlist(lapply(df, function(x ) length(x$OmegaIndex)))
+  lens <- unlist(lapply(df, function(x ) length(x$Loglik)))
   OI <- unlist(lapply(df, function(x ) last(x$OmegaIndex)))
   ARI <- unlist(lapply(df, function(x ) last(x$ARI)))
   ## Reading accuracy
-  if(dim(df[[1]]$Acc)[1] > 0){
+  if(dim(df[[1]]$Acc)[2] > 0){
     Acc1 <- unlist(lapply(df, function(x ) last(x$Acc[,1])))
     Acc2 <- unlist(lapply(df, function(x ) last(x$Acc[,2])))
     Acc3 <- unlist(lapply(df, function(x ) last(x$Acc[,3])))
@@ -1119,7 +1119,7 @@ getData <- function(df){
   }
   
   ## Reading Mean Sq error
-   if(dim(df[[1]]$MSE)[1] > 0){
+   if(dim(df[[1]]$MSE)[2] > 0){
     MSE1 <- round(unlist(lapply(df, function(x ) last(x$MSE[,1]))), 4)
     MSE2 <- round(unlist(lapply(df, function(x ) last(x$MSE[,2]))) , 4)
     MSE3 <- round(unlist(lapply(df, function(x ) last(x$MSE[,3]))) , 4)
@@ -1131,7 +1131,7 @@ getData <- function(df){
   
   ## Reading missing data specific accuracy and mean sq error
   # Reading accuracy
-  if(dim(df[[1]]$AccMD)[1] > 0){
+  if(dim(df[[1]]$AccMD)[2] > 0){
     AccMD1 <- unlist(lapply(df, function(x ) last(x$AccMD[,1])))
     AccMD2 <- unlist(lapply(df, function(x ) last(x$AccMD[,2])))
     AccMD3 <- unlist(lapply(df, function(x ) last(x$AccMD[,3])))
@@ -1142,7 +1142,7 @@ getData <- function(df){
   }
   
   ## Reading Mean Sq error
-   if(dim(df[[1]]$MSEMD)[1] > 0){
+   if(dim(df[[1]]$MSEMD)[2] > 0){
     MSEMD1 <- round(unlist(lapply(df, function(x ) last(x$MSEMD[,1]))), 4)
     MSEMD2 <- round(unlist(lapply(df, function(x ) last(x$MSEMD[,2]))) , 4)
     MSEMD3 <- round(unlist(lapply(df, function(x ) last(x$MSEMD[,3]))) , 4)
@@ -1153,20 +1153,23 @@ getData <- function(df){
   }
   
   iter <- rep(1:(length(df)/2),each=2)
-  return(cbind(lens,OI,ARI,Acc1,Acc2,Acc3,MSE1,MSE2,MSE3,AccMD1,AccMD2,AccMD3,MSEMD1,MSEMD2,MSEMD3,iter))
+  nsim <- rep(1:5, each = 5*2)
+  return(cbind(lens,OI,ARI,Acc1,Acc2,Acc3,MSE1,MSE2,MSE3,AccMD1,AccMD2,AccMD3,MSEMD1,MSEMD2,MSEMD3,iter, nsim))
 }
 
 
 for(i in fileName){
   idx <- str_extract_all(i, "\\d+")[[1]][2]
-  df <- readRDS(paste0("CoDAOP/CohesiveMCARCont_2/",i))
+  df <- readRDS(paste0("CoDAOP/CohesiveMCAR_2_NoDiag/",i))
   df_reg <- df[[1]]
   df_sto <- df[[3]]
   df_nocov <- df[[2]]
+  df_mean <- df[[4]]
   
   op <- rbind( cbind(idx,Rgr = "Reg",dir = c("D","U"), getData(df_reg)),
                cbind(idx,Rgr = "Sto",dir = c("D","U"), getData(df_sto)),
-               cbind(idx,Rgr = "NoCov",dir = c("D","U"), getData(df_nocov)))
+               cbind(idx,Rgr = "Nocov",dir = c("D","U"), getData(df_nocov)),
+               cbind(idx,Rgr = "Mean",dir = c("D","U"), getData(df_mean)))
   
   df_op <- rbind(df_op, op)
   
@@ -1197,7 +1200,6 @@ df_op$MSEMD1 <- as.numeric(df_op$MSEMD1)
 df_op$MSEMD2 <- as.numeric(df_op$MSEMD2)
 df_op$MSEMD3 <- as.numeric(df_op$MSEMD3)
 df_op$lens <- as.numeric(df_op$lens)
-
 
 df_op$Accavg <- (df_op$Acc1 + df_op$Acc2 + df_op$Acc3)/3
 df_op$MSEavg <- (df_op$MSE1 + df_op$MSE2 + df_op$MSE3)/3
@@ -1267,62 +1269,62 @@ for( i in 1:dim(c)[1]){
 ## For continuous cov
 ```{r, fig.width=12, fig.height=7}
 library(RColorBrewer)
-c <- expand.grid(unique(S$alpha), unique(S$alphaLin), unique(S$missing), unique(S$pClust))
-colnames(c) <- c("alpha","alphaLin","missing","pClust")
+c <- expand.grid(unique(S$alphaLin), unique(S$missing), unique(S$pClust))
+colnames(c) <- c("alphaLin","missing","pClust")
 gbg <- matrix(0, nrow=0, ncol = dim(c)[2])
 
 df_op$lambda <- as.factor(df_op$lambda)
 for( i in 1:dim(c)[1]){
   p <- list()
-  title <- paste0(c$pClust[i]," clust with ",c$missing[i],"% missing data and alphaLin ", c$alphaLin[i], " alpha = ", c$alpha[i])
+  title <- paste0(c$pClust[i]," clust with ",c$missing[i],"% missing data and alphaLin ", c$alphaLin[i])#, " alpha = ", c$alpha[i])
   d <-  df_op %>%
-    filter(alpha == c$alpha[i] ,pClust == c$pClust[i], 
-           alphaLin == c$alphaLin[i], missing == c$missing[i])
+    filter(pClust == c$pClust[i],  #alpha == c$alpha[i] ,
+           alphaLin == c$alphaLin[i], missing == c$missing[i], dir == "D") 
   if(dim(d)[1] > 0 ){
     gbg <- rbind(gbg, c[i,])
     p[[1]] <- d %>%
       ggplot()+
-      geom_boxplot(aes( y = OI, x = lambda, color = Rgr))+ 
+      geom_boxplot(aes( y = OI, x = lambda, color = Rgr))+ ylim(0, 1)+
       #ggtitle(title)+ 
       ylab("Omega Index") + xlab("lambda")+ scale_color_brewer(palette = "Set1")+
       theme( legend.position='none', panel.background = element_blank())+#theme_minimal()+
-      facet_grid( vars(dir),vars(pClustOL)) 
+      facet_grid( vars(pClustOL), vars(alpha)) 
     
     p[[2]] <- d %>%
       ggplot()+
-      geom_boxplot(aes( y = ARI, x = lambda, color = Rgr))+ 
+      geom_boxplot(aes( y = ARI, x = lambda, color = Rgr))+ ylim(0, 1)+
       #ggtitle(title)+ 
       ylab("ARI") + xlab("lambda")+ scale_color_brewer(palette = "Set1")+
       theme( legend.position='none', panel.background = element_blank())+#theme_minimal()+
-      facet_grid( vars(dir),vars(pClustOL))
+      facet_grid( vars(pClustOL), vars(alpha))
+    
+    # p[[3]] <- d %>%
+    #   filter(!(Rgr == "NoCov")) %>%
+    #   ggplot()+
+    #   geom_boxplot(aes( y = MSEavg , x = lambda, color = Rgr))+ 
+    #   #ggtitle(title)+ 
+    #   ylab("Average MSE") + xlab("Regression type")+ scale_color_brewer(palette = "Set2")+
+    #   theme( legend.position='none', panel.background = element_blank())+#theme_minimal()+
+    #   facet_grid( vars(dir),vars(pClustOL))
     
     p[[3]] <- d %>%
       filter(!(Rgr == "NoCov")) %>%
       ggplot()+
-      geom_boxplot(aes( y = MSEavg , x = lambda, color = Rgr))+ 
-      #ggtitle(title)+ 
-      ylab("Average MSE") + xlab("Regression type")+ scale_color_brewer(palette = "Set1")+
-      theme( legend.position='none', panel.background = element_blank())+#theme_minimal()+
-      facet_grid( vars(dir),vars(pClustOL))
-    
-    p[[4]] <- d %>%
-      filter(!(Rgr == "NoCov")) %>%
-      ggplot()+
       geom_boxplot(aes( y = MSEavgMD , x = lambda, color = Rgr))+ 
       #ggtitle(title)+ 
-      ylab("Average MSE for missing data") + xlab("Regression type")+ scale_color_brewer(palette = "Set1")+
-      theme( legend.position='none', panel.background = element_blank())+#theme_minimal()+
-      facet_grid( vars(dir),vars(pClustOL))
+      ylab("Average MSE for missing data") + xlab("Regression type")+ scale_color_brewer(palette = "Set2")+
+      theme( legend.position='bottom', panel.background = element_blank())+#theme_minimal()+
+      facet_grid( vars(pClustOL), vars(alpha))
     
-    p[[5]] <- d %>%
+    p[[4]] <- d %>%
       ggplot()+
       geom_boxplot(aes(x = pClustOL, y = lens, color = Rgr))+ 
       #ggtitle(title)+ 
       xlab("overlap") + ylab("Number of iteration")+scale_color_brewer(palette = "Set1")+
       theme( legend.position='bottom', panel.background = element_blank())+#theme_minimal()+
-      facet_grid( vars(dir),vars(lambda))
+      facet_grid( vars(lambda), vars(alpha))
     
-    pt <- ggpubr::ggarrange(plotlist = p, ncol = 3, nrow = 2)
+    pt <- ggpubr::ggarrange(plotlist = p, ncol = 2, nrow = 2)
     ptTot <- ggpubr::annotate_figure(pt,top = ggpubr::text_grob(title,color = "darkblue",
                                                                 face = "bold",size = 14))
     print(ptTot)
@@ -1331,7 +1333,29 @@ for( i in 1:dim(c)[1]){
 
 ```
 
-
+```{r, fig.width=12, fig.height=7}
+c <- expand.grid(unique(S$alpha), unique(S$alphaLin), unique(S$missing), unique(S$pClust), unique(S$pClustOL))
+colnames(c) <- c("alpha","alphaLin","missing","pClust","pClustOL")
+for( i in 1:dim(c)[1]){
+  p <- list()
+  title <- paste0(c$pClust[i]," clust with and alphaLin ", c$alphaLin[i], " alpha = ", c$alpha[i]," overlap type ", c$pClustOL[i])
+  d <-  df_op %>%
+    filter(alpha == c$alpha[i] ,pClust == c$pClust[i],alphaLin == c$alphaLin[i], pClustOL == c$pClustOL[i], dir == "D")
+  if(nrow(d)>0){
+print(d %>%
+  ggplot()+
+  geom_boxplot(aes(x = Rgr, y = OI, color = factor(missing)))+
+    ggtitle(title)+ theme( legend.position='bottom', panel.background = element_blank())+
+  facet_grid(vars(dir), vars(lambda)))  
+    
+    print(d %>%
+  ggplot()+
+  geom_boxplot(aes(x = Rgr, y = MSEavg, color = factor(missing)))+
+    ggtitle(title)+ theme( legend.position='bottom', panel.background = element_blank())+
+  facet_grid(vars(dir), vars(lambda)))  
+  }
+}
+```
 
 ```{r}
 ## Comparing the OI for stochastic regression vs regression
@@ -1372,9 +1396,6 @@ df <- readRDS(paste0("CoDAOP/CohesiveMCARCont/",i))
 
 ```
 
-
-
-
 ```{r}
 ## Creating the difference table for iteration between regression adn stochastic regression
 
@@ -1405,19 +1426,92 @@ df_OI %>% ggplot()+
 
 ```
 
+## Comparing network metrics
+
+```{r, fig.width=12, fig.height=7}
+#getwd()
+simOP <- as.data.frame(readRDS("../MetricsDataSim.rds"))
+OrigOP <- as.data.frame(readRDS("../MetricsDataOrig.rds"))
+
+param <- "InitParamMiss_Coh_MCAR_LASSO_Cont_2.rds"
+param_c <- "InitParamMiss_Coh_MCAR_LASSO_Cont_2_comp.rds"
+
+S <- as.data.frame(readRDS(param_c))
+
+S$missing <- rep(c(0,5,10,25,45), each =9)
+S$idx <- 1:dim(S)[1]
+simOP$idx <- as.numeric(simOP$idx)
+simOP <- left_join(simOP, S, by = join_by(idx == idx))
+
+dfOP <- df_op %>% select(idx, Rgr, iter, dir, OI, ARI, MSEavgMD)
+
+dfOP <- inner_join(simOP, dfOP, by = c('idx' = 'idx', 'type' = 'Rgr', 'grp' = 'iter', 'Dir' = 'dir'))
+dfOP$pClust <- as.character(dfOP$pClust)
+dfOP$pClustOL <- as.character(dfOP$pClustOL)
+dfOP$Conductance <- as.numeric(dfOP$Conductance)
+dfOP$modHP <- as.numeric(dfOP$modHP)
+dfOP$Qov <- as.numeric(dfOP$Qov)
+c <- as.data.frame(expand.grid(unique(S$pClust), unique(S$pClustOL),unique(S$alpha),unique(S$lambda), stringsAsFactors = FALSE))
+colnames(c) <- c("pClust", "pClustOL","alpha","lambda")
+dfOPn <- dfOP %>% filter(pClust == "equal")
+p <- list()
+for(i in 1:dim(c)[1]){
+  title <- paste0(c$pClust[i], " cluster with ", c$pClustOL[i], " overlap, alpha= ",c$alpha[i], " , lambda", c$lambda[i] )
+  d <- dfOPn %>%
+    filter(pClust == c$pClust[i], pClustOL == c$pClustOL[i], alpha == c$alpha[i], lambda == c$lambda[i])
+  if(dim(d)[1] > 0 ){
+    p[[1]] <-(d %>%
+  ggplot()+
+  geom_point(aes(x = Conductance, y = OI, color = type ), alpha =0.5)+
+    theme( legend.position='none', panel.background = element_blank())+
+  facet_grid(vars(Dir), vars(missing)))
+    
+    p[[2]] <- (d %>%
+  ggplot()+
+  geom_point(aes(x = modHP, y = OI, color = type ), alpha =0.5)+
+    theme( legend.position='none', panel.background = element_blank())+
+  facet_grid(vars(Dir), vars(missing)))
+    
+    p[[3]]  <-(d %>%
+  ggplot()+
+  geom_point(aes(x = Qov, y = OI, color = type ), alpha =0.5)+
+    theme( legend.position='bottom', panel.background = element_blank())+
+  facet_grid(vars(Dir), vars(missing)))
+    pt <- ggpubr::ggarrange(plotlist = p, ncol = 2, nrow = 2)
+    ptTot <- ggpubr::annotate_figure(pt,top = ggpubr::text_grob(title,color = "darkblue",
+                                                                face = "bold",size = 14))
+    print(ptTot)
+  }
+}
 
 
-```{r}
-x <- 1:10
-p <- 1-exp(-1* x) 
 
-plot(x, p)  
 ```
 
 
+```{r}
+## Network metrics for original graphs
+OrigOP$grphId <- rep(1:(dim(OrigOP)/5), each = 5)
 
 
+```
 
+
+## Code for when we get final results only
+
+```{r}
+## Read the files
+
+## Calculate the Omega Index
+
+## Final Log likelihood
+
+## Accuracy
+
+## Mean Squared error
+
+
+```
 
 
 
