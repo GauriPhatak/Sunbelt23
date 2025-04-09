@@ -6,8 +6,8 @@ library(intergraph)
 library(ergm)
 library(RColorBrewer)
 library(clustAnalytics)
-
-#source("Code/HelperFuncs.R")
+library(car)
+source(paste0(getwd(),"/Code/NetworkMetrics.R"))
 source(paste0(getwd(),"/Code/HelperFuncs.R"))
 
 ## Helper, error and accuracy calculations
@@ -19,29 +19,6 @@ range01 <- function(x){
     x
     }
   }
-
-accuCalc <- function(k,W,Wtm1,Wtm2,X, dir){
-  if(printFlg == TRUE){
-    print("In accuCalc Func")
-  }
-  if(dir == "directed"){
-    Wtm <- cbind(Wtm1, Wtm2)
-  } else{
-    Wtm <- Wtm1
-  }
-  accuracy <- matrix(nrow = 0, ncol = k)
-  if (k > 0) {
-    predLR <- apply(sigmoid(W, cbind(1, Wtm)) > 0.5, 1, as.numeric)
-    acc <- rep(0, k)
-    for (i in 1:k) {
-      cm <-  confusionMatrix(factor(predLR[, i], levels = c(0, 1)), factor(X[, i]))
-      acc[i] <- round(cm$overall[1], 2)
-    }
-    accuracy <- rbind(accuracy,acc)
-  }
-  
-  return(accuracy)
-}
 
 getNWcov <- function(G,CovNamesLinin, CovNamesLinout,CovNamesLPin,CovNamesLPout,
                      k_in, k_out, o_in, o_out ){
@@ -92,63 +69,6 @@ getNWcov <- function(G,CovNamesLinin, CovNamesLinout,CovNamesLPin,CovNamesLPout,
               numMissValin, numMissValout))
 }
 
-getDelta <- function(N){
-  delta <- sqrt(-1*log(1-(1/N)))
-  return(delta)
-}
-
-memOverlapCalc <- function(Fm, Hm, delta, N, nc){
-  ol <- as.data.frame(matrix(0, ncol = nc, nrow = N))
-  for (i in 1:N) {
-    ol[i, ] <- (as.numeric(Fm[i, ] > delta) + as.numeric(Hm[i, ] > delta)) > 0
-  }
-  return(ol)
-}
-
-OmegaIdx <- function(G, Fm, Hm, N, delta, nc) {
-  if(printFlg == TRUE){
-    print("In OmegaIdx Func")
-  }
-  memoverlap <- memOverlapCalc(Fm, Hm, delta, N, nc)
-  OrigVal <-  as.data.frame(vertex_attr(G)) %>%
-    dplyr::select(all_of(c(letters[1:nc])))
-  OrigVal[OrigVal == -1] <- 1
-  
-  ol <- list()
-  for(i in 1:nc){
-    ol[[i]] <- which(OrigVal[,i] == 1)
-  }
-  
-  posCom <- rbind(expand.grid(ol[[1]],ol[[1]]),
-                  expand.grid(ol[[2]],ol[[2]]),
-                  expand.grid(ol[[3]],ol[[3]]))
-  posCom <- paste0(posCom[,1],"-",posCom[,2])
-  valuesOrig <- as.data.frame(table(posCom))
-  
-  ol <- list()
-  for(i in 1:nc){
-    ol[[i]] <- which(memoverlap[,i] == 1)
-  }
-  
-  posCom <- rbind(expand.grid(ol[[1]],ol[[1]]),
-                  expand.grid(ol[[2]],ol[[2]]),
-                  expand.grid(ol[[3]],ol[[3]]))
-  posCom <- paste0(posCom[,1],"-",posCom[,2])
-  valuesMem <- as.data.frame(table(posCom))
-  
-  values <- full_join(valuesOrig, valuesMem, by = "posCom")
-  tot <- expand.grid(1:N, 1:N)
-  tot <- as.data.frame( paste0(tot[,1],"-",tot[,2]))
-  colnames(tot) <- c("posCom")
-  gbg <- left_join(tot,values, by = "posCom")
-  gbg[is.na(gbg)] <- 0
-  gbg$matched <- gbg$Freq.x == gbg$Freq.y
-  oi <- sum(gbg$matched)
-  
-  oi <- oi / (N ^ 2)
-  return(oi)
-}
-
 convertToUndir <- function(G, nc){
   G <- igraph::as_undirected(G, mode = "collapse")
   comAff <- as.data.frame(vertex_attr(G)) %>%
@@ -185,12 +105,16 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
   numMissValout <- b[[8]]
   
   Win <- NULL
+  VIFval <- 0
   
   if(dir =="undirected"){
     ncoef <- nc
   } else{ 
     ncoef = nc*2
   }
+  
+  ## Calculating the VIF value
+  #VIFval <- matrix(0, nrow = 0, ncol = ncoef+1)
   
   
   Wout <- NULL
@@ -204,12 +128,17 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
       } else{
         mod <- glm(X_out[,i] ~ Fm[,1]+Fm[,2]+Fm[,3]+Hm[,1]+Hm[,2]+Hm[,3],family = "binomial")
       }
+      #VIFval <- rbind(VIFval, c(i, c(vif(mod))))
       #print(summary(mod))
       binLL <- binLL + as.numeric(logLik(mod))
       Wout[i,] <- coef(mod)
     }
+    VIFval <- vif(mod)
+    print("The VIF of the model here is:")
+    print(VIFval)
   }
-  
+  # Standardizing the covariates
+  Z_out <- range01(Z_out)
   
   betaout <- NULL
   contLL <- 0
@@ -218,20 +147,24 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
     betaout <- matrix(0, nrow = o_out, ncol = (ncoef)+1 )
     for(i in 1:dim(Z_out)[2]){
       # Standardizing the covariates
-      a <- Z_out[,i]
-      maxs <- max(a, na.rm=TRUE)#apply(a, 2, max)
-      mins <- min(a, na.rm=TRUE)#apply(a, 2, min)
-      Z_out[,i] <- scale(a, center=(maxs+mins)/2, scale=(maxs-mins)/2)
+      #a <- Z_out[,i]
+      #maxs <- max(a, na.rm=TRUE)#apply(a, 2, max)
+      #mins <- min(a, na.rm=TRUE)#apply(a, 2, min)
+      #Z_out[,i] <- scale(a, center=(maxs+mins)/2, scale=(maxs-mins)/2)
       
       if(dir =="undirected"){
         mod <- lm(Z_out[,i] ~ Fm[,1]+Fm[,2]+Fm[,3])
-      } else{
+      }else{
         mod <- lm(Z_out[,i] ~ Fm[,1]+Fm[,2]+Fm[,3]+Hm[,1]+Hm[,2]+Hm[,3])
-      }      
+      }
+      
       betaout[i,] <- coef(mod)
       contLL <- contLL + as.numeric(logLik(mod))
       sigmaSqout[i] <- sigma(mod)^2
     }
+    VIFval <- vif(mod)
+    print("The VIF of the model here is:")
+    print(VIFval)
   }
   
   A <- 1 - (1 * as.matrix(as_adjacency_matrix(G)))
@@ -240,26 +173,15 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
   GrphLL <- Lg_cal(G = G, Ftot = Fm, Htot = Hm,Eneg = Eneg, epsilon = epsilon, dir = dir)
   ll <- binLL + contLL + GrphLL
   
-  findLLDir(G, Ftot = Fm, Htot= Hm,Win,Wout,X_in,X_out,
-            betain,betaout,Z_in,Z_out,
-            sigmaSqin,sigmaSqout,alphaLL,Eneg, 
-            dir, epsilon)
-  return(list(ll, c(binLL,contLL,GrphLL)))
+  #findLLDir(G, Ftot = Fm, Htot= Hm,Win,Wout,X_in,X_out,
+  #          betain,betaout,Z_in,Z_out,
+  #          sigmaSqin,sigmaSqout,alphaLL,Eneg, 
+  #          dir, epsilon)
+  return(list(ll, c(binLL,contLL,GrphLL), VIFval))
 }
 
 prob2logit <- function(x) {
   return(log(x / (1 - x)))
-}
-
-MSE <- function(Wtmat1,Wtmat2,Z,beta,N,dir){
-  #cbind(1, Wtmat)
-  if(dir=="directed"){
-    pred <- cbind(1, Wtmat1, Wtmat2) %*% t(beta)
-  }else{
-    pred <- cbind(1, Wtmat1) %*% t(beta)
-  }
-  mse <- sqrt(colSums((pred - Z) ^ 2) / N)
-  return(mse)
 }
 
 NWSimBin <- function(nc, k,  pC, N, pClust, B, o, dist,dir,
@@ -524,10 +446,10 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   F_u <- matrix(0,nrow = N, ncol = nc)
   H_u <- matrix(0,nrow = N, ncol = nc)
   if( dir == "directed" ){
-    F_u[Cnew > 0] <- rbeta(sum(Cnew > 0),a,b)
-    H_u[Cnew < 0] <- rbeta(sum(Cnew < 0),a,b)
+    F_u[Cnew > 0] <- 0.5#rbeta(sum(Cnew > 0),a,b)
+    H_u[Cnew < 0] <- 0.5 #rbeta(sum(Cnew < 0),a,b)
   }else {
-    F_u[Cnew > 0] <- rbeta(sum(Cnew > 0),a,b)
+    F_u[Cnew > 0] <- 0.5#rbeta(sum(Cnew > 0),a,b)
     H_u <- F_u
   }
   
@@ -703,7 +625,7 @@ updateWtmat <- function(G,Wtm1,Wtm2,mode,s,nc,X,Z,k,o,beta,W,alphaLL,missVals,
                               X_u,W,Z_u, beta,sigmaSq,alpha,alphaLL,
                               nc, start, end, mode, dir)
   }
-  old <- Wtmat
+  #old <- Wtmat
   Wtmat <- apply(Wtmat,2,range01) #cbind(1, apply(Wtmat[,2:dim(Wtmat)[2]],2,range01))
   if(sum(is.nan(Wtmat)) > 0){
     print("some weight value is nan")
@@ -834,7 +756,7 @@ sigmoid <- function(W, Ftotn) {
 
 LRParamUpdt <- function(W, X, Ftot,Htot, alphaLR, lambda, missing, dir) {
   
-  ## Do nto add penalty to the intercept hence removing the 1 from the Ftotn matrix
+  ## Do not add penalty to the intercept hence removing the 1 from the Ftotn matrix
   if(dir =="directed"){
     Ftotn <- cbind(1,Ftot, Htot)
   } else{
@@ -915,7 +837,7 @@ PredictCovLin <- function(Ftot,Htot, Z, beta, missVals, dir, impType) {
       if(impType == "StochasticReg"){
         s <- sdErr(Z[-idx, i], beta[i, ], Fm[-idx,], dim(Z)[1], ncol(Z), dim(Z[idx,])[1])
         
-        err <- mean(rnorm(100,mean = 0,sd = s))
+        err <- mean(rnorm(1,mean = 0,sd = s))
         #print(err)
         Z[idx, i] <- (Fm[idx,] %*% as.matrix(beta[i, ])) + err
       }else if(impType == "Reg"){
@@ -952,6 +874,9 @@ LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir,
     }
   }else if(penalty == "Ridge"){
     beta_new <-  beta - (alphaLin * ( gradient + (2*lambda * beta ) ) )
+  } else if(penalty == "Proximal"){
+    beta_temp <-  beta - ( alphaLin * gradient ) 
+    beta_new <- sign(beta_temp) * max( abs(beta_temp) - alphaLin * lambda , 0)
   }
   ##Ridge regression
   #lambda <-  0.1
@@ -1172,6 +1097,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     Hinit <- Htot
   }
   
+  set.seed(Sys.time())
   
   iter <- 0
   k_in <- k[1]
@@ -1180,8 +1106,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   o_out <- o[2]
   
   ########## Get the covariate matrix for binary data and continuous data ##########
-  b <- getNWcov(G, CovNamesLinin,CovNamesLinout,
-                CovNamesLPin,CovNamesLPout,
+  b <- getNWcov(G, CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout,
                 k_in,k_out,o_in,o_out)
   
   X_in <- b[[1]]
@@ -1280,7 +1205,23 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
       print("stop here")
     }
     if((pctInc < thresh) | (dim(lllst)[1] == nitermax)){
-      print(paste0("The final percent change ", pctInc, " ,total iterations ", iter))
+      if(test == FALSE){
+        
+        arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
+        OmegaVal <- c(OmegaVal, OmegaIdx(G, Ftot, Htot, N, delta,nc))
+        
+        MSEtmp <- MSEop(Ftot, Htot, covOrig, betaout,N, dir, o_in,o_out, missValsout)
+        mseMD <- rbind(mseMD, MSEtmp[[1]])
+        mse <- rbind(mse, MSEtmp[[2]])
+        
+        accutmp <- accuOP(k_in, k_out,Wout,Ftot, Htot,covOrig,dir,missValsout)
+        accuracyMD <- rbind(accuracyMD, accutmp[[1]])
+        accuracy <- rbind(accuracy, accutmp[[2]])
+        
+      }
+      
+      print(paste0("The final percent change ", round(pctInc,6), " ,total iterations ", 
+                   iter, " with seed value ", seed, " Final OI ",OmegaIdx(G, Ftot, Htot, N, delta, nc)))
       break
     }
     
@@ -1349,51 +1290,17 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     
     ## Look for Communities based on the F matrix
     if(test == TRUE){
-      mem <- rep(NA, N)
-      for (i in 1:N) {
-        m <- data.frame(com = rep(letters[1:nc], times = 2),
-                        val = c(Ftot[i,], Htot[i,]))
-        
-        if(!(length(which.max(m$val)) > 0)){
-          print(which.max(m$val))
-        }
-        mem[i] <-  m$com[which.max(m$val)]
-      }
-      arilst <- c(arilst, mclust::adjustedRandIndex(orig, mem))
+      
+      arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
       OmegaVal <- c(OmegaVal, OmegaIdx(G, Ftot, Htot, N, delta,nc))
       
-      if((o_in + o_out) > 0){
-        mseout <- 0
-        mseouttot <- 0
-        if (o_out > 0) {
-          mseouttot <- MSE(Ftot,Htot,covOrig,betaout,N,dir)#MSE(Ftot,Htot,Z_out,betaout,N,dir)
-          if(!is.null(missing)){
-            mse_outMD <- MSE(Ftot[as.logical(rowSums(missValsout)),],
-                             Htot[as.logical(rowSums(missValsout)),],
-                             covOrig[as.logical(rowSums(missValsout)),],
-                             betaout, N, dir)
-            #print(dim(mseMD))
-            mseMD <- rbind(mseMD, c(mse_outMD))
-          }
-        }
-        mse <- rbind(mse, c( mseouttot))
-      }
-      
-      if((k_in + k_out) > 0){
-        #### Calculating the accuracy for the binary covariates
-        
-        ## Overall Accuracy
-        accuracy_out <- accuCalc(k_out,Wout,Ftot,Htot,covOrig,dir)
-        ## Missing data prediction accuracy
-        if(!is.null(missing)){
-          accuracy_outMD <- accuCalc(k_out,Wout,
-                                     Ftot[as.logical(rowSums(missValsout)),],
-                                     Htot[as.logical(rowSums(missValsout)),],
-                                     covOrig[as.logical(rowSums(missValsout)),],dir)
-          accuracyMD <- rbind(accuracyMD, cbind(accuracy_outMD))
-        }
-        accuracy <- rbind(accuracy, cbind(accuracy_out))
-      }
+      MSEtmp <- MSEop(Ftot, Htot, covOrig, betaout,N, dir, o_in,o_out, missValsout)
+      mseMD <- rbind(mseMD, MSEtmp[[1]])
+      mse <- rbind(mse, MSEtmp[[2]])
+      accutmp <- accuOP(k_in, k_out,Wout,Ftot, Htot,covOrig,dir,missValsout)
+      accuracyMD <- rbind(accuracyMD, accutmp[[1]])
+      accuracy <- rbind(accuracy, accutmp[[2]])
+
     }
   }
   
