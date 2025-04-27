@@ -22,9 +22,9 @@ ARIop <- function(Ftot,Htot,orig,nc,N){
 MSE <- function(Wtmat1,Wtmat2,Z,beta,N,dir){
   #cbind(1, Wtmat)
   if(dir=="directed"){
-    pred <- cbind(1, Wtmat1, Wtmat2) %*% t(beta)
+    pred <- cbind(1, Wtmat1, Wtmat2) %*% beta
   }else{
-    pred <- cbind(1, Wtmat1) %*% t(beta)
+    pred <- cbind(1, Wtmat1) %*% beta
   }
   mse <- sqrt(colSums((pred - Z) ^ 2) / N)
   return(mse)
@@ -32,23 +32,23 @@ MSE <- function(Wtmat1,Wtmat2,Z,beta,N,dir){
 
 MSEop <- function(Ftot, Htot, covOrig, betaout,N, dir, o_in,o_out, missValsout){
   mseouttot <- matrix(nrow = 0, ncol = (o_in+o_out))
-  mse_outMD <- matrix(nrow = 0, ncol = (o_in + o_out))
+  mse_outMD <- c()#matrix(nrow = 0, ncol = (o_in + o_out))
   
   if((o_in + o_out) > 0){
     mseout <- 0
     mseouttot <- 0
     if (o_out > 0) {
-      mseouttot <- MSE(Ftot,Htot,covOrig,betaout,N,dir)#MSE(Ftot,Htot,Z_out,betaout,N,dir)
-      if(sum(missValsout) > 0){
-        mse_outMD <- MSE(Ftot[as.logical(rowSums(missValsout)),],
-                         Htot[as.logical(rowSums(missValsout)),],
-                         covOrig[as.logical(rowSums(missValsout)),],
-                         betaout, N, dir)
-        #print(dim(mseMD))
-        #mseMD <- rbind(mseMD, c(mse_outMD))
+      mseouttot <- MSE(Ftot,Htot,covOrig,t(as.matrix(betaout)),N,dir)#MSE(Ftot,Htot,Z_out,betaout,N,dir)
+        for(i in 1:o_out){
+          if(sum(missValsout[,i]) > 0){
+          mse_outMD <- c(mse_outMD, MSE(Ftot[missValsout[,i],],
+                           Htot[missValsout[,i],],
+                           covOrig[missValsout[, i],i],
+                           as.matrix(betaout[i, ]), N, dir))
+          }
+          else{mse_outMD <- c(mse_outMD,0)}
       }
     }
-    #mse <- rbind(mse, c(mseouttot))
   }
   
   return(list(c(mse_outMD) , c(mseouttot)))

@@ -6,7 +6,7 @@ source(paste0(getwd(),"/Code/CoDACov.R"))
 # }
 # simvec <- as.integer(gsub("[\r\n]", "",args[1]))
 # print(paste0("the simulation number ", simvec))
-
+#predVals <<- rep(0, 5)
 SaveCoDASim <- function(simvec, sim, InitParamFile){
   
   S <- as.data.frame(readRDS(paste0(getwd(),InitParamFile)))
@@ -76,8 +76,11 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     randomize <- Sim$randomize
     
     ## Percent of missing data in covariates
-    missing <- Sim$missing[[1]]
-    
+    missing <- Sim$missing[[1]]#md##c(0,0,10)#
+    ## Setting missingnness type
+    missType <- Sim$mt[[1]]#c("Random", "Random", "Random")#c("Random", "Random", "Random") #c("Random", "Random", "GT_MAR") #GT_MAR LT_MAR Random
+    MARparam <- Sim$mar[[1]]#c(25, 80)
+    #ns <- 0#newseed
     ## Number of nodes
     N <- Sim$N
     
@@ -110,7 +113,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     Type <- Sim$Type
     
     ## Cluster Overlap proportion
-    pClustOL <- Sim$pClustOL[[1]]
+    pClustOL <- Sim$pClustOL[[1]]#ol#Sim$pClustOL[[1]]
     
     ## Deciding penalty type
     penalty <- Sim$penalty
@@ -146,21 +149,28 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     TimeTaken <- list()
     FS <- list()
     
+    params <- matrix(0, nrow= 0, ncol =34)
+    ## List for saving the original covariates
+    orig_Cov <- list()
     for(m in 1:bigN){
       ## Generating network with covariates and overlapping clusters
       NWlst <- genBipartite(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
                             CovNamesLPin,CovNamesLPout,CovNamesLinin,CovNamesLinout,
                             pConn,dir= "directed",dirPct,epsilon,missing, 
-                            a, b, Type, pClustOL)
+                            a, b, Type, pClustOL, missType, MARparam)
       G_orig <- NWlst[[1]]
-      orig_Cov <- NWlst[[2]]
+      orig_Cov[[m]] <- NWlst[[2]]
+      ## Just to compare
+      covtmp <-  as.data.frame(vertex_attr(G_orig)) %>%
+        dplyr::select(all_of(c(CovNamesLinin, CovNamesLinout, CovNamesLPin, CovNamesLPout)))
+      #gbg <- cbind(covtmp , orig_Cov[[m]])
       F_u <- NWlst[[3]]
       H_u <- NWlst[[4]]
       
-      df <- cbind(F_u, H_u, V(G_orig)$a, V(G_orig)$b, V(G_orig)$c)
-      igraph::plot.igraph(G_orig,vertex.label = NA, vertex.size = 5,
-                           vertex.color = as.factor(V(G_orig)$Cluster),
-                           edge.arrow.size= 0.1, edge.color = "grey28")
+      #df <- cbind(F_u, H_u, V(G_orig)$a, V(G_orig)$b, V(G_orig)$c)
+      #igraph::plot.igraph(G_orig,vertex.label = NA, vertex.size = 5,
+      #                     vertex.color = as.factor(V(G_orig)$Cluster),
+       #                    edge.arrow.size= 0.1, edge.color = "grey28")
       
       # View(cbind(V(G_orig)$bvout1, V(G_orig)$bvout2, V(G_orig)$bvout3))
       # Run all the algorithms 
@@ -173,7 +183,6 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
       for (j in 1:Nsim) {
           seed <- Sys.time()#sample.int(100000, 1)
           for(dir in c("directed", "undirected")){
-            print(paste0("This is ", dir, " network."))
             if(dir == "undirected"){
               G <- convertToUndir(G_orig, nc)
               F_u_tot <- F_u + H_u
@@ -190,7 +199,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
                                        CovNamesLinin, CovNamesLinout,
                                        CovNamesLPin,CovNamesLPout,
                                        k_in,k_out,o_in,o_out, epsilon, dir, 
-                                       orig_Cov, Fm = F_uGT, Hm = H_uGT)
+                                       orig_Cov[[m]], Fm = F_uGT, Hm = H_uGT)
             GTlogLikcov <- GTlogLikcovLst[[1]]
             GTlogLikcovSep <- GTlogLikcovLst[[2]]
             vifVal <- GTlogLikcovLst[[3]]
@@ -198,7 +207,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
                                          CovNamesLinin=c(), CovNamesLinout =c(),
                                          CovNamesLPin=c(),CovNamesLPout=c(),
                                          k_in =0 ,k_out =0,o_in=0,o_out=0,epsilon,dir,
-                                         orig_Cov, F_uGT, H_uGT)
+                                         orig_Cov[[m]], F_uGT, H_uGT)
             GTlogLiknocov <- GTlogLiknoCovLst[[1]]
             GTlogLiknocovSep <- GTlogLiknoCovLst[[2]]
             orig <<- V(G)$Cluster
@@ -229,14 +238,14 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
               origCov <<-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
             }
             
-            print(paste0("iteration ",lvl," alpha ",alpha,  " alphaLL ",alphaLL," num cmnty ",nc))
+            print(paste0("in the ", dir," iteration ",j," for network ",m," alpha ",alpha," alphaLL ",alphaLL," num cmnty ",nc))
             
             ## Algorithm with covariates + possible missing data
             start <- Sys.time()
             opf_Regcov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
                                    lambda,thresh,nitermax,orig,randomize = TRUE,
                                    CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
-                                   alphaLL = NULL, test,missing = missing, covOrig = orig_Cov, 
+                                   alphaLL, test,missing, covOrig = orig_Cov[[m]], 
                                    epsilon =0, impType = "Reg", alphaLin, penalty, seed )
             tme <- Sys.time() - start
             print(paste0("Total time take algo with covariates and simple regression ", round(tme, 3)))
@@ -245,7 +254,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
             opf_StoRegcov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
                                            lambda,thresh,nitermax,orig,randomize = TRUE,
                                            CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
-                                           alphaLL = NULL,test,missing = missing, covOrig = orig_Cov,
+                                           alphaLL,test,missing = missing, covOrig = orig_Cov[[m]],
                                            epsilon = 0, impType = "StochasticReg", alphaLin, penalty,seed )
             tme <- Sys.time() - start
             print(paste0("Total time take algo with covariates and stochastic regression ", round(tme, 3)))
@@ -255,7 +264,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
             opf_noCov[[lvl]] <- CoDA(G,nc,k = c(0, 0),o = c(0, 0),N,alpha,
                                      lambda,thresh ,nitermax,orig,randomize = TRUE,
                                      CovNamesLinin = c(),CovNamesLinout = c(),CovNamesLPin = c(),CovNamesLPout = c(),
-                                     dir,alphaLL = NULL, test,missing = missing, covOrig = orig_Cov,
+                                     dir,alphaLL, test,missing = missing, covOrig = orig_Cov[[m]],
                                      epsilon =0, impType = "", alphaLin, penalty, seed)
             tme <- Sys.time() - start
             print(paste0("Total time take algo without covariates ", round(tme, 3)))
@@ -266,37 +275,39 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
               mutate_all(~ifelse(is.na(.x), mean(.x, na.rm = TRUE), .x))     
             
             G_mean <- G
-
             for(name in c(CovNamesLinin, CovNamesLinout, CovNamesLPin, CovNamesLPout)){
-              G_mean <- set_vertex_attr(G_mean, name,index = V(G), covtmp[[name]])
+              G_mean <- set_vertex_attr(G_mean, name,index = V(G_mean), covtmp[[name]])
             }
             start <- Sys.time()
             opf_MeanRegcov[[lvl]] <- CoDA(G_mean,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
                                          lambda,thresh,nitermax,orig,randomize = TRUE,
                                          CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
-                                         alphaLL = NULL,test,missing = NULL, covOrig = orig_Cov,
+                                         alphaLL,test,missing = NULL, covOrig = orig_Cov[[m]],
                                          epsilon = 0, impType = "Reg", alphaLin, penalty,seed )
             tme <- Sys.time() - start
             print(paste0("Total time take algo with covariates and reg with mean imputation ", round(tme, 3)))
             
-            start <- Sys.time()
-            opf_ProxRegcov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
-                                         lambda,thresh,nitermax,orig,randomize = TRUE,
-                                         CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
-                                         alphaLL = NULL,test,missing = missing, covOrig = orig_Cov,
-                                         epsilon = 0, impType = "Reg", alphaLin, "Proximal",seed )
-            tme <- Sys.time() - start
-            print(paste0("Total time take algo with covariates, regression and Proximal penalty ", round(tme, 3)))
+            # start <- Sys.time()
+            # opf_ProxRegcov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
+            #                              lambda,thresh,nitermax,orig,randomize = TRUE,
+            #                              CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
+            #                              alphaLL,test,missing = missing, covOrig = orig_Cov[[m]],
+            #                              epsilon = 0, impType = "Reg", alphaLin, "Proximal",seed )
+            # tme <- Sys.time() - start
+            # print(paste0("Total time take algo with covariates, regression and Proximal penalty ", round(tme, 3)))
             
             FS[[lvl]] <- cbind(F_uGT, H_uGT)
             
             lvl <- lvl + 1
+            
+            params <- rbind(params, append(Sim, list(bigN = m,nsim = j,dir = dir)))
           }
-          Gtot <-  append(Gtot, list(G))
           GTlogLikcovtot <-  append(GTlogLikcovtot, GTlogLikcov)
           GTlogLiknoCovtot <- append(GTlogLiknoCovtot, GTlogLiknocov)
           
-        }
+      }
+      Gtot <-  append(Gtot, list(G))
+      
     }
     opf_Regcovtot <- opf_Regcov
     opf_StoRegcovtot <- opf_StoRegcov
@@ -304,141 +315,35 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     opf_MeanRegcovtot <- opf_MeanRegcov
     opf_ProxRegcovtot <- opf_ProxRegcov
   }
-  
-  return(list(opf_Regcovtot, opf_noCovtot, opf_StoRegcovtot, opf_MeanRegcovtot, opf_ProxRegcovtot, Gtot, GTlogLikcovtot, GTlogLiknoCovtot, FS))
+  params <- as.data.frame(params)
+  return(list(opf_Regcovtot, opf_noCovtot, opf_StoRegcovtot, opf_MeanRegcovtot, opf_ProxRegcovtot, Gtot, GTlogLikcovtot, GTlogLiknoCovtot, FS, orig_Cov, params))
   #return(0)
 }
 
-
-simvec = 194
+print(getwd())
+simvec = 4
 sim = TRUE
-InitParamFile = "/Code/InitParamMiss_Coh_MCAR_LASSO_Cont_2.rds"
+InitParamFile = "/Code/InitParamMiss_Coh_MAR_LASSO_Cont_scaled.rds"
 S <- as.data.frame(readRDS(paste0(getwd(),InitParamFile)))
-
-lstNst194_1 <- SaveCoDASim(simvec ,
-                       sim ,
-                       InitParamFile)
-#"/Code/InitParamMiss_Cohesive_Nested_MCAR_B15_LASSO.rds")
-df <- lstNst194_1
-
-ends <- matrix(0, nrow =0, ncol = 18)
-for(i in 1:12){
-  #G <- df[[4]][[i]]
-  F_u <- df[[1]][[i]]$Ffin
-  H_u <- df[[1]][[i]]$Hfin
-  #df <- cbind(F_u, H_u, V(G)$a, V(G)$b, V(G)$c)
-  # igraph::plot.igraph(G,vertex.label = NA, vertex.size = 5,
-  #                     vertex.color = as.factor(V(G)$Cluster),
-  #                     edge.arrow.size = 0.1, edge.color = "grey28")
-  ends <- rbind(ends, c(tail(df[[1]][[i]]$OmegaIndex,1), tail(df[[3]][[i]]$OmegaIndex,1), 
-                        tail(df[[2]][[i]]$OmegaIndex,1), 
-                        tail(df[[4]][[i]]$OmegaIndex,1), tail(df[[5]][[i]]$OmegaIndex,1),
-                        tail(df[[1]][[i]]$Loglik,1)[1], tail(df[[3]][[i]]$Loglik,1)[1], 
-                        tail(df[[2]][[i]]$Loglik,1)[1],
-                        tail(df[[4]][[i]]$Loglik,1)[1],tail(df[[5]][[i]]$Loglik,1)[1],
-                        mean(tail(df[[1]][[i]]$MSEMD,1)), mean(tail(df[[3]][[i]]$MSEMD,1)), 
-                        mean(tail(df[[5]][[i]]$MSEMD,1)),
-                        length(df[[1]][[i]]$Loglik)/4,length(df[[2]][[i]]$Loglik)/4,
-                        length(df[[3]][[i]]$Loglik)/4,
-                        length(df[[4]][[i]]$Loglik)/4,length(df[[5]][[i]]$Loglik)/4))
-  #tail(df[[2]][[i]]$OmegaIndex)
-  #tail(df[[1]][[i]]$Acc)
-  #tail(df[[3]][[i]]$Acc)
-
-  # p <- data.frame(seq = 1:length(df[[1]][[i]]$OmegaIndex) ,
-  #            OIReg = df[[1]][[i]]$OmegaIndex)  %>%
-  #   ggplot() +
-  #   geom_line(aes(x = seq, y = OIReg), color = "green") +
-  #   geom_line(data  = data.frame(seq = 1:length(df[[3]][[i]]$OmegaIndex) ,
-  #                                OISto = df[[3]][[i]]$OmegaIndex),
-  #             aes(x = seq, y = OISto), color = "blue") +
-  #   geom_line(data  =data.frame(seq = 1:length(df[[2]][[i]]$OmegaIndex) ,
-  #                             OINoCov = df[[2]][[i]]$OmegaIndex),
-  #             aes(x = seq, y = OINoCov))
-  # print(p)
-  # print(data.frame(seq = 1:length(df[[1]][[i]]$Loglik[,1]) ,
-  #                  OIReg = df[[1]][[i]]$Loglik[,1])  %>%
-  #         ggplot() +
-  #         geom_line(aes(x = seq, y = OIReg), color = "green") +
-  #         geom_line(data  = data.frame(seq = 1:length(df[[3]][[i]]$Loglik[,1]) ,
-  #                                      OISto = df[[3]][[i]]$Loglik[,1]),
-  #                   aes(x = seq, y = OISto), color = "blue") +
-  #         geom_line(data  =data.frame(seq = 1:length(df[[2]][[i]]$Loglik[,1]) ,
-  #                                     OINoCov = df[[2]][[i]]$Loglik[,1]),
-  #                   aes(x = seq, y = OINoCov)))
-
-  ## plotting the final value of community weights
-  # cw <- as.data.frame(cbind(1:100, df[[1]][[i]]$Ffin, df[[3]][[i]]$Ffin,
-  #                           df[[1]][[i]]$Hfin, df[[3]][[i]]$Hfin,
-  #                           #df[[1]][[i]]$Forig, df[[1]][[i]]$Horig,
-  #                           df[[7]][[i]])
-  #                     )
-  # colnames(cw) <- c("n","f-r-1","f-r-2","f-r-3","f-s-1","f-s-2","f-s-3",
-  #                   "h-r-1","h-r-2","h-r-3","h-s-1","h-s-2","h-s-3",
-  #                   #"f-n-1","f-n-2","f-n-3","h-n-1","h-n-2","h-n-3",
-  #                   "f-o-1","f-o-2","f-o-3","h-o-1","h-o-2","h-o-3")
-  # print( cw %>% pivot_longer(!n, values_to = "cw", names_to = "type")%>%
-  #          separate(type,c ("dir","RegType", "col") ,sep = "-") %>%
-  #          ggplot()+
-  #          geom_point(aes(x = n, y = cw , color = RegType), alpha =0.5)+
-  #          facet_wrap(~dir+col))
-}
-
-colnames(ends) <- c("OI_R","OI_S","OI_N", "OI_M","OI_PR","LL_R","LL_S","LL_N","LL_M","LL_PR","MSE_R","MSE_S","MSE_PR","Len_R","Len_N","Len_S","Len_M","Len_PR")
-ends <- data.frame(ends)
-ends$type <- c(rep(c("D","U"), 6))
-ends$NW <- rep(c(1:2), each =6)
-
-ends <- data.frame(ends) %>%
-  pivot_longer(-c(type,NW))#, values_to = "Values", names_to = "type")
-
-ends %>%
-  filter(name %in% c("OI_R","OI_S","OI_N", "OI_M","OI_PR")) %>%
-  group_by(NW,type) %>%
-  aggregate(value~ . , FUN =mean) %>%
-  ggplot() +
-  geom_boxplot(aes(y = value, x = name)) +
-  geom_point(aes(x = name, y = value, color = factor(NW))) +
-  facet_wrap(~type)
-
-ends %>%
-  filter(name %in% c("OI_R","OI_S","OI_N", "OI_M","OI_PR")) %>%
-  group_by(NW,type) %>%
-  #aggregate(value~ . , FUN =mean) %>%
-  ggplot() +
-  geom_boxplot(aes(y = value, x = name)) +
-  geom_point(aes(x = name, y = value, color = factor(NW))) +
-  facet_wrap(~type)
-
-
-ends %>%
-  filter(name %in% c("MSE_R","MSE_S","MSE_PR")) %>%
-  group_by(NW,type) %>%
-  aggregate(value~ . , FUN =mean) %>%
-  ggplot()+
-  geom_boxplot(aes(y = value, x = name))+
-  geom_point(aes(x = name, y = value, color = factor(NW)))+
-  facet_wrap(~type)
-
-ends %>%
-  filter(name %in% c("Len_R","Len_N","Len_S","Len_M","Len_PR")) %>%
-  group_by(NW,type) %>%
-  #aggregate(value~ . , FUN =mean) %>%
-  ggplot() +
-  geom_boxplot(aes(y = value, x = name)) +
-  geom_point(aes(x = name, y = value, color = factor(NW))) +
-  facet_wrap(~type)
-
-# lst2 <- SaveCoDASim(simvec = 2, 
-#                     sim = TRUE, 
-#                     InitParamFile = "/Code/InitParamMiss_Cohesive_MCAR.rds")
-
-# lst2 <- SaveCoDASim(simvec = 1, 
-#                     sim = TRUE, 
-#                     InitParamFile = "/Code/InitParamMiss_Nested.rds")
-# 
-# lst3 <- SaveCoDASim(simvec = 1, 
-#                     sim = TRUE, 
-#                     InitParamFile = "/Code/InitParamMiss _2-Mode.rds")
-
-#saveRDS(lst, paste0(file,"_OP", simvec,".rds"))
+# c <- expand.grid(md = list(c(15,15,15),
+#                            c(45,45,45),
+#                            c(0,0,15),
+#                            c(0,0,45)),
+#                  ol = list(c(0.0, 0.0, 0.0, 0),
+#                            c(0.1, 0.1, 0.1, 0),
+#                            c(0.2, 0.2, 0.2, 0),
+#                            c(0.3, 0.3, 0.3, 0)),
+#                  initSeed = c(0,42))
+#c$mar <- rep(list(NULL, c(23,60)), each = 2)
+#c$mt <- rep(list(c("Random", "Random", "Random"), c("Random", "Random", "GT_MAR") ), each= 2)
+#for(j in 1:32){
+  # md <<- c$md[[j]]
+  # ol <<- c$ol[[j]]
+  # mar <<- c$mar[[j]]
+  # #newseed <<- 42#c$initSeed[j]
+  # mt <<- c$mt[[j]]
+df_3 <- SaveCoDASim(simvec,
+                    sim,
+                    InitParamFile)
+saveRDS(df, paste0(getwd(),"/Code/CaseStudies/CaseStudyN",(j),".rds"))
+#}
