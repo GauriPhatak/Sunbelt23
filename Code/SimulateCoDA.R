@@ -16,7 +16,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     test <- FALSE
     Sim <- data.frame(S[simvec,])
     ## Number of simulations
-    Nsim <- Sim$Nsim
+    Nsim <- 3#Sim$Nsim
     
     ##Directed graph yes? No?
     dir <- Sim$DirType
@@ -76,9 +76,9 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     randomize <- Sim$randomize
     
     ## Percent of missing data in covariates
-    missing <- Sim$missing[[1]]#md##c(0,0,10)#
+    missing <- Sim$missing[[1]]
     ## Setting missingnness type
-    missType <- Sim$mt[[1]]#c("Random", "Random", "Random")#c("Random", "Random", "Random") #c("Random", "Random", "GT_MAR") #GT_MAR LT_MAR Random
+    missType <- Sim$mt[[1]]#c("Random", "Random", "Random") #c("Random", "Random", "GT_MAR")
     MARparam <- Sim$mar[[1]]#c(25, 80)
     #ns <- 0#newseed
     ## Number of nodes
@@ -113,7 +113,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     Type <- Sim$Type
     
     ## Cluster Overlap proportion
-    pClustOL <- Sim$pClustOL[[1]]#ol#Sim$pClustOL[[1]]
+    pClustOL <- Sim$pClustOL[[1]]
     
     ## Deciding penalty type
     penalty <- Sim$penalty
@@ -121,12 +121,15 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     ## Delta value threshold for assigning communities
     delta <- getDelta(N)
     
+    ## What type of inital imputation should be done on the missing data
+    covInit <- Sim$covInit[[1]]
+    
     ## saving the original cluster list
     mse <- matrix(nrow = Nsim, ncol = o + k, 0)
     lvl <- 1
     ncVal <- nc
     
-    bigN <- Sim$bigN
+    bigN <- 5#Sim$bigN
     Gtot<- list() 
     GTlogLikcovtot<- list() 
     GTlogLiknoCovtot <- list()
@@ -149,7 +152,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     TimeTaken <- list()
     FS <- list()
     
-    params <- matrix(0, nrow= 0, ncol =34)
+    params <- matrix(0, nrow= 0, ncol =35)
     ## List for saving the original covariates
     orig_Cov <- list()
     for(m in 1:bigN){
@@ -168,9 +171,9 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
       H_u <- NWlst[[4]]
       
       #df <- cbind(F_u, H_u, V(G_orig)$a, V(G_orig)$b, V(G_orig)$c)
-      #igraph::plot.igraph(G_orig,vertex.label = NA, vertex.size = 5,
-      #                     vertex.color = as.factor(V(G_orig)$Cluster),
-       #                    edge.arrow.size= 0.1, edge.color = "grey28")
+      print(igraph::plot.igraph(G_orig,vertex.label = NA, vertex.size = 5,
+                           vertex.color = as.factor(V(G_orig)$Cluster),
+                           edge.arrow.size= 0.1, edge.color = "grey28"))
       
       # View(cbind(V(G_orig)$bvout1, V(G_orig)$bvout2, V(G_orig)$bvout3))
       # Run all the algorithms 
@@ -238,7 +241,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
               origCov <<-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
             }
             
-            print(paste0("in the ", dir," iteration ",j," for network ",m," alpha ",alpha," alphaLL ",alphaLL," num cmnty ",nc))
+            print(paste0("in the ", dir," iteration ",j," for network ",m," alpha ",alpha," alphaLL ",alphaLL," num cmnty ",nc, " inital impute type ", covInit))
             
             ## Algorithm with covariates + possible missing data
             start <- Sys.time()
@@ -246,7 +249,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
                                    lambda,thresh,nitermax,orig,randomize = TRUE,
                                    CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
                                    alphaLL, test,missing, covOrig = orig_Cov[[m]], 
-                                   epsilon =0, impType = "Reg", alphaLin, penalty, seed )
+                                   epsilon =0, impType = "Reg", alphaLin, penalty, seed,covInit )
             tme <- Sys.time() - start
             print(paste0("Total time take algo with covariates and simple regression ", round(tme, 3)))
             
@@ -255,7 +258,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
                                            lambda,thresh,nitermax,orig,randomize = TRUE,
                                            CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
                                            alphaLL,test,missing = missing, covOrig = orig_Cov[[m]],
-                                           epsilon = 0, impType = "StochasticReg", alphaLin, penalty,seed )
+                                           epsilon = 0, impType = "StochasticReg", alphaLin, penalty,seed,covInit )
             tme <- Sys.time() - start
             print(paste0("Total time take algo with covariates and stochastic regression ", round(tme, 3)))
             
@@ -265,7 +268,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
                                      lambda,thresh ,nitermax,orig,randomize = TRUE,
                                      CovNamesLinin = c(),CovNamesLinout = c(),CovNamesLPin = c(),CovNamesLPout = c(),
                                      dir,alphaLL, test,missing = missing, covOrig = orig_Cov[[m]],
-                                     epsilon =0, impType = "", alphaLin, penalty, seed)
+                                     epsilon =0, impType = "", alphaLin, penalty, seed, covInit)
             tme <- Sys.time() - start
             print(paste0("Total time take algo without covariates ", round(tme, 3)))
             
@@ -283,7 +286,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
                                          lambda,thresh,nitermax,orig,randomize = TRUE,
                                          CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
                                          alphaLL,test,missing = NULL, covOrig = orig_Cov[[m]],
-                                         epsilon = 0, impType = "Reg", alphaLin, penalty,seed )
+                                         epsilon = 0, impType = "Reg", alphaLin, penalty,seed, covInit )
             tme <- Sys.time() - start
             print(paste0("Total time take algo with covariates and reg with mean imputation ", round(tme, 3)))
             
@@ -321,9 +324,9 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
 }
 
 print(getwd())
-simvec = 4
+simvec = 6
 sim = TRUE
-InitParamFile = "/Code/InitParamMiss_Coh_MAR_LASSO_Cont_scaled.rds"
+InitParamFile = "/Code/InitParamMiss_Coh_MAR_LASSO_Cont_scaled_newDist_BigN20_covInit_Nsim5.rds"
 S <- as.data.frame(readRDS(paste0(getwd(),InitParamFile)))
 # c <- expand.grid(md = list(c(15,15,15),
 #                            c(45,45,45),
@@ -342,8 +345,8 @@ S <- as.data.frame(readRDS(paste0(getwd(),InitParamFile)))
   # mar <<- c$mar[[j]]
   # #newseed <<- 42#c$initSeed[j]
   # mt <<- c$mt[[j]]
-df_3 <- SaveCoDASim(simvec,
+df6 <- SaveCoDASim(simvec,
                     sim,
                     InitParamFile)
-saveRDS(df, paste0(getwd(),"/Code/CaseStudies/CaseStudyN",(j),".rds"))
+saveRDS(df10, paste0(getwd(),"/Code/CaseStudies/CaseStudyN",simvec,".rds"))
 #}
