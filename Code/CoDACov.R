@@ -421,10 +421,10 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   F_u <- matrix(0,nrow = N, ncol = nc)
   H_u <- matrix(0,nrow = N, ncol = nc)
   if( dir == "directed" ){
-    F_u[Cnew > 0] <- 0.5#rbeta(sum(Cnew > 0),a,b)
-    H_u[Cnew < 0] <- 0.5 #rbeta(sum(Cnew < 0),a,b)
+    F_u[Cnew > 0] <- 0.4#rbeta(sum(Cnew > 0),a,b)
+    H_u[Cnew < 0] <- 0.4#rbeta(sum(Cnew < 0),a,b)
   }else {
-    F_u[Cnew > 0] <- 0.5#rbeta(sum(Cnew > 0),a,b)
+    F_u[Cnew > 0] <- 0.4#rbeta(sum(Cnew > 0),a,b)
     H_u <- F_u
   }
   

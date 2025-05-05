@@ -13,10 +13,10 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
   
   if (sim == TRUE) {
     printFlg <<- FALSE
-    test <- FALSE
+    test <- TRUE#FALSE
     Sim <- data.frame(S[simvec,])
     ## Number of simulations
-    Nsim <- 3#Sim$Nsim
+    Nsim <- 1#Sim$Nsim
     
     ##Directed graph yes? No?
     dir <- Sim$DirType
@@ -64,7 +64,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     
     ##loglik calculation using weight for graph vs covariates
     alphaLL <- Sim$alphaLL
-    
+    print(alphaLL)
     ##penalty of logistic regression
     lambda <- Sim$lambda
     
@@ -106,8 +106,8 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     nitermax <- Sim$nitermax
     
     ## Beta distribution alpha and beta values
-    a <- Sim$a
-    b <- Sim$b
+    a <- 5#Sim$a
+    b <- 8#Sim$b
     
     ## Type of network
     Type <- Sim$Type
@@ -323,30 +323,22 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
   #return(0)
 }
 
-print(getwd())
-simvec = 6
+simvec = 16
 sim = TRUE
-InitParamFile = "/Code/InitParamMiss_Coh_MAR_LASSO_Cont_scaled_newDist_BigN20_covInit_Nsim5.rds"
-S <- as.data.frame(readRDS(paste0(getwd(),InitParamFile)))
-# c <- expand.grid(md = list(c(15,15,15),
-#                            c(45,45,45),
-#                            c(0,0,15),
-#                            c(0,0,45)),
-#                  ol = list(c(0.0, 0.0, 0.0, 0),
-#                            c(0.1, 0.1, 0.1, 0),
-#                            c(0.2, 0.2, 0.2, 0),
-#                            c(0.3, 0.3, 0.3, 0)),
-#                  initSeed = c(0,42))
-#c$mar <- rep(list(NULL, c(23,60)), each = 2)
-#c$mt <- rep(list(c("Random", "Random", "Random"), c("Random", "Random", "GT_MAR") ), each= 2)
-#for(j in 1:32){
-  # md <<- c$md[[j]]
-  # ol <<- c$ol[[j]]
-  # mar <<- c$mar[[j]]
-  # #newseed <<- 42#c$initSeed[j]
-  # mt <<- c$mt[[j]]
-df6 <- SaveCoDASim(simvec,
-                    sim,
-                    InitParamFile)
-saveRDS(df10, paste0(getwd(),"/Code/CaseStudies/CaseStudyN",simvec,".rds"))
-#}
+InitParamFile = "/Code/InitParamMiss_Coh_MAR_LASSO_Cont_scaled_newDist_BigN20_Dist_Nsim5.rds"
+df<- SaveCoDASim(simvec,
+                 sim,
+                 InitParamFile)
+# for(q in seq(2,120,by = 10)){
+#   simvec = q
+#   sim = TRUE
+#   InitParamFile = "/Code/InitParamMiss_Coh_MAR_LASSO_Cont_scaled_newDist_BigN20_covInit_Nsim5.rds"
+#   S <- as.data.frame(readRDS(paste0(getwd(),InitParamFile)))
+#   alphaLL <<- 1
+#   df<- SaveCoDASim(simvec,
+#                         sim,
+#                         InitParamFile)
+#   saveRDS(df, paste0(getwd(),"/Code/CaseStudies/alphaLLComp",alphaLL,"-",simvec,".rds"))
+# }
+
+
