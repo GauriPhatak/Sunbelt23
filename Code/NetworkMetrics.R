@@ -104,6 +104,7 @@ getDelta <- function(N){
 
 memOverlapCalc <- function(Fm, Hm, delta, N, nc){
   ol <- as.data.frame(matrix(0, ncol = nc, nrow = N))
+             
   for (i in 1:N) {
     ol[i, ] <- (as.numeric(Fm[i, ] > delta) + as.numeric(Hm[i, ] > delta)) > 0
   }
@@ -115,6 +116,11 @@ OmegaIdx <- function(G, Fm, Hm, N, delta, nc) {
     print("In OmegaIdx Func")
   }
   memoverlap <- memOverlapCalc(Fm, Hm, delta, N, nc)
+  
+  
+  #### Using soft thresholding for memory overlap
+  #ol <- lapply(1:nc, function(i) which(memoverlap[,i] > quantile(memoverlap[,i], 0.75)))
+  
   OrigVal <-  as.data.frame(vertex_attr(G)) %>%
     dplyr::select(all_of(c(letters[1:nc])))
   OrigVal[OrigVal == -1] <- 1
