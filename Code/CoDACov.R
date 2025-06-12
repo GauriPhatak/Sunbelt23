@@ -271,18 +271,11 @@ SetBinarycov <- function(G, k, N,nc, k_start, Cnew,connType, pC,
   return(list(G, binVal_orig))
 }
 
-SetContinuousCov <- function(G,o, N,nc, o_start, C, connType, 
-                             dist,CovNamesLin,missing,missType, MARparam=NULL){
+OldSetContinuousCov <- function(G,o, N,nc, o_start, C, connType, 
+                                dist,CovNamesLin,missing,missType, MARparam=NULL){
   ## Based on the mean and variance indicated by the dist matrix we assign continuous values to the network covariates.
   contVal <- matrix(ncol = o, nrow = N, 0) 
   s <- 1 
-  # for(k in 1:o){
-  #   for (i in 1:nc) {
-  #     idx <- which(C[, i] == connType)
-  #     contVal[idx, k] <- rnorm(length(idx), dist[[s]][1],dist[[s]][2])
-  #     s <- s + 1
-  #   }
-  # }
   
   for (i in 1:nc) {
     idx <- which(C[,i] == connType)
@@ -322,6 +315,53 @@ SetContinuousCov <- function(G,o, N,nc, o_start, C, connType,
   
 }
 
+SetContinuousCov <- function(G,o, N,nc, o_start, C, connType, 
+                             dist,CovNamesLin,missing,missType, MARparam=NULL){
+  ## Based on the mean and variance indicated by the dist matrix we assign continuous values to the network covariates.
+  contVal <- matrix(ncol = o, nrow = N, 0) 
+  s <- 1 
+  
+  for (i in 1:nc) {
+    idx_in <- which(C[,i] == -1)
+    contVal[idx_in, i] <- rnorm(length(idx_in), dist[[s]][1], dist[[s]][2])
+    
+    idx_out <- which(C[,i] == 1)
+    contVal[idx_out, i] <- rnorm(length(idx_out), dist[[s+1]][1], dist[[s+1]][2])
+    
+    idx_n <- which(!(1:N %in% c(idx_in, idx_out)))
+    contVal[idx_n, i] <- rnorm(length(idx_n), dist[[s+2]][1], dist[[s+2]][2])
+    s <- s+3
+  }
+  
+  contVal_orig <- contVal
+  if(!is.null(missing)) {
+    for (j in 1:o) {
+      ## Create missingness based on type of missingness. 
+      if(missType[j] == "Random"){ # 1) Random (MCAR)
+        contVal[sample(1:N, round(missing[j] * N / 100)), j] <- NA
+      }else if(missType[j] == "GT_MAR"){ # 2) Greater Than a particular value (MAR)
+        sampTot <- which(floor(contVal[,j]) > MARparam[1]) ## Indices to be sampled from based on restriction
+        contVal[sample(sampTot,round(missing[j]*MARparam[2]/100)),j] <- NA
+        contVal[sample(which(!((1:N) %in% sampTot)), round(missing[j]*(100-MARparam[2])/100)), j] <- NA
+      }else if(missType[j] == "LT_MAR"){ # 3) Less than a particular value (MAR)
+        sampTot <- which(contVal[,j] < MARparam[1]) ## Indices to be sampled from based on restriction
+        contVal[sample(sampTot,round(missing[j]*MARparam[2]/100)),j] <- NA
+        contVal[sample(which(!((1:N) %in% sampTot)), round(missing[j]*(100-MARparam[2])/100)), j] <- NA
+      }else if(missType[j] == "CovDep_MAR"){ # 4) Dependent on another covariate that is not missing (MAR)
+        
+      }
+      
+      G <- G %>% set_vertex_attr(name = CovNamesLin[j], value = c(contVal[, j]))
+    }
+  } else{
+    for (j in 1:o) {
+      G <- G %>% set_vertex_attr(name = CovNamesLin[j], value = c(contVal[, j]))
+    }
+  }
+  
+  return(list(G, contVal_orig))
+  
+}
 
 genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
                          CovNamesLPin,CovNamesLPout,CovNamesLinin,CovNamesLinout,
@@ -468,39 +508,53 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   }
   
   ## Creating continuous covariates in the network.
+  # if (c("continuous") %in% covTypes) {
+  #   if (length(CovNamesLinin) > 0) {
+  #     op <- SetContinuousCov(g.sim, o_in, N, nc, o_start = 0, Cold, 
+  #                            connType = 1, dist,CovNamesLinin,missing,
+  #                            missType, MARparam)
+  #   }
+  #   if (length(CovNamesLinout) > 0) {
+  #     
+  #     op <- SetContinuousCov(g.sim, o_out, N,nc, o_start = o_in, Cold, 
+  #                            connType = 1, dist, CovNamesLinout, missing,
+  #                            missType, MARparam)
+  #   }
+  #   g.sim <- op[[1]]
+  #   covVal_orig <- op[[2]]
+  # }
   if (c("continuous") %in% covTypes) {
     if (length(CovNamesLinin) > 0) {
-      op <- SetContinuousCov(g.sim, o_in, N, nc, o_start = 0, Cold, 
+      op <- SetContinuousCov(g.sim, o_in, N, nc, o_start = 0, Cnew, 
                              connType = 1, dist,CovNamesLinin,missing,
                              missType, MARparam)
     }
     if (length(CovNamesLinout) > 0) {
       
-      op <- SetContinuousCov(g.sim, o_out, N,nc, o_start = o_in, Cold, 
+      op <- SetContinuousCov(g.sim, o_out, N,nc, o_start = o_in, Cnew, 
                              connType = 1, dist, CovNamesLinout, missing,
                              missType, MARparam)
     }
     g.sim <- op[[1]]
     covVal_orig <- op[[2]]
   }
-  
   g.sim <- g.sim  %>%
     set_vertex_attr(name = "Cluster", value = C)
   return(list(g.sim, covVal_orig, F_u, H_u, Apuv))
 }
 
-updateWtmatBothTypes <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W, alphaLL, missVals, alpha, start, end, dir){
+updateWtmat <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W, alphaLL, missVals, alpha, start, end, dir){
   
   ## Getting sum of all the weights of Fv. Have to modify this for CoDa as opposed to CESNA 
   
   # calculate the sigma sq value
   if (o > 0) {
-    if(dir == "directed"){
-      #beta_t <- cbind(beta[,1], beta[,start:end], beta[,(start-nc):(end-nc)])
-      sigmaSq <- SigmaSqCalc(Z, beta, Ftot ,Htot, missVals,dir)
-    }else{
-      sigmaSq <- SigmaSqCalc(Z, beta, Ftot, Htot , missVals,dir)
-    }
+    #if(dir == "directed"){
+    #beta_t <- cbind(beta[,1], beta[,start:end], beta[,(start-nc):(end-nc)])
+    sigmaSq <- SigmaSqCalc(Z, beta, Ftot ,Htot, missVals,dir)
+    #}else{
+    #  sigmaSq <- SigmaSqCalc(Z, beta, Ftot, Htot , missVals,dir)
+    #}
   }
   
   for (i in s) {
@@ -539,7 +593,7 @@ updateWtmatBothTypes <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W
       
       Htot[i, ] <- CmntyWtUpdt(matrix(Htot[i,],ncol = nc),matrix(Ftot[i,],ncol = nc),
                                Ftot_neigh,Ftot_sum,X_u,W,Z_u,beta,sigmaSq,alpha,
-                               alphaLL,nc, nc+2, (nc*2)+1,"out",dir)
+                               alphaLL,nc, nc + 2, (nc*2)+1,"out",dir)
     }else{
       Htot[i, ] <- Ftot[i, ]
     }
@@ -549,77 +603,9 @@ updateWtmatBothTypes <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W
   return(list(Ftot,Htot))
 }
 
-## Community weight updates
-updateWtmat <- function(G, Wtm1, Wtm2, mode, s, nc, X, Z, k, o, beta, W, alphaLL, missVals, alpha, start, end, dir){
-  if(printFlg == TRUE){
-    print("In updateWtmat Func")
-  }
-  Wtmat <- Wtm1
-  
-  ## Getting sum of all the weights of Fv. Have to modify this for CoDa as opposed to CESNA 
-  Wtm2_sum <- as.matrix(colSums(Wtm2))
-  # calculate the sigma sq value
-  
-  if (o > 0) {
-    if(dir == "directed"){
-      if(mode == "in"){
-        #beta_t <- cbind(beta[,1], beta[,start:end], beta[,(start-nc):(end-nc)])
-        sigmaSq <- SigmaSqCalc(Z, beta, Wtm2,Wtm1, missVals,dir)
-      }else{
-        sigmaSq <- SigmaSqCalc(Z, beta, Wtm1,Wtm2, missVals,dir)
-      }
-    }else{
-      sigmaSq <- SigmaSqCalc(Z, beta, Wtm1,Wtm2, missVals,dir)
-    }
-    #sigmaSq <- 1
-  }
-  
-  for (i in s) {
-    #print(i)
-    Wtm1_u <- matrix(Wtm1[i, ], ncol = nc)
-    Wtm2_u <- matrix(Wtm2[i, ], ncol = nc)
-    
-    ##The neighbours of this node
-    neigh <- igraph::neighbors(G, i, mode)
-    Wtm2_neigh <- matrix(Wtm2[neigh, ], ncol = nc)
-    
-    X_u <- NULL
-    if (k > 0) {
-      X_u <- matrix(X[i, ], ncol = k)
-    }
-    
-    Z_u <- NULL
-    if(o > 0 ){
-      Z_u <- matrix(Z[i, ], ncol = o)
-    }
-    
-    Wtmat[i, ] <- CmntyWtUpdt(Wtm1_u,Wtm2_u,Wtm2_neigh, Wtm2_sum,
-                              X_u,W,Z_u, beta,sigmaSq,alpha,alphaLL,
-                              nc, start, end, mode, dir)
-    
-    if(sum(is.infinite(Wtm2_u)) > 0){
-      print("infinite h_u")
-    }
-  }
-  #Wtmat <- apply(Wtmat,2,range01) 
-  #reg_t_23 <<- rbind(reg_t_23, c(Wtmat[23,]))
-  #nc_t_23 <<- rbind(nc_t_23, c(Wtmat[23,]))
-  
-  #reg_t_92 <<- rbind(reg_t_92, c(Wtmat[92,]))
-  #reg_t_97 <<- rbind(reg_t_97, c(Wtmat[97,]))
-  
-  if(sum(is.nan(Wtmat)) > 0){
-    print("some weight value is nan")
-  }
-  return(Wtmat)
-}
-
-CmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
-                        Z_u = NULL, beta = NULL ,sigmaSq ,alpha ,alphaLL ,
-                        nc ,start ,end ,mode,dir ) {
-  
-  lb <- 0.00001
-  ub <- 1
+OldCmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
+                           Z_u = NULL, beta = NULL ,sigmaSq ,alpha ,alphaLL ,
+                           nc ,start ,end ,mode,dir ) {
   
   llG <- rep(0,nc)
   
@@ -628,16 +614,49 @@ CmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
   llG <- GraphComntyWtUpdt(W1_u,W2_u,W2_neigh,W2_sum)
   
   #Second part of Likelihood based on binary covariates
-  #if(dir == "directed"){
-  #if(mode == "out"){
+  llX <- BincovCmntyWtUpdt(nc, W1_u, W2_u, W, X_u, dir)
+  #Third part of likelihood based on continuous covariates
+  if(dir == "directed"){
+    if(mode == "in"){
+      llX <- BincovCmntyWtUpdt(nc, W1_u, W2_u, W, X_u, dir)
+    }else if(mode == "out"){
+      W <- cbind(W[,1], W[,start:end], W[,(start-nc):(end-nc)])
+      llX <- BincovCmntyWtUpdt(nc, W1_u, W2_u, W, X_u, dir)
+    }
+  }else{
+    llX <- BincovCmntyWtUpdt(nc, W1_u, W2_u, W, X_u, dir)
+  }
+  
+  #Third part of likelihood based on continuous covariates
+  if(dir == "directed"){
+    if(mode == "in"){
+      llZ <- ContcovCmntyWtUpdt(nc, Z_u, beta, W1_u, W2_u, sigmaSq, dir)
+    }else if(mode == "out"){
+      beta <- cbind(beta[,1], beta[,start:end], beta[,(start-nc):(end-nc)])
+      llZ <- ContcovCmntyWtUpdt(nc, Z_u, beta, W1_u,W2_u, sigmaSq, dir)
+    }
+  }else{
+    llZ <- ContcovCmntyWtUpdt(nc, Z_u, beta, W1_u, W2_u, sigmaSq, dir)
+  }
+  ## Function to update the community weights vector using non negative matrix factorization
+  W1_u_new <- W1_u + (alpha * (c(llG) +  alphaLL *(llX[1:nc] + llZ[1:nc])))
+  W1_u_new[(W1_u_new < 0) | (W1_u_new == 0)] <- 0
+  
+  return(W1_u_new)
+  
+}
+CmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
+                        Z_u = NULL, beta = NULL ,sigmaSq ,alpha ,alphaLL ,
+                        nc ,start ,end ,mode,dir ) {
+  
+  llG <- rep(0,nc)
+  
+  ## Gradient function to update log likelihood of G
+  #First part of Likelihood based on graph only.
+  llG <- GraphComntyWtUpdt(W1_u,W2_u,W2_neigh,W2_sum)
+  
+  #Second part of Likelihood based on binary covariates
   llX <- BincovCmntyWtUpdt(nc*2, W1_u, W2_u, W, X_u, dir)
-  #}else if(mode == "in"){
-  #  W <- cbind(W[,1], W[,start:end], W[,(start-nc):(end-nc)])
-  #  llX <- BincovCmntyWtUpdt(nc*2, W1_u, W2_u, W, X_u, dir)
-  #}
-  #} else{
-  #  llX <- BincovCmntyWtUpdt(nc, W1_u, W2_u, W, X_u, dir)
-  #}
   
   #Third part of likelihood based on continuous covariates
   if(dir == "directed"){
@@ -657,7 +676,6 @@ CmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
   return(W1_u_new)
   
 }
-
 ## Graph Community Weight updates
 GraphComntyWtUpdt <- function(W1_u,W2_u,W2_neigh, W2_sum){
   ## First part of log likelihood of G based on the structure of the network
@@ -679,38 +697,73 @@ GraphComntyWtUpdt <- function(W1_u,W2_u,W2_neigh, W2_sum){
 }
 
 ## Binary covariates community weight
-BincovCmntyWtUpdt <- function(ncoef, f_u,h_u, W, X_u, dir){
-  llX <- rep(0, ncoef + 1)
+BincovCmntyWtUpdt <- function(nc, f_u,h_u, W, X_u, dir){
+  # if(dir == "directed"){
+  #   ncoef <- (nc*2)+1
+  # }else{
+  #   ncoef <- nc+1
+  # }
+  llX <- rep(0, nc)
   if (length(W) > 0) {
     ## Updating the logistic regression weights
     ## Gradient function to update log likelihood for covariates
     ## adding intercept term
-    Q_u <- CalcQuk(f_u,h_u,W, dir)
+    Q_u <- CalcQuk(f_u,h_u,W,nc, dir)
     ## This math has been verified
-    llX <- t((X_u - Q_u) %*% W)
+    llX <- t((X_u - Q_u) %*% W[,2:(nc+1)])
   }
   return(llX)
 }
 
 ## Continuous covariates community weight
-ContcovCmntyWtUpdt <- function(nc, Z_u, beta, W1_u,W2_u, sigmaSq, dir){
+OldContcovCmntyWtUpdt <- function(nc, Z_u, beta, W1_u,W2_u, sigmaSq, dir){
+  
+  if(dir =="directed"){
+    llZ <- rep(0, nc*2 )
+    WW <- matrix(c(1,W1_u,W2_u), ncol = 1+(nc*2))
+    
+  }else{
+    llZ <- rep(0, nc )
+    WW <- matrix(c(1,W1_u), ncol = (1+nc))
+    
+  }
   if (length(beta) > 0) {
-    if(dir =="directed"){
-      llZ <- rep(0, nc*2 )
-      WW <- matrix(c(1,W1_u,W2_u), ncol = 1+(nc*2))
-      
-    }else{
-      llZ <- rep(0, nc)
-      WW <- matrix(c(1,W1_u), ncol = (1+nc))
-      ## Adding the gradient based on continuous covariates
-      #llZ <- 1 * ((Z_u - t(beta %*% t(WW))) %*% beta[,2:])/sigmaSq
-    }
     ## Adding the gradient based on continuous covariates
     llZ <- 1 * ((Z_u - t(beta %*% t(WW))) %*% beta[,2:(nc+1)])/sigmaSq
   }
   return(llZ)
 }
 
+## Continuous covariates community weight
+ContcovCmntyWtUpdt <- function(nc, Z_u, beta, W1_u,W2_u, sigmaSq, dir){
+  
+  if(dir =="directed"){
+    llZ <- rep(0, nc*2 )
+    WW <- matrix(c(1,W1_u,W2_u), ncol = 1+(nc*2))
+    
+  }else{
+    llZ <- rep(0, nc)
+    WW <- matrix(c(1,W1_u), ncol = (1+nc))
+    
+  }
+  if (length(beta) > 0) {
+    ## Adding the gradient based on continuous covariates
+    llZ <- 1 * ((Z_u - t(beta %*% t(WW))) %*% beta[,2:(nc+1)])/sigmaSq
+  }
+  return(llZ)
+}
+
+CalcQuk <- function(Fmat, Hmat, W, nc, dir){
+  Q_uk <- rep(0, dim(W)[1])
+  if(dir == "directed"){
+    Q_uk <- 1 / (1 + exp(-1 * (cbind(1, Fmat, Hmat) %*% t(W))))
+    
+  } else{
+    Q_uk <- 1 / (1 + exp(-1 * (cbind(1, Fmat) %*% t(W))))
+  }
+  
+  return(Q_uk)
+}
 ## Logistic covariates parameter updates
 sigmoid <- function(W, Ftotn) {
   Q <- 1 / (1 + exp(-1 * (W %*% t(Ftotn))))
@@ -725,12 +778,19 @@ LRParamUpdt <- function(W, X, Ftot,Htot, alphaLR, lambda, missing, dir) {
   } else{
     Ftotn <- cbind(1,Ftot)
   }
-  Q <- sigmoid(W, Ftotn)
-  
-  W_grad <- t(X - t(Q)) %*% Ftotn
-  W_new <- W
-  W_new[,-c(1)] <- W[,-c(1)] - alphaLR * (W_grad[,-c(1)] + lambda * (sign(W[,-c(1)])))
-  return(W_new)
+  N <- dim(X)[1]
+  for(i in 1:dim(X)[2]){
+    p_i <- sigmoid(W[i,], Ftotn)
+    W_grad <- ((p_i - X[,i]) %*% Ftotn[,-c(1)])/N
+    W_0 <- sum(p_i - X[,i])/N
+    W[i,1] <- W[i,1] - alphaLR*W_0
+    W[i, -c(1)] <- sign(W[i,-c(1)] - alphaLR * W_grad) * max(abs(W[i,-c(1)] - alphaLR * W_grad) - alphaLR * lambda, 0)
+  }
+  #Q <- sigmoid(W, Ftotn)
+  #W_grad <- t(X - t(Q)) %*% Ftotn
+  #W_new <- W
+  #W_new[,-c(1)] <- W[,-c(1)] - alphaLR * (W_grad[,-c(1)] + lambda * (sign(W[,-c(1)])))
+  return(W)
 }
 
 PredictCovLR <- function(X, W, Fmat, Hmat, missing,dir, impType) {
@@ -815,128 +875,6 @@ grad_norm <- function(grad) {
   sqrt(sum(grad^2))  # L2 norm
 }
 
-LinRParamUpdt1.0 <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir, 
-                             impType, alphaLin, penalty ) {
-  if(printFlg == TRUE){
-    print("In Linparamupdate Func")
-  }
-  beta_new <- beta#matrix(0, nrow = dim(beta)[1], ncol = dim(beta)[2])
-  if(dir =="directed"){
-    Fm_n <- cbind(1,Fmat, Hmat)
-  }else{  
-    Fm_n <- cbind(1, Fmat)}
-  
-  weights <- c(0, 1/apply(Fm_n[, -1], 2 , sd))
-  
-  # Try rescaling the values just for linear regression
-  #Fm_n <- cbind(1, apply(Fm_n[,-1],2,range01) )
-  
-  ## Calculating update to the beta using gradient descent
-  #y <-  Fm_n %*% t(as.matrix(beta)) 
-  #gn <- c()
-  
-  #print("new iter")
-  for(idx in 1:dim(beta)[1]){
-    lambda <- round(abs(t(Fm_n[,-1]) %*% Z[,idx])/N, 2)
-    #print(c(lambda))
-    #print(paste("The max lambda value for cov :",idx, " is ", paste(lambda,collapse = ",")))
-    lambda_max <- max(lambda)
-    # maxLambda <<- c(maxLambda, lambda_max)
-    #-1 * t( t(Fm_n) %*% (Z[,idx] - matrix(beta[idx,1],ncol=1, nrow= N ) - (Fm_n[,-1] %*% (beta[idx,-1 ])))) /N
-    ## LASSO regression 
-    # for(graditer in 1){
-    gradient <- -1 * t( t(Fm_n) %*% (Z[,idx] - (Fm_n %*% beta_new[idx, ]) ) ) /N
-    #gn <- c( gn, grad_norm(gradient))
-    
-    if(penalty == "LASSO") {
-      #EN_fit <- cv.glmnet(Fm_n[,-1], Z[,idx], alpha = 1, lambda = seq(0.001,1,length = 100))
-      #lambda.min <-  EN_fit$lambda.min
-      #beta_new[idx,] <- as.numeric(coef(glmnet(Fm_n[,-1], Z[,idx], alpha = 1,lambda = 0.1)))
-      beta_new[idx,] <-  beta_new[idx,] - ( alphaLin * (gradient + (lambda_max * weights * safe_sign(beta_new[idx,]) ) ) )
-      #beta_new[idx,] - ( alphaLin * (gradient + (lambda * weights * safe_sign(beta_new[idx,]) ) ) )
-      #beta_new[idx,] - ( alphaLin * (gradient + (lambda * safe_sign(beta_new[idx,]) ) ) )
-      #beta_new[idx,] - ( alphaLin * (gradient + (lambda * weights * safe_sign(beta_new[idx,]) ) ) )
-      #beta - ( alphaLin * (gradient + (lambda * sign(beta) ) ) )
-      if(is.nan(beta_new[1,1])){
-        print("nan beta")}
-    }else if(penalty == "Ridge"){
-      beta_new <-  beta - (alphaLin * ( gradient + (2*lambda * beta ) ) )
-    } else if(penalty == "Proximal"){
-      beta_temp <-  beta - ( alphaLin * gradient ) 
-      beta_new <- sign(beta_temp) * max( abs(beta_temp) - alphaLin * lambda , 0)
-    }
-    # }
-  }
-  #print(gn)
-  #print(beta_new)
-  #GN <- rbind(GN, gn)
-  
-  if(sum(is.infinite(beta_new)) > 0){
-    print("Beta_new is inifinite")
-  }
-  return(beta_new)
-}
-
-LinRParamUpdt2.0 <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir, 
-                             impType, alphaLin, penalty ) {
-  if(printFlg == TRUE){
-    print("In Linparamupdate Func")
-  }
-  beta_new <- beta#matrix(0, nrow = dim(beta)[1], ncol = dim(beta)[2])
-  if(dir =="directed"){
-    Fm_n <- cbind(1,Fmat, Hmat)
-  }else{  
-    Fm_n <- cbind(1, Fmat)}
-  
-  weights <- c(0, 1/apply(Fm_n[, -1], 2 , sd))#c(0,rep(1, 6))#
-  
-  # Try rescaling the values just for linear regression
-  #Fm_n <- cbind(1, apply(Fm_n[,-1],2,range01) )
-  ## Calculating update to the beta using gradient descent
-  #y <-  Fm_n %*% t(as.matrix(beta)) 
-  #gn <- c()
-  
-  
-  for(idx in 1:dim(beta)[1]){
-    #lambda <- round(abs(t(Fm_n[,-1]) %*% Z[,idx])/N, 2)
-    #print(paste("The max lambda value for cov :",idx, " is ", paste(lambda,collapse = ",")))
-    #lambda_max <- max(lambda)/10
-    # maxLambda <<- c(maxLambda, lambda_max)
-    #-1 * t( t(Fm_n) %*% (Z[,idx] - matrix(beta[idx,1],ncol=1, nrow= N ) - (Fm_n[,-1] %*% (beta[idx,-1 ])))) /N
-    ## LASSO regression 
-    # for(graditer in 1){
-    gradient <- -1 * t( t(Fm_n) %*% (Z[,idx] - (Fm_n %*% beta_new[idx, ]) ) ) /N
-    #gn <- c( gn, grad_norm(gradient))
-    
-    if(penalty == "LASSO") {
-      #EN_fit <- cv.glmnet(Fm_n[,-1], Z[,idx], alpha = 1, lambda = seq(0.001,1,length = 100))
-      #lambda.min <-  EN_fit$lambda.min
-      #beta_new[idx,] <- as.numeric(coef(glmnet(Fm_n[,-1], Z[,idx], alpha = 1,lambda = 0.1)))
-      beta_new[idx,] <-  beta_new[idx,] - ( alphaLin * (gradient + (lambda * weights * safe_sign(beta_new[idx,]) ) ) )
-      #beta_new[idx,] - ( alphaLin * (gradient + (lambda * weights * safe_sign(beta_new[idx,]) ) ) )
-      #beta_new[idx,] - ( alphaLin * (gradient + (lambda * safe_sign(beta_new[idx,]) ) ) )
-      #beta_new[idx,] - ( alphaLin * (gradient + (lambda * weights * safe_sign(beta_new[idx,]) ) ) )
-      #beta - ( alphaLin * (gradient + (lambda * sign(beta) ) ) )
-      if(is.nan(beta_new[1,1])){
-        print("nan beta")}
-    }else if(penalty == "Ridge"){
-      beta_new <-  beta - (alphaLin * ( gradient + (2*lambda * beta ) ) )
-    } else if(penalty == "Proximal"){
-      beta_temp <-  beta - ( alphaLin * gradient ) 
-      beta_new <- sign(beta_temp) * max( abs(beta_temp) - alphaLin * lambda , 0)
-    }
-    # }
-  }
-  #print(gn)
-  #print(beta_new)
-  #GN <- rbind(GN, gn)
-  
-  if(sum(is.infinite(beta_new)) > 0){
-    print("Beta_new is inifinite")
-  }
-  return(beta_new)
-}
-
 # Soft-thresholding function
 soft_threshold <- function(z, lambda) {
   sign(z) * pmax(abs(z) - lambda, 0)
@@ -947,39 +885,104 @@ LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir,
   if(printFlg == TRUE){
     print("In Linparamupdate Func")
   }
+  
   beta_new <- beta
   if(dir =="directed"){
     Fm_n <- cbind(1,Fmat, Hmat)
   }else{  
     Fm_n <- cbind(1, Fmat)
   }
-  #Fm_n[, -1] <- scale(Fm_n[, -1], center = TRUE, scale = TRUE)
   
-  #weights <- c(0, 1/apply(Fm_n[, -1], 2 , sd))
+  # Center and scale features
+  # Fm_n_means <- colMeans(Fm_n[,-1])
+  # Fm_n_sds <- apply(Fm_n[,-1], 2, sd)
+  # Fm_n[,-1] <- scale(Fm_n[,-1], center = TRUE, scale = TRUE)
+  # 
+  
   sigmaSq <- SigmaSqCalc(Z, beta, Fmat, Hmat, missVals,dir)
-  for (idx in 1:ncol(Z)) {  # Loop over responses
-    # Update intercept (unpenalized)
-    beta_new[idx, 1] <- mean(Z[, idx] - (Fm_n[, -1] %*% beta_new[idx, -1]))
-    
-    # Update coefficients (j > 1)
-    for (j in 2:ncol(Fm_n)) {
-      # Partial residual: r = y - intercept - X_{-j} β_{-j}
-      #r <- Z[, idx] - beta_new[idx, 1] - (Fm_n[, -c(1,j)] %*% beta_new[idx, -c(1,j)])
+  for (idx in 1:ncol(Z)) {
+    if(penalty == "LASSO"){
+      #print('in LASSO penlty loop')
+      # Loop over responses
+      # Update intercept (unpenalized)
+      beta_new[idx, 1] <- mean(Z[, idx] - (Fm_n[, -1] %*% beta_new[idx, -1]))
       
-      # Unpenalized LS estimate (z_j = X_j^T r)
-      #z_j <- sum(Fm_n[, j] * r)
+      for (j in 2:ncol(Fm_n)) {
+        
+        r_j <- Z[,idx] - Fm_n[,-j] %*% beta_new[idx ,-j]
+        z_j <- sum(Fm_n[, j] * r_j)
+        beta_new[idx, j] <- sign(z_j) * max(abs(z_j) - (N * lambda), 0) / sum(Fm_n[, j]^2)
+        #sign(z_j) * max(abs(z_j) - (lambda), 0) / N
+          #sign(z_j) * max(abs(z_j) - (N * lambda), 0) / sum(Fm_n[, j]^2)
+      }
       
-      # Soft-thresholding
-      #beta_new[idx, j] <- sign(z_j) * max(abs(z_j) - N * lambda, 0) / sum(Fm_n[, j]^2)
-      # print(cat("beta_j:", z_j, "→", beta_new[idx, j], "\n"))
       
-      r_j <- Z[,idx] - (beta_new[idx,1] + Fm_n[,-c(1,j)] %*% beta_new[idx ,-c(1,j)])# + Fm_n[, j] * beta_new[idx, j]
-      z_j <- sum(Fm_n[, j] * r_j)# / N
-      beta_new[idx, j] <- sign(z_j) * max(abs(z_j) - (N * lambda), 0) / sum(Fm_n[, j]^2)
-      #soft_threshold(z_j, lambda*sigmaSq[idx])
-    }
+      # Compute final intercept on original scale
+      #beta_new[idx,1] <- mean(Z[,idx]) - sum((Fm_n_means / Fm_n_sds) * beta_new[idx, -1])
+      
+      # Return result on original scale
+      #beta_new[idx,-1] <- beta_new[idx,-1] / Fm_n_sds
+      
+      
+    }else if(penalty =="ElasticNet"){
+      mixP <- 0.5
+      # Update intercept (unpenalized)
+      beta_new[idx, 1] <- beta_new[idx, 1] + mean(Z[, idx] - (Fm_n[, -1] %*% beta_new[idx, -1]))
+      
+      for (j in 2:ncol(Fm_n)) {
+        # Compute partial residual excluding feature j
+        r_j <- Z[,idx] - (Fm_n[,-j] %*% beta_new[idx,-j]) #+ Fm_n[, j] * beta_new[idx, j]
+        z_j <- sum(Fm_n[, j] * r_j)
+        
+        # Update beta_j with soft-thresholding
+        denom <- sum(Fm_n[, j]^2) + lambda * (1 - mixP) * N
+        beta_new[idx,j] <- sign(z_j) * pmax(abs(z_j) - lambda * mixP * N, 0)/denom
+          #soft_thresh(rho_j, lambda * alpha * n) / denom#sign(z_j) * max(abs(z_j) - (lambda * (1-mixP)), 0) / (1 + lambda * mixP)/N
+      }
+
+     
+      # Compute final intercept on original scale
+      #beta_new[idx,1] <- mean(Z[,idx]) - sum((Fm_n_means / Fm_n_sds) * beta_new[idx, -1])
+      
+      # Return result on original scale
+      #beta_new[idx,-1] <- beta_new[idx,-1] / Fm_n_sds
+      
+      { ## Old Elastic net code
+      # mixP <- 0.5
+      # beta_new[idx, 1] <- mean(Z[, idx] - (Fm_n[, -1] %*% beta_new[idx, -1]))
+      # 
+      # for(j in 2:ncol(Fm_n)){
+      #   # Calculate partial residual
+      #   r_j <- Z[,idx] - Fm_n[,-j] %*% beta_new[idx,-j]
+      #   
+      #   # Soft thresholding for elastic net
+      #   xj <- Fm_n[,j]
+      #   z <- (1/nrow(Fm_n)) * sum(xj * r_j)
+      #   gamma <- lambda * mixP
+      #   delta <- lambda * (1 - mixP)
+      #   
+      #   beta_new[idx,j] <- sign(z) * max(abs(z) - gamma, 0) / (sum(xj^2)/nrow(Fm_n) + delta)
+      #   
+      # }
+      }
+    }else if(penalty == "Ridge"){
+      # Update intercept (no regularization)
+       beta_new[idx, 1] <- mean(Z[, idx] - Fm_n[, -1] %*% beta_new[idx, -1])
+      
+      # Update each coefficient sequentially (with L2 penalty)
+      for (j in 2:ncol(Fm_n)) {
+        # Partial residual (excluding j-th predictor)
+        r_j <- Z[,idx] - Fm_n[,-j] %*% beta_new[idx,-j]
+        
+        # Ridge update: soft thresholding not needed (L2 penalty only)
+        xj <- Fm_n[, j]
+        beta_new[idx, j] <- sum(xj * r_j) / (sum(xj^2) + N * lambda)
+      }
+       
+    }else{
+      print("Please provide the penalty method")
+      break}
   }
-  #  print(beta_new)
   
   if(sum(is.infinite(beta_new)) > 0){
     print("Beta_new is inifinite")
@@ -1008,17 +1011,7 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
 }
 
 ## Log likleihood calculations
-CalcQuk <- function(Fmat, Hmat, W, dir){
-  
-  if(dir == "directed"){
-    Q_uk <- 1 / (1 + exp(-1 * (cbind(1, Fmat, Hmat) %*% t(W))))
-    
-  } else{
-    Q_uk <- 1 / (1 + exp(-1 * (cbind(1, Fmat) %*% t(W))))
-  }
-  
-  return(Q_uk)
-}
+
 
 Lx_cal <- function(W, N, Fmat, Hmat, X, dir){
   S <- 0
@@ -1046,11 +1039,6 @@ Lz_cal <- function(beta,N,Z,Fmat, Hmat,sigmaSq,dir,lambda,missVals ){
     sigmaSq <- SigmaSqCalc(Z, beta, Fmat, Hmat, missVals,dir)
     
     for (j in 1:dim(beta)[1]) {
-      #S <- S + sum(( Z[,j]  - (Fin %*% beta[j, ])) ^ 2)/ (2*N)
-      
-      ## Include the penalty term in the cost calculation
-      #S <- S - sum(( Z[,j]  - (Fin %*% beta[j, ])) ^ 2)/ (2) #+ lambda * sum(abs(beta[j,]))
-      
       S_tmp <- sum(( Z[,j]  - (Fin %*% beta[j, ])) ^ 2)
       S <- S - (N*log(2*pi*sigmaSq[j])/2) - (S_tmp / (2 * sigmaSq[j])) - lambda * sum(abs(beta[j,]))
     }
@@ -1075,7 +1063,6 @@ Lg_cal <- function(G, Ftot, Htot,Eneg,epsilon, dir){
   Hv2 <- Htot[E2[, 2], ]
   
   ## Variable to save the loglik contributed by nodes without edges between them
-  
   S12 <- sum(rowSums(Fv2 *Hv2))
   S1 <- S11 - S12
   return(S1)
@@ -1113,12 +1100,12 @@ findLLDir <- function(G,  Ftot, Htot, Win = NA, Wout = NA, X_in = NA,
   S3 <- S3_in + S3_out
   
   ## Calculating the final log likelihood
-  ll <- (S1 +  (S2 + S3))#(alphaLL* S1) +  ((1-alphaLL) * (S2 + S3))
+  ll <- (S1 +  (S2 + S3))
+  #print(c(ll, S1, S2, S3))
   if(is.nan(ll)){
     print(ll)
     print("stop here in find ll")
   }
-  #print(c(ll, S1, S2, S3))
   return(c(ll, S1, S2, S3))
 }
 
@@ -1144,11 +1131,10 @@ initW <- function(k, nc,missVals, X, Fmat, lambda, alpha, ncoef){
   W <- NULL
   if (k > 0) {
     W <- matrix(nrow = k, ncol = (ncoef) + 1, 0)
-    ###*** For future updates ***######
-    #if (sum(missVals) > 0) {
-    #  X_in <- PredictCovLR(X, W, Fmat, missVals)
-    #}
-    #Win <- LRParamUpdt(W, X, Fmat, alpha, lambda, missVals)
+    for(i in 1:k){
+      y_bar <- mean(X[,i], na.rm =TRUE)
+      W[i,1] <- log((1-y_bar)/y_bar)
+    }
   }
   return(W)
 }
@@ -1163,11 +1149,7 @@ initbeta <- function(o, ncoef,missVals, Z, Fmat, Hmat, alpha,N, lambda,dir,
     for(i in 1:o){
       beta[i,1] <- mean(Z[,i], na.rm =TRUE)
     }
-    #LinRParamUpdt(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir, impType, alphaLin, penalty)
-    sigmaSq <- 1#SigmaSqCalc(Z, beta, Fmat,Hmat, missVals,dir)
-    #if (sum(missVals) > 0) {
-    #  Z <- PredictCovLin(Fmat, Hmat, Z, beta, missVals,dir, impType)
-    #}
+    sigmaSq <- 1
   }
   return(list(beta, sigmaSq))
 }
@@ -1232,7 +1214,6 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   if(k_out >0){
     for(i in 1:dim(X_out)[2]){
       X_out[missValsout[,i],i] <- rbinom(n = sum(missValsout[,i]), size = 1, prob = (N- sum(missValsout[,i]))/N )
-      #rbinom(n = sum(missValsout[,i]), size = 1, prob = 0.5)
     }
   }
   
@@ -1279,17 +1260,10 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
         }
       }
       backTransParams[[i]] <- summary(Z_out[,i])
-      covOrig[,i] <- scale(covOrig[,i])#covOrig[,i] - mean(covOrig[,i], na.rm = TRUE)
-      Z_out[,i] <- scale(Z_out[,i])#Z_out[,i] - mean(Z_out[,i], na.rm =TRUE)#range01(Z_out[,i])
-      
-      #print(summary(Z_out[,i]))
-      #print(summary(covOrig[,i]))
+      covOrig[,i] <- scale(covOrig[,i])
+      Z_out[,i] <- scale(Z_out[,i])
     }
   }
-  
-  ## Degree condition for incoming and outgoing edges
-  #in_E <-  igraph::degree(G, mode = "in")
-  #out_E <- igraph::degree(G, mode = "out")
   
   ############ Initialize the coef matrix for covariates ##############
   
@@ -1308,7 +1282,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   b <- initbeta(o_out, ncoef, missValsout, Z_out, Ftot, Htot, alpha, N, lambda, dir, impType, alphaLin, penalty)
   betaout <- b[[1]]
   sigmaSqout <- b[[2]]
-  #print(betaout)
+  
   ## Getting the negative adjacency matrix
   Aneg <- 1 - (1 * as.matrix(as_adjacency_matrix(G)))
   Eneg  <- as_edgelist(graph_from_adjacency_matrix(Aneg, mode = dir))
@@ -1324,6 +1298,8 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   
   accuracy <- matrix(nrow = 0, ncol = k_in + k_out)
   accuracyMD <- matrix(nrow = 0, ncol = k_in + k_out)
+  
+  corMat <- matrix(0, nrow =0 , ncol = 15)
   
   delta <- getDelta(N)
   continue <- TRUE
@@ -1384,32 +1360,20 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     LLold <- LLnew
     lllst <- rbind(lllst, LLvec)
     iter <- iter + 1
-    
+    if(dir == "directed"){
+      corMat <- rbind(corMat, findCor(Ftot,Htot,"directed"))
+    }
     
     ## Randomize the community weights update
     s <- randomizeIdx(N, randomize)
     
-    #if(dir =="directed"){
     ## Updating F i.e. all outgoing connections
     ## We look for neighbors our node is connected to with the edges directed outward from our node.
-    opMat <- updateWtmatBothTypes(G,Ftot,Htot,"all",s,nc,X_out,Z_out,k_out,o_out,
-                                  betaout,Wout, alphaLL,missValsout,alpha, start = 2, 
-                                  end = nc + 1, dir)
+    opMat <- updateWtmat(G,Ftot,Htot,"all",s,nc,X_out,Z_out,k_out,o_out,
+                         betaout,Wout, alphaLL,missValsout,alpha, start = 2, 
+                         end = nc + 1, dir)
     Ftot <- opMat[[1]]
     Htot <- opMat[[2]]
-    
-    ## Updating H i.e. all incoming connections
-    ## We look for neighbors our node is connected to with the edges directed outward from our node.
-    # Htot <- updateWtmat(G,Htot,Ftot,"in",s,nc, X_out,Z_out,k_out,o_out,
-    #                     betaout,Wout,alphaLL,missValsout,alpha, start = nc+2, 
-    #                     end = nc*2+1, dir)
-    #} else{
-    #  opMat <- updateWtmatBothTypes(G,Ftot,Htot,"all",s,nc,X_out,Z_out,k_out,o_out,
-    #                      betaout,Wout,alphaLL,missValsout,alpha, start = 2, 
-    #                      end = nc+1, dir)
-    #  Htot <- opMat[[1]]
-    #  Ftot <- Htot
-    #}
     
     ## Updating logistic paramters
     ## Incoming correlated covariates
@@ -1419,12 +1383,11 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     ## outgoing correlated covariates
     b2 <- updateLogisticParam(W = Wout, X = X_out , Wtm = Ftot, Wtm2 = Htot, 
                               missVals = missValsout, lambda = lambda, 
-                              alphaLR = alphaLin, dir = dir, impType)
+                              alphaLR = alpha, dir = dir, impType)
     Wout <- b2[[1]]
     X_out <- b2[[2]]
     
     ### Updating the beta matrix for continuous covariates
-    #print("Gradient for out")
     c1 <- updateLinearRegParam(betaout,missValsout,Z_out,Ftot,Htot,alpha,
                                lambda,N,dir, impType, alphaLin, penalty)
     betaout <- c1[[1]]
@@ -1437,15 +1400,11 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     Z_in <- 0#c2[[2]]
     # sigmaSqin <- c2[[3]]
     
-    ## Look for Communities based on the F matrix
-    #OmegaVal <- c(OmegaVal, OmegaIdx(G, Ftot, Htot, N, delta,nc))
-    
     if(test == TRUE){
       
       arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
       OIn <- OmegaIdx(G, Ftot, Htot, N, delta,nc)
       OmegaVal <- c(OmegaVal, OIn)
-      #print(OIn)
       MSEtmp <- MSEop(Ftot, Htot, covOrig, betaout,N, dir, o_in,o_out, missValsout)
       mseMD <- rbind(mseMD, MSEtmp[[1]])
       mse <- rbind(mse, MSEtmp[[2]])
@@ -1486,7 +1445,8 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
       AccMD = accuracyMD,
       MSEMD = mseMD,
       FAILURE,
-      backTransParams
+      backTransParams,
+      corMat
     )
   )
 }

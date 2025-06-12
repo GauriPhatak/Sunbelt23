@@ -3,6 +3,18 @@ library(aricode)  # For NMI
 library(linkprediction)  # For partition density (install via devtools::install_github("arc85/LinkPrediction"))
 library(stringr)
 library(tidyverse)
+
+## Find correlation between values in R
+findCor <- function(Fm,Hm, dir){
+  if(dir  == "directed"){
+    m <- cor(cbind(Fm,Hm))
+    m <- m[upper.tri(m)]
+  }else{
+    corV <- cor(Fm)
+  }
+  return(m)
+}
+
 ## Calculate ARI for the network outputs
 ARIop <- function(Ftot,Htot,orig,nc,N){
   mem <- rep(NA, N)
