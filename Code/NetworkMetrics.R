@@ -3,6 +3,24 @@ library(aricode)  # For NMI
 library(linkprediction)  # For partition density (install via devtools::install_github("arc85/LinkPrediction"))
 library(stringr)
 library(tidyverse)
+## Part of log likelihood contributed by the penalty term
+
+penLL <- function(penalty, beta){
+  if(penalty =="Ridge"){
+    return(sum(beta^2))
+    
+  }else if(penalty == "LASSO"){
+    return(sum(abs(beta)))
+    
+  }else if(penalty == "GroupLASSO"){
+    return(sum(abs(beta)))
+    
+  }else if(penalty == "ElasticNet"){
+    alpha  <- 0.5
+    return(alpha * sum(abs(beta)) +(1-alpha)*sum(beta^2))
+    
+  }
+}
 
 ## Find correlation between values in R
 findCor <- function(Fm,Hm, dir){
@@ -134,8 +152,8 @@ OmegaIdx <- function(G, Fm, Hm, N, delta, nc) {
   #ol <- lapply(1:nc, function(i) which(memoverlap[,i] > quantile(memoverlap[,i], 0.75)))
   
   OrigVal <-  as.data.frame(vertex_attr(G)) %>%
-    dplyr::select(all_of(c(letters[1:nc])))
-  OrigVal[OrigVal == -1] <- 1
+    dplyr::select(all_of(c(letters[1:nc]))) %>%
+  abs()
   
   ol <- list()
   for(i in 1:nc){

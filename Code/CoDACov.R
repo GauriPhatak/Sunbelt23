@@ -4,6 +4,8 @@ library(igraph)
 library(network)
 library(intergraph)
 library(ergm)
+library(glmnet)
+library(gglasso)
 library(RColorBrewer)
 library(clustAnalytics)
 
@@ -558,7 +560,7 @@ updateWtmat <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W, alphaLL
   }
   
   for (i in s) {
-    
+    need <<- i
     ## If there are covariates set the variables here
     X_u <- NULL
     if (k > 0) {
@@ -591,7 +593,7 @@ updateWtmat <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W, alphaLL
       Ftot_neigh <- matrix(Ftot[neigh_Htot, ], ncol = nc)
       Ftot_sum <- as.matrix(colSums(Ftot))
       
-      Htot[i, ] <- CmntyWtUpdt(matrix(Htot[i,],ncol = nc),matrix(Ftot[i,],ncol = nc),
+      Htot[i, ] <- CmntyWtUpdt(matrix(Htot[i,],ncol = nc), matrix(Ftot[i,],ncol = nc),
                                Ftot_neigh,Ftot_sum,X_u,W,Z_u,beta,sigmaSq,alpha,
                                alphaLL,nc, nc + 2, (nc*2)+1,"out",dir)
     }else{
@@ -672,7 +674,9 @@ CmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
   ## Function to update the community weights vector using non negative matrix factorization
   W1_u_new <- W1_u + (alpha * (c(llG) +  alphaLL *(llX[2:(nc+1)] + llZ[1:nc])))
   W1_u_new[(W1_u_new < 0) | (W1_u_new == 0)] <- 0
-  
+  if(need == 7){
+    saveLLup <<- rbind(saveLLup , c(llG,llZ))
+  }
   return(W1_u_new)
   
 }
@@ -738,7 +742,7 @@ OldContcovCmntyWtUpdt <- function(nc, Z_u, beta, W1_u,W2_u, sigmaSq, dir){
 ContcovCmntyWtUpdt <- function(nc, Z_u, beta, W1_u,W2_u, sigmaSq, dir){
   
   if(dir =="directed"){
-    llZ <- rep(0, nc*2 )
+    llZ <- rep(0, nc )
     WW <- matrix(c(1,W1_u,W2_u), ncol = 1+(nc*2))
     
   }else{
@@ -748,7 +752,19 @@ ContcovCmntyWtUpdt <- function(nc, Z_u, beta, W1_u,W2_u, sigmaSq, dir){
   }
   if (length(beta) > 0) {
     ## Adding the gradient based on continuous covariates
-    llZ <- 1 * ((Z_u - t(beta %*% t(WW))) %*% beta[,2:(nc+1)])/sigmaSq
+    llZ <- 1 * ((Z_u - t(beta %*% t(WW))) %*% beta[,2:(nc+1)])#/sigmaSq
+    
+    ## Making experimental changes in the code to unroll the matrix multiplication 
+    ## Checked multiple ways the above is correct!!
+    #for(i in 1:nc){
+    # for(j in 1:length(Z_u)){
+        #llZ[i] <- llZ[i] + (Z_u[j] - beta[j,] %*% t(WW))*beta[j,i+1]
+      #}
+    #}
+
+     #if(any(llZ) > 0){
+    #   print("Stop here")
+     #}
   }
   return(llZ)
 }
@@ -880,7 +896,7 @@ soft_threshold <- function(z, lambda) {
   sign(z) * pmax(abs(z) - lambda, 0)
 }
 
-LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir, 
+AllUpdatemethodsLinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir, 
                           impType, alphaLin, penalty ) {
   if(printFlg == TRUE){
     print("In Linparamupdate Func")
@@ -889,63 +905,45 @@ LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir,
   beta_new <- beta
   if(dir =="directed"){
     Fm_n <- cbind(1,Fmat, Hmat)
+    X <- cbind(Fmat,Hmat)
   }else{  
     Fm_n <- cbind(1, Fmat)
   }
   
-  # Center and scale features
-  # Fm_n_means <- colMeans(Fm_n[,-1])
-  # Fm_n_sds <- apply(Fm_n[,-1], 2, sd)
-  # Fm_n[,-1] <- scale(Fm_n[,-1], center = TRUE, scale = TRUE)
-  # 
+  # Standardize predictors (except intercept which we'll handle separately)
+  #X_original <- X
+  #X <- scale(X, center = TRUE, scale = TRUE)
+  #X_means <- attr(X, "scaled:center")
+  #X_sds <- attr(X, "scaled:scale")
+  ## setting group size 
+  p_g <- 2
   
   sigmaSq <- SigmaSqCalc(Z, beta, Fmat, Hmat, missVals,dir)
   for (idx in 1:ncol(Z)) {
     if(penalty == "LASSO"){
-      #print('in LASSO penlty loop')
-      # Loop over responses
-      # Update intercept (unpenalized)
+
       beta_new[idx, 1] <- mean(Z[, idx] - (Fm_n[, -1] %*% beta_new[idx, -1]))
       
       for (j in 2:ncol(Fm_n)) {
-        
+        ## residual and soft thresholding
         r_j <- Z[,idx] - Fm_n[,-j] %*% beta_new[idx ,-j]
         z_j <- sum(Fm_n[, j] * r_j)
         beta_new[idx, j] <- sign(z_j) * max(abs(z_j) - (N * lambda), 0) / sum(Fm_n[, j]^2)
-        #sign(z_j) * max(abs(z_j) - (lambda), 0) / N
-          #sign(z_j) * max(abs(z_j) - (N * lambda), 0) / sum(Fm_n[, j]^2)
       }
-      
-      
-      # Compute final intercept on original scale
-      #beta_new[idx,1] <- mean(Z[,idx]) - sum((Fm_n_means / Fm_n_sds) * beta_new[idx, -1])
-      
-      # Return result on original scale
-      #beta_new[idx,-1] <- beta_new[idx,-1] / Fm_n_sds
-      
       
     }else if(penalty =="ElasticNet"){
       mixP <- 0.5
-      # Update intercept (unpenalized)
-      beta_new[idx, 1] <- beta_new[idx, 1] + mean(Z[, idx] - (Fm_n[, -1] %*% beta_new[idx, -1]))
+      beta_new[idx, 1] <- mean(Z[, idx] - (Fm_n[, -1] %*% beta_new[idx, -1]))
       
       for (j in 2:ncol(Fm_n)) {
-        # Compute partial residual excluding feature j
-        r_j <- Z[,idx] - (Fm_n[,-j] %*% beta_new[idx,-j]) #+ Fm_n[, j] * beta_new[idx, j]
+        # partial residual w/o feature j
+        r_j <- Z[,idx] - (Fm_n[,-j] %*% beta_new[idx,-j]) 
         z_j <- sum(Fm_n[, j] * r_j)
         
         # Update beta_j with soft-thresholding
         denom <- sum(Fm_n[, j]^2) + lambda * (1 - mixP) * N
         beta_new[idx,j] <- sign(z_j) * pmax(abs(z_j) - lambda * mixP * N, 0)/denom
-          #soft_thresh(rho_j, lambda * alpha * n) / denom#sign(z_j) * max(abs(z_j) - (lambda * (1-mixP)), 0) / (1 + lambda * mixP)/N
       }
-
-     
-      # Compute final intercept on original scale
-      #beta_new[idx,1] <- mean(Z[,idx]) - sum((Fm_n_means / Fm_n_sds) * beta_new[idx, -1])
-      
-      # Return result on original scale
-      #beta_new[idx,-1] <- beta_new[idx,-1] / Fm_n_sds
       
       { ## Old Elastic net code
       # mixP <- 0.5
@@ -965,25 +963,97 @@ LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir,
       #   
       # }
       }
+    }else if(penalty  == "GroupLASSO"){
+      beta_new[idx, 1] <- mean(Z[, idx] - (Fm_n[, -1] %*% beta_new[idx, -1]))
+      r <- Z[,idx] - Fm_n[,-1] %*% beta_new[idx,-1] - beta_new[idx,1]
+      for (g in 2:(ncol(Fmat)+1)) {
+        i <- c(g, g+3)#which(group == g)
+        X_g <- Fm_n[, i]
+        beta_g <- beta_new[idx, i]
+        
+        # Residual excluding group g (using current intercept)
+        r <- r + X_g %*% beta_g#beta_new[idx, 1] - Fm_n %*% beta_new[idx,] + X_g %*% beta_g
+        
+        # Least squares sol for g
+        
+        #beta_ls <- solve(crossprod(X_g)+ diag(1e-7, ncol(X_g)), crossprod(X_g, r))
+          #MASS::ginv(crossprod(X_g), crossprod(X_g, r))
+        #solve(crossprod(X_g), crossprod(X_g, r))
+        z_g <- crossprod(X_g,r)/N
+        norm_z <- sqrt(sum(z_g^2))
+        
+        
+        # Group Lasso thresholding
+        #norm_beta_ls <- sqrt(sum(beta_ls^2))
+        #shrinkage <- max(1 - (lambda * sqrt(p_g)) / norm_beta_ls, 0)
+        #soft thresh
+        if(norm_z >lambda){
+          shirnkage <- 1-lambda/norm_z
+          beta_g_new <- shirnkage * z_g
+        }else{
+          beta_g_new <- rep(0, length(i))
+        }
+        beta_new[idx,i] <-beta_g_new
+        r <- r - X_g %*% beta_g_new
+      }
+      
+      
     }else if(penalty == "Ridge"){
-      # Update intercept (no regularization)
        beta_new[idx, 1] <- mean(Z[, idx] - Fm_n[, -1] %*% beta_new[idx, -1])
       
-      # Update each coefficient sequentially (with L2 penalty)
       for (j in 2:ncol(Fm_n)) {
-        # Partial residual (excluding j-th predictor)
+        # Partial residual w/o  j
         r_j <- Z[,idx] - Fm_n[,-j] %*% beta_new[idx,-j]
-        
-        # Ridge update: soft thresholding not needed (L2 penalty only)
+        #L2 penalty
         xj <- Fm_n[, j]
         beta_new[idx, j] <- sum(xj * r_j) / (sum(xj^2) + N * lambda)
       }
        
+    }else if(penalty == "GroupLASSOProxGrad"){
+      #Current parameters
+        beta_current <- beta[idx,]
+        intercept <- beta_current[1]
+        weights <- beta_current[-1]
+      
+      # Compute gradient (only for the smooth part)
+        residual <- Z[,idx] - intercept - X %*% weights
+        grad_intercept <- -mean(residual)
+        grad_weights <- (-1/N) * crossprod(X, residual)
+      
+      # Gradient step
+        beta_temp <- beta_current - alpha * c(grad_intercept, grad_weights)
+     
+      # Proximal operator (group soft thresholding)
+        beta_new <- beta_temp
+        # Don't penalize intercept
+        for (g in 2:(ncol(Fmat)+1)) {
+          ind <- c(g, g+3)
+        #for (g in seq_along(group_indices)) {
+         # ind <- group_indices[[g]] + 1  # +1 because of intercept
+          group_norm <- sqrt(sum(beta_temp[ind]^2))
+          if (group_norm <= lambda * alpha) {
+            beta_new[ind] <- 0
+          } else {
+            beta_new[ind] <- beta_temp[ind] * (1 - (lambda * alpha)/group_norm)
+          }
+        }
+      ## update the beta
+      beta[idx, ] <- beta_new
+        
+        
+      # Transform coefficients back to original scale
+      #intercept <- beta_new[1] + mean(Z[,idx]) - sum(beta_new[-1] * X_means / X_sds)
+      #scaled_coef <- beta_new[-1] / X_sds
+      #beta[idx,] <- c(intercept, scaled_coef)
+      
     }else{
       print("Please provide the penalty method")
       break}
   }
   
+  
+
+  beta_new <- beta
   if(sum(is.infinite(beta_new)) > 0){
     print("Beta_new is inifinite")
   }
@@ -992,6 +1062,67 @@ LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir,
 
 
 updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, 
+                                    impType, alphaLin, penalty){
+ 
+  if(dir =="directed"){
+    X <- cbind( Wtm1 , Wtm2)
+  }
+  
+  cm <- matrix(0, nrow = N, ncol =0)
+  for(i in 1:ncol(Wtm1)){ cm <- cbind(cm, Wtm1[,i], Wtm2[,i])}
+  
+  #betaret <- beta
+  Zret <-  Z
+  nc <- ncol(Wtm1)
+  sigmaSq <- NULL
+  mod <- list()
+  if (length(beta) > 0) {
+    for(i in 1:dim(Z)[2]){
+      #"GroupLASSO","Ridge","LASSO","ElasticNet")
+      if(penalty =="GroupLASSO"){
+      
+      mod[[i]] <- gglasso(cm, Z[,i], group = rep(1:3, each= 2), lambda = lambda)
+      beta[i,] <- unname(as.matrix(coef(mod[[i]]))[,1])
+      
+      {##Find the R-sq value
+      # Get predictions
+      #preds <- predict(mod[[i]], newx = cm)
+      # For regression (continuous y)
+      #mse <- mean((Z[,i] - preds)^2)
+      #rsq <- 1 - sum((Z[,i]-preds)^2)/sum((Z[,i]-mean(Z[,i]))^2)
+      # print(paste("r-squared for ", i, " :",rsq, " mse ", mse))
+        }
+      }else if(penalty =="LASSO"){
+        mod[[i]] <- glmnet(X , Z[,i],lambda = lambda, alpha = 1) 
+        beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
+        
+      }else if(penalty =="ElasticNet"){
+        
+        mod[[i]] <- glmnet(X , Z[,i],lambda = lambda, alpha = 0.5) 
+        beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
+        
+      }else if(penalty == "Ridge"){
+        mod[[i]] <- glmnet(X ,Z[,i], family = "gaussian",lambda = lambda, alpha = 0) 
+        beta[i,] <- as.matrix(coef(mod[[i]]))
+      }
+    }
+    
+    if(penalty == "GroupLASSO"){
+      betaret <- cbind(beta[,1], beta[, seq(2,((nc*2)+1),by=2)], beta[,seq(3,((nc*2)+1), by=2)])
+    } else{ betaret <- beta}
+    
+    sigmaSq <-  SigmaSqCalc(Z, betaret, Wtm1,Wtm2, missVals,dir)
+    
+    if (sum(missVals) > 0) {
+      Zret <- PredictCovLin(Wtm1, Wtm2, Z, beta, missVals,dir, impType)
+    }
+  }
+  return(list(betaret,Zret,sigmaSq))
+}
+
+
+
+OldupdateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, 
                                  impType, alphaLin, penalty){
   if(printFlg == TRUE){
     print("In updateLinearRegParam Func")
@@ -1025,7 +1156,7 @@ Lx_cal <- function(W, N, Fmat, Hmat, X, dir){
   return(S)
 }
 
-Lz_cal <- function(beta,N,Z,Fmat, Hmat,sigmaSq,dir,lambda,missVals ){
+Lz_cal <- function(beta,N,Z,Fmat, Hmat,sigmaSq,dir,lambda,missVals, penalty, alphaLin ){
   if(printFlg == TRUE){
     print("In Lz_Calc Func")
   }
@@ -1035,12 +1166,13 @@ Lz_cal <- function(beta,N,Z,Fmat, Hmat,sigmaSq,dir,lambda,missVals ){
     Fin <- cbind(1,Fmat)
   }
   S <- 0
+  
   if (!is.null(beta)) {
-    sigmaSq <- SigmaSqCalc(Z, beta, Fmat, Hmat, missVals,dir)
+    sigmaSq <- c(1,1,1)#SigmaSqCalc(Z, beta, Fmat, Hmat, missVals,dir)
     
     for (j in 1:dim(beta)[1]) {
       S_tmp <- sum(( Z[,j]  - (Fin %*% beta[j, ])) ^ 2)
-      S <- S - (N*log(2*pi*sigmaSq[j])/2) - (S_tmp / (2 * sigmaSq[j])) - lambda * sum(abs(beta[j,]))
+      S <- S - (N*log(2*pi*sigmaSq[j])/2) - (S_tmp / (2 * sigmaSq[j])) - lambda * penLL(penalty , beta[j,])
     }
   }
   return(S)
@@ -1071,7 +1203,7 @@ Lg_cal <- function(G, Ftot, Htot,Eneg,epsilon, dir){
 findLLDir <- function(G,  Ftot, Htot, Win = NA, Wout = NA, X_in = NA,
                       X_out = NA,betain = NULL, betaout = NULL,
                       Z_in = NA, Z_out = NA,sigmaSqin = NA,sigmaSqout = NA, 
-                      alphaLL, Eneg, dir, epsilon, lambda,missVals) {
+                      alphaLL, Eneg, dir, epsilon, lambda,missVals, penalty, alphaLin) {
   if(printFlg == TRUE){
     print("In Find LLDir Func")
   }
@@ -1096,7 +1228,7 @@ findLLDir <- function(G,  Ftot, Htot, Win = NA, Wout = NA, X_in = NA,
   ## Calculating the L_zout part of the log likelihood for continuous covariates
   S3_out <- Lz_cal(beta = betaout,N = N,Z = Z_out,
                    Fmat = Ftot, Hmat = Htot,
-                   sigmaSq = sigmaSqout,dir,lambda, missVals)
+                   sigmaSq = sigmaSqout,dir,lambda, missVals, penalty, alphaLin)
   S3 <- S3_in + S3_out
   
   ## Calculating the final log likelihood
@@ -1158,7 +1290,7 @@ randomizeIdx <- function(N, randomize){
   ## Updating the community weight parameter
   if (randomize == TRUE) {
     s <- sample(1:N, size = N, replace = FALSE)
-  }
+  }else{s <- 1:N}
   return(s)
 }
 
@@ -1259,9 +1391,9 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
           }
         }
       }
-      backTransParams[[i]] <- summary(Z_out[,i])
-      covOrig[,i] <- scale(covOrig[,i])
-      Z_out[,i] <- scale(Z_out[,i])
+      #backTransParams[[i]] <- summary(Z_out[,i])
+      #covOrig[,i] <- (covOrig[,i] - min(covOrig[,i]))/(max(covOrig[,i]) - min(covOrig[,i]))#scale(covOrig[,i])
+      #Z_out[,i] <- (Z_out[,i] - min(Z_out[,i]))/(max(Z_out[,i]) - min(Z_out[,i]))#scale(Z_out[,i])
     }
   }
   
@@ -1304,14 +1436,15 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   delta <- getDelta(N)
   continue <- TRUE
   s <- 1:N
-  
-  while (continue) {
-    
+  beta_old <- betaout
+  delta <- 0.01
+  #while (continue) {
+  repeat{  
     ## Update the log likelihood.
-    LLvec <- findLLDir(G,Ftot,Htot, Win,Wout,X_in,X_out, betain,betaout,Z_in,Z_out,
-                       sigmaSqin, sigmaSqout,alphaLL, Eneg, dir, epsilon,lambda, missValsout)
+    LLvec <- findLLDir(G,Ftot,Htot, Win,Wout,X_in,X_out, betain,betaout,
+                       Z_in,Z_out, sigmaSqin, sigmaSqout,alphaLL, Eneg, 
+                       dir, epsilon,lambda, missValsout, penalty, alphaLin)
     LLnew <- LLvec[1]
-    
     pctInc <- abs((LLnew - LLold) /(LLold)) * 100
     
     if(is.nan(pctInc)){
@@ -1336,6 +1469,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     }
     
     if((pctInc < thresh) | (dim(lllst)[1] == nitermax)){
+    #if((delta < 0.0001) | (dim(lllst)[1] == nitermax)){
       if(test == FALSE){
         
         arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
@@ -1393,12 +1527,17 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     betaout <- c1[[1]]
     Z_out <- c1[[2]]
     sigmaSqout <- c1[[3]]
-    
     #print("Gradient for in")
     # c2 <- updateLinearRegParam(betain, missValsin, Z_in_orig, Ftot,alpha,lambda,N)
     # betain <- c2[[1]]
     Z_in <- 0#c2[[2]]
     # sigmaSqin <- c2[[3]]
+    
+    
+    ## Instead of using change in percentage we can use change in coefficients if we re using covariates
+    #delta <- sqrt(sum((betaout - beta_old)^2)) / (sqrt(sum(beta_old^2)) + 1e-10)
+    #delta <- max(abs(betaout - beta_old))
+    #beta_old <- betaout
     
     if(test == TRUE){
       
