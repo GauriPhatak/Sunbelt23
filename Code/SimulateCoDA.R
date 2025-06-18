@@ -13,7 +13,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
   
   if (sim == TRUE) {
     printFlg <<- FALSE
-    test <- TRUE
+    test <- FALSE
     Sim <- data.frame(S[simvec,])
     ## Number of simulations
     Nsim <- 1#Sim$Nsim
@@ -101,9 +101,9 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     dist <- list(c(5,1), c(5,1), c(30,1),
                  c(20,1),c(20,1), c(65,1),
                  c(40,1),c(40,1), c(75,1))
-      # list(c(5,1), c(15,1), c(30,1),
-      #            c(20,1),c(25,1), c(65,1),
-      #            c(40,1),c(5,1), c(75,1))#Sim$dist[[1]]
+    # list(c(5,1), c(15,1), c(30,1),
+    #      c(20,1),c(30,1), c(65,1),
+    #      c(40,1),c(20,1), c(75,1))
       # 
     ## Probability of connection between two nodes of the same community.
     pConn <- Sim$pConn[[1]]
@@ -226,10 +226,10 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
             H_uGT <- H_u
           }
           
-           for(alpha in c(0.0001)){ #c(0.0005, 0.001)
+           for(alpha in c(0.0001, 0.0005, 0.001)){ #c(0.0005, 0.001)
              #for(alphaLin in c(0.0005,0.001,0.01,0.1,0.5)){#c(0.001,0.01,0.1,0.5)
-               for(lambda in c(0.01)){#c(0.001,0.01,0.05,0.1)
-                 for(penalty in c("ElasticNet")){#c("GroupLASSO","Ridge","LASSO","ElasticNet",,"GroupLASSOProxGrad")
+               for(lambda in c(0.001,0.01,0.05,0.1)){#c(0.001,0.01,0.05,0.1)
+                 for(penalty in c("Ridge","LASSO","ElasticNet")){#c("GroupLASSO","Ridge","LASSO","ElasticNet",,"GroupLASSOProxGrad")
                   
                   ## Block to calculate base log likelihood and clustering using spectral clustering. 
                   {
@@ -294,7 +294,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
                     cat("An error occurred:", conditionMessage(e), "\n")
                     NA})
                   lvl <- lvl + 1
-                  
+                  gc()
                   {
                     # start <- Sys.time()
                     # opf_StoRegcov[[lvl]] <- CoDA(G,nc,k = c(k_in, k_out),o = c(o_in, o_out),N,alpha,
@@ -383,6 +383,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
   #return(0)
 }
 }
+
 simvec = 192
 sim = TRUE
 InitParamFile = "/Code/InitParamMiss_lvlfull.rds"#"/Code/InitParamMiss_TryParamCombo2.rds"
@@ -391,7 +392,7 @@ df<- SaveCoDASim(simvec,
                  InitParamFile)
 ## "MultipleCoordContProxgrpLasso2.rds" for drection agnostic covariates
 ##  "MultipleCoordContProxgrpLasso2.rds"  for direction dependent covariates
-saveRDS(df, "MultipleCoordContAllPenlatycompNoDep.rds")
+saveRDS(df, "MultipleCoordContAllPenaltyCompNoDepUndir.rds")
 #getwd()
 #df <- readRDS("MultipleParamCombinations1.rds")
 # for(q in seq(2,120,by = 10)){

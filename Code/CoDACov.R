@@ -560,7 +560,7 @@ updateWtmat <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W, alphaLL
   }
   
   for (i in s) {
-    need <<- i
+    #need <<- i
     ## If there are covariates set the variables here
     X_u <- NULL
     if (k > 0) {
@@ -674,9 +674,9 @@ CmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
   ## Function to update the community weights vector using non negative matrix factorization
   W1_u_new <- W1_u + (alpha * (c(llG) +  alphaLL *(llX[2:(nc+1)] + llZ[1:nc])))
   W1_u_new[(W1_u_new < 0) | (W1_u_new == 0)] <- 0
-  if(need == 7){
-    saveLLup <<- rbind(saveLLup , c(llG,llZ))
-  }
+  #if(need == 7){
+  #  saveLLup <<- rbind(saveLLup , c(llG,llZ))
+  #}
   return(W1_u_new)
   
 }
@@ -895,8 +895,8 @@ grad_norm <- function(grad) {
 soft_threshold <- function(z, lambda) {
   sign(z) * pmax(abs(z) - lambda, 0)
 }
-
-AllUpdatemethodsLinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir, 
+#AllUpdatemethods
+LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir, 
                           impType, alphaLin, penalty ) {
   if(printFlg == TRUE){
     print("In Linparamupdate Func")
@@ -1051,9 +1051,9 @@ AllUpdatemethodsLinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, 
       break}
   }
   
-  
+  print(beta_new)
 
-  beta_new <- beta
+  #beta_new <- beta
   if(sum(is.infinite(beta_new)) > 0){
     print("Beta_new is inifinite")
   }
@@ -1066,6 +1066,8 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
  
   if(dir =="directed"){
     X <- cbind( Wtm1 , Wtm2)
+  }else{
+    X <- Wtm1
   }
   
   cm <- matrix(0, nrow = N, ncol =0)
@@ -1093,6 +1095,8 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
       # print(paste("r-squared for ", i, " :",rsq, " mse ", mse))
         }
       }else if(penalty =="LASSO"){
+        #mod[[i]] <- cv.glmnet(X , Z[,i], alpha = 1) 
+        
         mod[[i]] <- glmnet(X , Z[,i],lambda = lambda, alpha = 1) 
         beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
         
@@ -1437,7 +1441,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   continue <- TRUE
   s <- 1:N
   beta_old <- betaout
-  delta <- 0.01
+  #delta <- 0.01
   #while (continue) {
   repeat{  
     ## Update the log likelihood.
