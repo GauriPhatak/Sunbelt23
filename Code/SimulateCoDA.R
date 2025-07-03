@@ -13,7 +13,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
   
   if (sim == TRUE) {
     printFlg <<- FALSE
-    test <- FALSE
+    test <- TRUE#
     Sim <- data.frame(S[simvec,])
     ## Number of simulations
     Nsim <- 1#Sim$Nsim
@@ -58,19 +58,19 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     ## Number of communities
     nc <- Sim$nc
     ## Learning rate forgradient descent
-    alpha <- 0.001#Sim$alpha
+    alpha <- Sim$alpha
     ## Seperate linear regression alpha
-    alphaLin <- 0.01#Sim$alphaLin
+    alphaLin <- Sim$alphaLin
     
     ##loglik calculation using weight for graph vs covariates
     alphaLL <- 1#Sim$alphaLL
     #print(alphaLL)
     ##penalty of logistic regression
-    lambda <- 0.01#Sim$lambda
+    lambda <- Sim$lambda
     
     ## Switching to percent increase. Using 0.01% increase. 
     ## Change in loglikelihood as stopping criterion
-    thresh <- 0.00001#Sim$thresh
+    thresh <- Sim$thresh
     
     ## Randomize the sequence of node update or not
     randomize <- Sim$randomize
@@ -98,9 +98,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     #          0.1,0.1,0.9))#
     
     ## Probability for covariate simulation for continuous covarites
-    dist <- list(c(5,1), c(5,1), c(30,1),
-                 c(20,1),c(20,1), c(65,1),
-                 c(40,1),c(40,1), c(75,1))
+    dist <- Sim$dist[[1]]
     # list(c(5,1), c(15,1), c(30,1),
     #      c(20,1),c(30,1), c(65,1),
     #      c(40,1),c(20,1), c(75,1))
@@ -118,7 +116,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     nitermax <- Sim$nitermax
     
     ## Beta distribution alpha and beta values
-    a <- 5#Sim$a
+    a <- 2#Sim$a
     b <- 8#Sim$b
     
     ## Type of network
@@ -165,11 +163,11 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
     FS <- list()
     
     params <- matrix(0, nrow= 0, ncol =35)
-    nitermax <-10000
+    nitermax <- 10000
     
     ## List for saving the original covariates
     orig_Cov <- list()
-    for(m in 1:bigN){
+    for(m in 1:(bigN)){
       seed <- m#sample(1:10000,1)#m
       ## Generating network with covariates and overlapping clusters
       NWlst <- genBipartite(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
@@ -191,7 +189,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
       #df <- cbind(F_u, H_u, V(G_orig)$a, V(G_orig)$b, V(G_orig)$c)
       print(igraph::plot.igraph(G_orig,vertex.label = NA, vertex.size = 5,
                                 vertex.color = as.factor(V(G_orig)$Cluster),
-                                edge.arrow.size= 0.1, edge.color = "grey28"))
+                              edge.arrow.size= 0.1, edge.color = "grey28"))
       
       ## Calculate max lambda (Regularization parameter). weighted by 1/sd for each predictor.
       Y <- covtmp[,4:6]# -colMeans(covtmp[,4:6])
@@ -209,8 +207,9 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
       # CoDACov: Directed + Covariates
       # CESNA Miss: Undirected + Missing Covariate Imputation
       # CoDA Miss: Directed + Missing Covariate Imputation
+      
       for (j in 1:Nsim) {
-        seed <- m#Sys.time()#sample.int(100000, 1)
+        seed <- m+j#Sys.time()#sample.int(100000, 1)
         for(dir in c("directed")){
           
           if(dir == "undirected"){
@@ -226,10 +225,10 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
             H_uGT <- H_u
           }
           
-           for(alpha in c(0.0001, 0.0005, 0.001)){ #c(0.0005, 0.001)
+           for(alpha in c(0.0001)){ #c(0.0005, 0.001)
              #for(alphaLin in c(0.0005,0.001,0.01,0.1,0.5)){#c(0.001,0.01,0.1,0.5)
-               for(lambda in c(0.001,0.01,0.05,0.1)){#c(0.001,0.01,0.05,0.1)
-                 for(penalty in c("Ridge","LASSO","ElasticNet")){#c("GroupLASSO","Ridge","LASSO","ElasticNet",,"GroupLASSOProxGrad")
+            for(lambda in c(0.001)){#c(0.001,0.01,0.05,0.1)
+            for(penalty in c("LASSO","ElasticNet")){#c("GroupLASSO","Ridge","LASSO","ElasticNet",,"GroupLASSOProxGrad")
                   
                   ## Block to calculate base log likelihood and clustering using spectral clustering. 
                   {
@@ -264,7 +263,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
                           cov[is.na(cov[, i]), i] <- mns[i]
                         }
                       }
-                      origCov <<-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
+                      specOP <<-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
                     }
                     if (length(X) > 0) {
                       cov <- X
@@ -273,7 +272,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
                           cov[is.na(cov[, i]), i] <- mode(cov[, i])
                         }
                       }
-                      origCov <<-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
+                      specOP <<-  CovAssistedSpecClust(G, cov, nc, alpha = 0.5)
                     }
                   }
                   
@@ -286,7 +285,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
                                               lambda,thresh,nitermax,orig,randomize = FALSE,
                                               CovNamesLinin,CovNamesLinout,CovNamesLPin,CovNamesLPout, dir,
                                               alphaLL , test,missing, covOrig = orig_Cov[[m]],
-                                              epsilon = 0, impType = "Reg", alphaLin, penalty, seed,covInit )
+                                              epsilon = 0, impType = "Reg", alphaLin, penalty, seed,covInit, specOP )
                     tme <- Sys.time() - start
                     print(paste0("Total time take algo with covariates and simple regression ", round(tme, 3)))
                   }, error = function(e) {
@@ -335,8 +334,8 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
                     # print(paste0("Total time take algo with covariates, regression and Proximal penalty ", round(tme, 3)))
                   }
                  }
-        #       }
-        #     }
+              }
+           }
             # tryCatch({
             #   # Algorithm without covariates + possible missing data
             #   start <- Sys.time()
@@ -352,12 +351,9 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
             #   cat("An error occurred:", conditionMessage(e), "\n")
             #   NA})
             #lvl <- lvl + 1
-            
             # -------------------------------------------------------------------------
-            
-            
-         }
-        }
+          #}
+       # }
         FS[[lvl]] <- cbind(F_uGT, H_uGT)
         params <- rbind(params, append(Sim, list(bigN = m,nsim = j,dir = dir)))
         
@@ -384,15 +380,15 @@ SaveCoDASim <- function(simvec, sim, InitParamFile){
 }
 }
 
-simvec = 192
+simvec = 2
 sim = TRUE
-InitParamFile = "/Code/InitParamMiss_lvlfull.rds"#"/Code/InitParamMiss_TryParamCombo2.rds"
+InitParamFile = "/Code/InitParamMiss_DegInit_Missing.rds"#"/Code/InitParamMiss_TryParamCombo2.rds"
 df<- SaveCoDASim(simvec,
                  sim,
                  InitParamFile)
 ## "MultipleCoordContProxgrpLasso2.rds" for drection agnostic covariates
 ##  "MultipleCoordContProxgrpLasso2.rds"  for direction dependent covariates
-saveRDS(df, "MultipleCoordContAllPenaltyCompNoDepUndir.rds")
+saveRDS(df, "CoordContDegInitPen_miss25_OL1.rds")
 #getwd()
 #df <- readRDS("MultipleParamCombinations1.rds")
 # for(q in seq(2,120,by = 10)){

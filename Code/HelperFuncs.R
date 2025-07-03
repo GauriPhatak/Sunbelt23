@@ -214,6 +214,52 @@ DataSetup <- function(v,n,pm, bs, type, thresh, maxIter, nRandStarts = 1){
   
 }
 
+FindGraphLaplacian <- function(G, dir, nc){
+  
+  if(dir == "directed"){
+    G <- convertToUndir(G, nc)
+    
+    # Assuming A is your (possibly directed) adjacency matrix
+    #A_sym <- (A + t(A)) / 2
+  }
+  N <- length(V(G))
+  A <- as.matrix(as_adjacency_matrix(G))
+    
+    # Compute degree and Laplacian
+    D <- diag(igraph::degree(G))
+    L <- D - A
+    
+    # Eigenvalues
+    eigvals <- sort(eigen(L, only.values = TRUE)$values)
+    
+    # Plot to find the "eigengap"
+    #plot(eigvals, type = "b", main = "Laplacian Eigenvalues")
+    
+    # Manually inspect for largest gap
+      # Gives the best guess for number of clusters (k)
+  
+  ## In case of self loops
+  #tau = mean(igraph::degree(G))
+  #D <- diag(igraph::degree(G)+tau+0.5, nrow = length(V(G)))
+  
+  ## Graph Laplacian
+  #Lt <- diag(1, N) - solve(sqrtm(D)) %*% A %*% solve(sqrtm(D))
+  
+  #X <-  eigen(Lt)
+  #plot(sort(X[[1]]), type = "b", main = "Laplacian Eigenvalues")
+  
+ # plot(1:N, X[[1]])
+  #X_d <- diff(X[[1]])
+  
+  ## Where does the difference in clusters becomes 0. Indicates number of clusters
+  #nClust <- which.max(X_d)[1] - 1
+  
+  diffs <- diff(eigvals)
+  nClust <- which.max(diffs)
+  val <- max(diffs)
+  return(list(val, nClust))
+}
+
 RegSpectralClust <-  function(G, k, regularize = TRUE ){
   
 # Step 1:
@@ -235,7 +281,7 @@ RegSpectralClust <-  function(G, k, regularize = TRUE ){
   Lt <-  solve(sqrtm(Dt)) %*% A %*% solve(sqrtm(Dt))
   
 
-# Step 2:
+  # Step 2:
   ## Fnd the eigen values and vectors of the Lt matrix
   
   X <-  eigen(Lt)
