@@ -1176,13 +1176,14 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
                                     impType, alphaLin, penalty){
  
   if(dir =="directed"){
-    X <- cbind( Wtm1 , Wtm2)
+    cm <- cbind( Wtm1 , Wtm2)
   }else{
-    X <- Wtm1
+    cm <- Wtm1
   }
-  
-  cm <- matrix(0, nrow = N, ncol =0)
-  for(i in 1:ncol(Wtm1)){ cm <- cbind(cm, Wtm1[,i], Wtm2[,i])}
+  ##FOR GRUOP LASSO
+  ## GROUPLASSO CODE IS DISABLED
+  #cm <- matrix(0, nrow = N, ncol =0)
+  #for(i in 1:ncol(Wtm1)){ cm <- cbind(cm, Wtm1[,i], Wtm2[,i])}
   
   #betaret <- beta
   Zret <-  Z
@@ -1191,11 +1192,21 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
   mod <- list()
   if (length(beta) > 0) {
     for(i in 1:dim(Z)[2]){
-      #"GroupLASSO","Ridge","LASSO","ElasticNet")
-      if(penalty =="GroupLASSO"){
+      ## "GroupLASSO","Ridge","LASSO","ElasticNet")
+      ## filter out the missing data so we update only based on the avaiable data
+      if(sum(missVals) > 0){
+        mIdx <- missVals[,i]
+        X <-  cm[-mIdx,]
+        y <- Z[-mIdx,i]
+      }else{
+        X <- cm
+        y <- Z[,i]
+      }
       
-      mod[[i]] <- gglasso(cm, Z[,i], group = rep(1:3, each= 2), lambda = lambda)
-      beta[i,] <- unname(as.matrix(coef(mod[[i]]))[,1])
+      if(penalty =="GroupLASSO"){
+      ## GROUPLASSO CODE IS DISABLED
+      ##mod[[i]] <- gglasso(cm[-mIdx,], Z[-mIdx,i], group = rep(1:3, each= 2), lambda = lambda)
+      ##beta[i,] <- unname(as.matrix(coef(mod[[i]]))[,1])
       
       {##Find the R-sq value
       # Get predictions
@@ -1206,22 +1217,30 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
       # print(paste("r-squared for ", i, " :",rsq, " mse ", mse))
         }
       }else if(penalty =="LASSO"){
-        #mod[[i]] <- cv.glmnet(X , Z[,i], alpha = 1) 
+        #mod[[i]] <- cv.glmnet(X , y, alpha = 1, maxit = 1000) 
+        #beta[i,] <- coef(mod[[i]], s = "lambda.min")
         
-        mod[[i]] <- glmnet(X , Z[,i],lambda = lambda, alpha = 1, maxit = 1000) 
+        mod[[i]] <- glmnet(X ,y,lambda = lambda, alpha = 1, maxit = 1000) 
         beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
         
       }else if(penalty =="ElasticNet"){
+        #mod[[i]] <- cv.glmnet(X , y, alpha = 0.5, maxit = 1000) 
+        #beta[i,] <- coef(mod[[i]], s = "lambda.min")
         
-        mod[[i]] <- glmnet(X , Z[,i],lambda = lambda, alpha = 0.5, maxit = 1000) 
+        mod[[i]] <- glmnet(X ,y ,lambda = lambda, alpha = 0.5, maxit = 1000) 
         beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
         
       }else if(penalty == "Ridge"){
-        mod[[i]] <- glmnet(X ,Z[,i], family = "gaussian",lambda = lambda, alpha = 0, maxit = 1000) 
+        #mod[[i]] <- cv.glmnet(X , y, alpha = 0, maxit = 1000) 
+        #beta[i,] <- as.matrix(coef(mod[[i]], s = "lambda.min"))
+        
+        mod[[i]] <- glmnet(X ,y , family = "gaussian",lambda = lambda, alpha = 0, maxit = 1000) 
         beta[i,] <- as.matrix(coef(mod[[i]]))
+        
       }
     }
     
+    ## GROUP LASSO CODE IS DISABLED 
     if(penalty == "GroupLASSO"){
       betaret <- cbind(beta[,1], beta[, seq(2,((nc*2)+1),by=2)], beta[,seq(3,((nc*2)+1), by=2)])
     } else{ betaret <- beta}
@@ -1365,11 +1384,10 @@ initCov <- function(covtmp, CovNames) {
 }
 
 initWtmat <- function(G, mode, N, nc, seed,specOP){
-  #set.seed(seed)
-  
+  set.seed(seed)
   colwts <- igraph::degree(G, mode = mode) / sum(igraph::degree(G, mode = mode))
-  Wtmat <- matrix(nrow = N, ncol = nc, runif(nc * N, 0,0.001))
-    #cbind(colwts,colwts,colwts) + matrix(nrow = N, ncol = nc, runif(nc * N, 0,0.001))
+  Wtmat <- cbind(colwts,colwts,colwts) + matrix(nrow = N, ncol = nc, runif(nc * N, 0.0001,0.001))
+  #cbind(colwts,colwts,colwts) + matrix(nrow = N, ncol = nc, runif(nc * N, 0,0.001))
   ### initializing with the degree
   #op <- model.matrix( ~m-1 ,data.frame(m = as.character(specOP)))
   #Wtmat <- (colwts * op) + matrix(nrow = N, ncol = nc, runif(nc * N, 0,0.001))
@@ -1481,13 +1499,13 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
             neigh <- igraph::neighbors(G, v, mode = "all")
             if(length(neigh) > 0){
               if(all(is.na(Z_out[c(neigh), i]))){
-                Z_out[v,i] <- mean(Z_out[,i], na.rm =TRUE)
+                Z_out[v,i] <- mode(Z_out[,i])
               }else{
                 Z_out[v, i] <- mode(Z_out[c(neigh), i])
               }
             } else{
               ## Mean imputation of initial values if no neighbours
-              Z_out[v,i] <- mean(Z_out[,i], na.rm =TRUE)
+              Z_out[v,i] <- mode(Z_out[,i])
             }
           }
         }else if(covInit == "Nmean"){
@@ -1504,6 +1522,41 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
             } else{
               ## Mean imputation of initial values if no neighbours
               Z_out[v,i] <- mean(Z_out[,i], na.rm =TRUE)
+            }
+          }
+        }else if(covInit == "Nmedian"){
+          ## Imputing values based on the neighbours. Using mode of the neighbour values
+          mv <- which(missValsout[,i])
+          for(v in mv){
+            neigh <- igraph::neighbors(G, v, mode = "all")
+            if(length(neigh) > 0){
+              if(all(is.na(Z_out[c(neigh), i]))){
+                Z_out[v,i] <- median(Z_out[,i], na.rm = TRUE)
+              }else{
+                Z_out[v, i] <- median(Z_out[c(neigh), i], na.rm = TRUE)
+              }
+            } else{
+              ## Mean imputation of initial values if no neighbours
+              Z_out[v,i] <- median(Z_out[,i], na.rm = TRUE)
+            }
+          }
+        }else if(covInit == "NNmedian"){
+          ## Imputing values based on the neighbours. Using mode of the neighbour values
+          mv <- which(missValsout[,i])
+          for(v in mv){
+            n1 <- igraph::neighbors(G, v, mode = "all")
+            n_of_n <- unique(unlist(lapply(n1, function(x) neighbors(G, v = x))))
+            # Remove the original vertex and its direct neighbors if desired
+            neigh <- setdiff(n_of_n, c(1, n1))
+            if(length(neigh) > 0){
+              if(all(is.na(Z_out[c(neigh), i]))){
+                Z_out[v,i] <- median(Z_out[,i], na.rm = TRUE)
+              }else{
+                Z_out[v, i] <- median(Z_out[c(neigh), i], na.rm = TRUE)
+              }
+            } else{
+              ## Mean imputation of initial values if no neighbours
+              Z_out[v,i] <- median(Z_out[,i], na.rm = TRUE)
             }
           }
         }
