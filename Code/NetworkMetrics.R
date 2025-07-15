@@ -3,6 +3,10 @@ library(aricode)  # For NMI
 library(linkprediction)  # For partition density (install via devtools::install_github("arc85/LinkPrediction"))
 library(stringr)
 library(tidyverse)
+library(DirectedClustering)
+library(poweRlaw)
+library(e1071)
+
 ## Part of log likelihood contributed by the penalty term
 
 penLL <- function(penalty, beta){
@@ -69,14 +73,14 @@ MSEop <- function(Ftot, Htot, covOrig, betaout,N, dir, o_in,o_out, missValsout){
     mseouttot <- 0
     if (o_out > 0) {
       mseouttot <- MSE(Ftot,Htot,covOrig,t(as.matrix(betaout)),N,dir)#MSE(Ftot,Htot,Z_out,betaout,N,dir)
-        for(i in 1:o_out){
-          if(sum(missValsout[,i]) > 0){
+      for(i in 1:o_out){
+        if(sum(missValsout[,i]) > 0){
           mse_outMD <- c(mse_outMD, MSE(Ftot[missValsout[,i],],
-                           Htot[missValsout[,i],],
-                           covOrig[missValsout[, i],i],
-                           as.matrix(betaout[i, ]), N, dir))
-          }
-          else{mse_outMD <- c(mse_outMD,0)}
+                                        Htot[missValsout[,i],],
+                                        covOrig[missValsout[, i],i],
+                                        as.matrix(betaout[i, ]), N, dir))
+        }
+        else{mse_outMD <- c(mse_outMD,0)}
       }
     }
   }
@@ -108,7 +112,7 @@ accuCalc <- function(k,W,Wtm1,Wtm2,X, dir){
 }
 
 accuOP <- function(k_in, k_out,Wout,Ftot, Htot,covOrig,dir,missValsout){
- 
+  
   accuracy_out <- matrix(nrow = 0, ncol = k_in + k_out)
   accuracy_outMD <- matrix(nrow = 0, ncol = k_in + k_out)
   if((k_in + k_out) > 0){
@@ -134,26 +138,14 @@ getDelta <- function(N){
 
 memOverlapCalc <- function(Fm, Hm, delta, N, nc){
   ol <- as.data.frame(matrix(0, ncol = nc, nrow = N))
-             
+  
   for (i in 1:N) {
     ol[i, ] <- (as.numeric(Fm[i, ] > delta) + as.numeric(Hm[i, ] > delta)) > 0
   }
   return(ol)
 }
 
-OmegaIdx <- function(G, Fm, Hm, N, delta, nc) {
-  if(printFlg == TRUE){
-    print("In OmegaIdx Func")
-  }
-  memoverlap <- memOverlapCalc(Fm, Hm, delta, N, nc)
-  
-  
-  #### Using soft thresholding for memory overlap
-  #ol <- lapply(1:nc, function(i) which(memoverlap[,i] > quantile(memoverlap[,i], 0.75)))
-  
-  OrigVal <-  as.data.frame(vertex_attr(G)) %>%
-    dplyr::select(all_of(c(letters[1:nc]))) %>%
-  abs()
+OmegaIdx_ <- function(OrigVal, memoverlap,nc,N){
   
   ol <- list()
   for(i in 1:nc){
@@ -187,6 +179,21 @@ OmegaIdx <- function(G, Fm, Hm, N, delta, nc) {
   oi <- sum(gbg$matched)
   
   oi <- oi / (N ^ 2)
+  
+  return(oi)
+}
+
+OmegaIdx <- function(G, Fm, Hm, N, delta, nc) {
+  if(printFlg == TRUE){
+    print("In OmegaIdx Func")
+  }
+  memoverlap <- memOverlapCalc(Fm, Hm, delta, N, nc)
+  
+  OrigVal <-  as.data.frame(vertex_attr(G)) %>%
+    dplyr::select(all_of(c(letters[1:nc]))) %>%
+    abs()
+  
+  oi <- OmegaIdx_(OrigVal, memoverlap,nc,N)
   return(oi)
 }
 
@@ -338,6 +345,119 @@ OP <- function(communities, g) {
   sum(sapply(1:vcount(g), function(v) {
     sum(sapply(communities, function(c) v %in% c)) > 1
   })) / vcount(g)
+}
+
+# Find clustering coef global for directed and undirected network
+# High clustering coef means more clique based highly clustered Network
+# Low means more sparse network
+ClustCoef <- function(G, dir){
+  A <- as_adjacency_matrix(G, sparse = FALSE)
+  if(dir == "directed"){
+    cc <- ClustF(A, type = "directed")
+  }else if(dir == "undirected"){
+    cc <- ClustF(A, type = "undirected")
+  }
+  return(cc$GlobaltotalCC)
+}
+
+## Power law fit check
+PLfitcheck <- function(G){
+  fit <- displ$new(igraph::degree(G))
+  est <- estimate_xmin(fit)
+  fit$setXmin(est)
+  bs <- bootstrap_p(fit, threads = 4)  # KS test
+  return(bs$p)  # p-value > 0.1 supports power law
+}
+
+# 1: Perfect homophily (nodes only connect within their group).
+# 0: No homophily (random mixing).
+# < 0: Heterophily (nodes prefer different groups).
+assortativity <- function(G){
+  return(igraph::assortativity_degree(G, directed = TRUE))
+}
+
+## Feature structure decomposition
+Feature_struct_decomp <- function(G, nc, N, delta, noCov, FullM){
+  
+  ## Baseline 1 : CD using NW structure. No covariate community detection
+  ## noCov
+  
+  ## Baseline 2: CD using NW only features (k-means)
+  ## Get the covariates
+  X <-  as.data.frame(vertex_attr(G))[4:6]
+  ### using cmeans function from e1071 library
+  Cov_op <- cmeans(X , nc)
+  ##Find the overlap 
+  cov <- memOverlapCalc(Cov_op$membership,Cov_op$membership,N, delta,nc)
+  
+  ## Full model: Structure + covariate community detection
+  FullM <- FullM
+  
+  ##Compare B1 to Full model
+  oi_b1 <- OmegaIdx_(noCov, FullM,nc,N)
+  
+  ##Compare B2 to Full model
+  oi_b2 <- OmegaIdx_(cov, FullM,nc,N)
+  
+  ## Compare covariate only to ground truth
+  OrigVal <-  as.data.frame(vertex_attr(G)) %>%
+    dplyr::select(all_of(c(letters[1:nc]))) %>%
+    abs()
+  oi_cov <- OmegaIdx_(OrigVal, cov, nc, N)
+  
+  return(list(oi_b1, oi_b2, oi_cov))
+  
+}
+
+
+## Variance Explained: Using log likelihood ratio
+VarExp <- function(){
+  ## L_f  : log-lik of cov + struct
+  L_f  <- 0
+  ## L_b1 : log-lik of using only NW struct
+  L_b1 <- 0
+  ## L_b2 : log-lik of using covariates
+  L_b2 <- 0
+  R <- (L_f - L_b1)/(L_f - L_b2)
+  return(R)
+}
+
+## null models: Randomize feature labels -> if performance drops features matter
+null_models <- function(G, nc, k, o, N, alpha,lambda, thresh, nitermax, orig, randomize,
+                        CovNamesLinin, CovNamesLinout, CovNamesLPin, CovNamesLPout, dir,
+                        alphaLL, test, missing, covOrig,epsilon, impType, alphaLin, 
+                        penalty, seed, covInit, specOP){
+  ## for example for continuous feature Z[,i]
+  ## V(G)$feature <- sample(V(G)$feature)
+  ## fit the method again and compare the OI of original data and shuffled data with ground truth.
+  
+  ## Randomize the values of a feature vector
+  ## null models: Randomize feature labels -> if performance drops features matter
+  covtmp <-  as.data.frame(vertex_attr(G))
+  if (o > 0) {
+    Z_out <- as.matrix(covtmp %>% dplyr::select(all_of(CovNamesLinout)))
+    for(i in 1:o){
+      Z_out[,i] <- sample(Z_out[,i])
+      G <- G %>% set_vertex_attr(name = CovNamesLinout[i], value = c(Z_out[, i]))
+    }
+  }
+  tryCatch({
+    ## Algorithm with covariates + possible missing data
+    start <- Sys.time()
+    opf_RegcovRand <- CoDA(G, nc, k, o, N, alpha,lambda, thresh, nitermax, orig, randomize,
+                           CovNamesLinin, CovNamesLinout, CovNamesLPin, CovNamesLPout, dir,
+                           alphaLL, test = FALSE, missing, covOrig,epsilon, impType, alphaLin, 
+                           penalty, seed, covInit, specOP )
+    randOI <- tail(opf_RegcovRand$OmegaIndex,1)
+    tme <- Sys.time() - start
+    print(paste0("Total time take algo with covariates and simple regression ", round(tme, 3)))
+  }, error = function(e) {
+    # Handle the error
+    cat("An error occurred:", conditionMessage(e), "\n")
+    NA})
+  
+  return(randOI)
+  ## GT: Ground Truth
 }
 
 ## SURPRISE METRIC 
