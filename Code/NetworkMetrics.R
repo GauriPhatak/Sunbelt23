@@ -434,9 +434,9 @@ null_models <- function(G, nc, k, o, N, alpha,lambda, thresh, nitermax, orig, ra
   ## Randomize the values of a feature vector
   ## null models: Randomize feature labels -> if performance drops features matter
   covtmp <-  as.data.frame(vertex_attr(G))
-  if (o > 0) {
+  if (sum(o) > 0) {
     Z_out <- as.matrix(covtmp %>% dplyr::select(all_of(CovNamesLinout)))
-    for(i in 1:o){
+    for(i in 1:o[2]){
       Z_out[,i] <- sample(Z_out[,i])
       G <- G %>% set_vertex_attr(name = CovNamesLinout[i], value = c(Z_out[, i]))
     }
@@ -450,14 +450,12 @@ null_models <- function(G, nc, k, o, N, alpha,lambda, thresh, nitermax, orig, ra
                            penalty, seed, covInit, specOP )
     randOI <- tail(opf_RegcovRand$OmegaIndex,1)
     tme <- Sys.time() - start
-    print(paste0("Total time take algo with covariates and simple regression ", round(tme, 3)))
+    print(paste0("Total time take algo with scrambled covariates.", round(tme, 3)))
   }, error = function(e) {
     # Handle the error
     cat("An error occurred:", conditionMessage(e), "\n")
     NA})
-  
   return(randOI)
-  ## GT: Ground Truth
 }
 
 ## SURPRISE METRIC 
