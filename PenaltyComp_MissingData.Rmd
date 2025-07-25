@@ -1,0 +1,856 @@
+---
+title: "PenaltyComp_MissingData"
+output: pdf_document
+date: "2025-07-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(igraph)
+library(network)
+library(intergraph)
+library(ergm)
+library(gridExtra)
+library(RColorBrewer)
+library(ggpubr)
+library(kableExtra)
+library(ggside)
+```
+
+
+## Reading te data files and the combination files.
+Box folder                                               Initparam Files                          Notes:
+PenaltyCompContRandInitMissing                           InitParamMiss_DegInit_Missing            Rerun this. The undirected networks did really well here. This is uspiscious .INITIALIZE with random INIT instead of DEG INIT.
+
+PenaltyComparisonGLMNETDegInit                           InitParamMiss_DegInit_Missing                      
+PenaltyCompContRandInitMissingDirOnlyNoCov               InitParamMiss_DegInit_MissingDirOnly
+PenaltyCompContRandInitMissingDirOnly                    InitParamMiss_DegInit_MissingDirOnly
+PenaltyCompContRandInitMissingDirOnlySeedSet             InitParam_DegInit_Miss_MultCovInit_Dir
+PenaltyCompContDegInitMissingDirOnlySeedSet              InitParam_DegInit_Miss_MultCovInit_Dir
+PenaltyCompContDegInitMissingDirOnlySeedSetDriNode       InitParam_DegInit_Miss_AllCovInit
+PenaltyCompContDegInitMissingDirOnlySeedSetDriNodeNocov  InitParam_DegInit_Miss_AllCovInit
+NWMetrics TTT                                            InitParam_NetworkMetrics
+InitParam_DegInit_Miss_Med FTF                           InitParam_DegInit_Miss_Med
+
+
+```{r}
+getwd()
+## Reading combination of parameters
+filePath <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/InitParam_NetworkMetrics_comb.rds"
+S <- readRDS(filePath)
+
+## Reading names of files
+boxFolder <- "C:/Users/gauph/Box/SimulationOutput/CoDAOP/NWMetrics/"
+files <- list.files(boxFolder)
+
+```
+
+```{r}
+## Set these based on nocov or cov
+nocov = T
+NWmetrics = T
+regcov = T
+if(NWmetrics == TRUE){
+  metricsMat <- matrix(0, nrow =0 , ncol = 18)
+}
+
+if(nocov == TRUE){
+  df_nocov <- matrix(0, nrow =0, ncol = 9)
+}
+if(regcov == TRUE){
+  df_reg <- matrix(0, nrow =0, ncol = 12)
+}
+
+nc <- 3
+N <- 100
+nsim <- S$Nsim[1]
+bigN <- S$bigN[1]
+p <- matrix(0, nrow =0, ncol = 8)
+dir <- c("directed","undirected")
+bigNv <- rep(1:bigN , each = nsim*length(dir))
+nsimv <- rep(rep(1:nsim, each = length(dir)), times = bigN)
+dirv <- rep(dir, times = bigN*nsim)
+corMat <- matrix(0, nrow =0 , ncol = 21)
+
+for(fn in files){
+  df_rds <- readRDS(paste0(boxFolder,fn))
+  sIdx <- as.numeric(str_extract_all(fn, "\\d+")[[1]])[1]
+  seqv <- 1:length(df_rds[[1]])
+  for(i in seqv){
+    
+    ##find the output from graph laplacian 
+    #eig <- list(0,0)#FindGraphLaplacian(df_rds[[6]][[i]], dirv[q])
+    df_reg <- rbind(df_reg, c(tail(df_rds[[1]][[i]]$OmegaIndex,1),
+                              tail(df_rds[[1]][[i]]$MSE,1),sIdx, 
+                              df_rds[[1]][[i]][[20]],
+                              length(df_rds[[1]][[i]]$Loglik[,1]),
+                              bigNv[i],nsimv[i],
+                              as.character(df_rds[[8]]$penalty[[1]]), 
+                              dirv[i],S$dist[sIdx][[1]] ))
+  }
+  
+  params <- as.data.frame(df_rds[[8]])
+  tmp_p <- as.data.frame(cbind(unlist(params$alpha), unlist(params$alphaLL), 
+                               unlist(params$lambda),unlist(params$alphaLin), 
+                               S$pClustOL[[sIdx]],
+                               ifelse(is.null(params$missing[[1]][[1]][1]), 
+                                      0, 
+                                      params$missing[[1]][[1]][1]),
+                               S$covInit[[sIdx]]))
+  p <- rbind(p,tmp_p)# %>% uncount(weights = length(dir)))
+  
+  
+  if(NWmetrics == TRUE){
+    metricsMat <- rbind(metricsMat,cbind(df_rds[[9]],sIdx))
+  }
+  
+  if(nocov == TRUE){
+    if(length(df_rds[[2]]) > 0){
+      for(i in seqv){
+        if(!is.null(df_rds[[2]][[i]])){
+          df_nocov <- rbind(df_nocov, c(tail(df_rds[[2]][[i]]$OmegaIndex,1),sIdx, 
+                                        df_rds[[2]][[i]][[20]], S$alpha[[sIdx]], 
+                                        dirv[i], S$pClustOL[[sIdx]],bigNv[i],nsimv[i],
+                                        length(df_rds[[2]][[i]]$Loglik[,1])))
+        }
+      }
+    }
+  }
+}
+
+p <- as.data.frame(apply(as.data.frame(p), 2, unlist))
+df_reg <- as.data.frame(df_reg)
+df_reg <- cbind(df_reg, p)
+colnames(df_reg) <- c("OI","MSE1","MSE2","MSE3","Idx","Failure","iter_reg","bigN",
+                      "Nsim","penalty","dir", "dist","alpha", "alphaLL","lambda",
+                      "alphaLin","OL","MissPct", "covInit")
+df_reg <- as.data.frame(df_reg)
+#df_reg$bigN <- #c(rep(1:30, each =2))
+df_reg$Failure <- ifelse(df_reg$Failure == 1, "TRUE", "FALSE")
+df_reg$Wts <- TRUE
+df_reg$OI <- as.numeric(df_reg$OI)
+df_reg$MSE1 <- round(as.numeric(df_reg$MSE1),3)
+df_reg$MSE2 <- round(as.numeric(df_reg$MSE2),3)
+df_reg$MSE3 <- round(as.numeric(df_reg$MSE3),3)
+df_reg$iter_reg <- as.numeric(df_reg$iter_reg)
+
+df_reg$bigN <- as.numeric(df_reg$bigN)
+df_reg$Nsim <- as.numeric(df_reg$Nsim)
+df_reg$Idx <- as.numeric(df_reg$Idx)
+df_reg <- df_reg[order(df_reg$Idx),]
+metricsMat <- as.data.frame(metricsMat)
+metricsMat$sIdx <- as.numeric(metricsMat$sIdx)
+metricsMat <- metricsMat[order(metricsMat$sIdx),]
+
+```
+
+
+
+## Reading nocovariate simlations
+
+```{r}
+## Reading nocov if done separately
+filePath <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/InitParam_DegInit_Miss_AllCovInit_comb.rds"
+S <- readRDS(filePath)
+boxFolder <- "C:/Users/gauph/Box/SimulationOutput/CoDAOP/PenaltyCompContDegInitMissingDirOnlySeedSetDriNodeNocov/"
+filesNC <- list.files(boxFolder)
+nc <- 3
+N <- 100
+nsim <- S$Nsim[1]
+bigN <- S$bigN[1]
+dir <- c("directed")
+bigNv <- rep(1:bigN , each = nsim*length(dir))
+nsimv <- rep(rep(1:nsim, each = length(dir)), times = bigN)
+dirv <- rep(dir, times = bigN*nsim)
+corMat <- matrix(0, nrow =0 , ncol = 21)
+df_nocov <- matrix(0, nrow =0, ncol = 9)
+
+for(fn in filesNC){
+  df_rds <- readRDS(paste0(boxFolder,fn))
+  sIdx <- as.numeric(str_extract_all(fn, "\\d+")[[1]])[1]
+  seqL <- seq(1,length(df_rds[[2]]), by = 2)
+  j <- 1
+  if(length(df_rds[[2]]) > 0){
+    for(i in seqL){
+      if(!is.null(df_rds[[2]][[i]])){
+        df_nocov <- rbind(df_nocov, c(tail(df_rds[[2]][[i]]$OmegaIndex,1),sIdx, 
+                                      df_rds[[2]][[i]][[20]], S$alpha[[sIdx]], 
+                                      dirv[j], S$pClustOL[[sIdx]],bigNv[j],nsimv[j],
+                                      length(df_rds[[2]][[i]]$Loglik[,1])))
+        j <- j+1
+      }
+    }
+  }
+}
+```
+
+```{r}
+df_nocov <- apply(df_nocov,2,unlist)
+df_nocov <- as.data.frame(df_nocov)
+colnames(df_nocov) <- c("OI_nocov","Idx","Failure","alpha","dir","OL","bigN", "Nsim","iter_nocov")
+df_nocov$OI_nocov <- as.numeric(df_nocov$OI_nocov)
+df_nocov$bigN <- as.numeric(df_nocov$bigN)
+df_nocov$iter_nocov <- as.numeric(df_nocov$iter_nocov)
+df_nocov$Nsim <- as.numeric(df_nocov$Nsim)
+df_nocov$Idx <- as.numeric(df_nocov$Idx)
+df_reg <- left_join(df_reg, df_nocov , by = c("Idx","alpha","dir","OL","bigN","Nsim"))
+df_reg$OIDiff <- df_reg$OI - df_reg$OI_nocov
+df_reg$Failure <- df_reg$Failure.x
+
+df_reg$alpha <- as.numeric(df_reg$alpha)
+df_reg$alphaLin <- as.numeric(df_reg$alphaLin)
+df_reg$alphaLL <- as.numeric(df_reg$alphaLL)
+df_reg$lambda <- factor(as.numeric(df_reg$lambda))
+#df_reg$OL <- factor( df_reg$OL)
+#df_reg$OL <- factor( df_reg$OL, levels = c("NoOL","2GrpOL1", "2GrpOL2", "2GrpOL3"))
+
+```
+
+
+## check if the network or the instance within the network makes a big difference
+
+```{r, fig.height=9, fig.width=20, warning=FALSE}
+
+## For each bigN check the percentage of vaues greater than 0.85
+df_reg$goodOI <- df_reg$OI >= 0.85
+
+NWprop <- df_reg %>% group_by(bigN, Nsim, OL, dist, dir) %>%
+  summarise(meanOI = mean(OI),
+            varOI = var(OI),
+            goodOIprop = sum(goodOI))
+
+NWprop %>% filter(dir == "directed") %>%
+  ggplot()+ 
+  geom_point(aes(y = meanOI, x = factor(Nsim), color = factor(bigN)))+
+  facet_wrap(OL~dist)
+
+df_reg %>% filter(dir == "directed") %>%
+  ggplot()+ 
+  geom_jitter(aes(y = OI, x = factor(bigN), color = factor(Nsim)),size = 0.5, alpha = 0.8,width = 0.3, height = 0)+ 
+  scale_color_manual(values = c("darkblue","darkred","darkgreen","yellow4"))+
+  facet_wrap(OL~dist)+
+  theme(legend.position = "bottom", panel.background = element_blank())
+
+df_reg %>% filter(dir == "directed") %>%
+  ggplot()+
+  geom_bar(aes(x = factor(bigN), color = factor(Nsim), fill = goodOI),linewidth = 1 ,alpha = 0.8, position = "dodge")+
+  facet_wrap(OL~dist, scales = "free")+  scale_fill_manual(values= c("cornsilk3", "cornsilk4"))+ scale_color_manual(values = c("darkblue","darkred","darkgreen","yellow4"))+  # Uses ColorBrewer palette
+  theme(legend.position = "bottom", axis.text.x = element_text(),  # Show x-axis text on all facets
+        axis.ticks.x = element_line(),panel.background = element_blank())
+
+## group_by the different factors and find the ones with the nightest number of goodOI
+df_goodOI <- df_reg %>%
+  group_by(OL,dist,bigN,Nsim, goodOI) %>%
+  summarise(count = n(),prop = n()/60) %>%
+  filter(goodOI == TRUE)
+
+for(ol in unique(df_reg$OL)){
+  #for(mp  in unique(df_reg$MissPct)){
+  for(d in unique(df_reg$dist)){
+    print(df_goodOI %>%
+            filter(OL == ol,  dist == d) %>%
+            ggplot(aes(x = factor(bigN), y = as.factor(as.numeric(Nsim)), fill = count))+
+            geom_tile() + scale_fill_gradient(limits = c( min(df_goodOI$count), max(df_goodOI$count))) + ggtitle(paste(ol, ",",d)))
+    # }
+  }
+}
+
+# 
+# NWprop %>% filter(dir == "undirected") %>%
+#   ggplot()+ 
+#   geom_point(aes(y = meanOI, x = factor(Nsim), color = factor(bigN)))+
+#   facet_wrap(OL~dist)
+# 
+# df_reg %>% filter(dir == "undirected") %>%
+#   ggplot()+ 
+#   geom_jitter(aes(y = OI, x = factor(bigN), color = factor(Nsim)), alpha = 0.7,width = 0.3, height = 0)+
+#   facet_wrap(OL~dist)+
+#   theme(legend.position = "bottom", panel.background = element_blank())
+# 
+# df_reg %>% filter(dir == "undirected") %>%
+#   ggplot()+
+#   geom_bar(aes(x = bigN, color = factor(Nsim), fill = goodOI),linewidth = 1 ,alpha = 0.8, position = "dodge")+
+#   facet_wrap(OL~dist, scales = "free")+  scale_fill_manual(values= c("cornsilk3", "cornsilk4"))+ scale_color_manual(values = c("darkblue","darkred","darkgreen"))+  # Uses ColorBrewer palette
+#   theme(legend.position = "bottom", axis.text.x = element_text(),  # Show x-axis text on all facets
+#         axis.ticks.x = element_line(),panel.background = element_blank())
+
+```
+
+## filtering for grplvl1 dirdep nsim 3 aand bigN 13
+
+```{r}
+gbg <- df_reg %>% filter(bigN == 13, Nsim == 3, dist == "DirDep", OL == "2GrpOL1")
+
+## Look at init params for 21, 22 and 141, 142
+df_rds21  <- readRDS(paste0(boxFolder,"MultParamCoordPenaltyCompMissingDirOnly21.rds"))
+df_rds22  <- readRDS(paste0(boxFolder,"MultParamCoordPenaltyCompMissingDirOnly22.rds"))
+12*4+3
+
+view(cbind(df_rds21[[1]][[51]]$Forig, df_rds21[[1]][[51]]$Horig))
+view(cbind(df_rds21[[1]][[52]]$Forig, df_rds21[[1]][[52]]$Horig))
+
+view(cbind(df_rds22[[1]][[51]]$Forig, df_rds22[[1]][[51]]$Horig))
+view(cbind(df_rds22[[1]][[52]]$Forig, df_rds22[[1]][[52]]$Horig))
+
+## Common problem is one of the initial weights is 1e-05 for the ones that do not do well.... in the above
+df_rds141  <- readRDS(paste0(boxFolder,"MultParamCoordPenaltyCompMissingDirOnly141.rds"))
+df_rds142  <- readRDS(paste0(boxFolder,"MultParamCoordPenaltyCompMissingDirOnly142.rds"))
+12*4+3
+
+view(cbind(df_rds141[[1]][[51]]$Forig, df_rds141[[1]][[51]]$Horig))
+view(cbind(df_rds141[[1]][[52]]$Forig, df_rds141[[1]][[52]]$Horig))
+
+view(cbind(df_rds142[[1]][[51]]$Forig, df_rds142[[1]][[51]]$Horig))
+view(cbind(df_rds142[[1]][[52]]$Forig, df_rds142[[1]][[52]]$Horig))
+
+
+```
+
+## level 3 overlap CaseStudy
+
+In overlap level 3 the 3rd (3rd) and 5th(2nd , 3rd) Networks
+
+```{r}
+df_lvl3 <- df_reg %>% filter(OL == "2GrpOL3", dir == "directed")
+
+for(l in unique(df_lvl3$lambda)){
+  for(c in unique(df_lvl3$covInit)){
+    print(df_lvl3 %>% filter(lambda  == l, covInit == c) %>%
+            ggplot()+
+            geom_bar(aes(x = bigN, color = factor(Nsim), fill = goodOI),linewidth = 1 ,alpha = 0.8, position = "dodge")+
+            facet_wrap(penalty~dist, scales = "free")+  scale_fill_manual(values= c("cornsilk3", "cornsilk4"))+
+            ggtitle(paste(l, " ,", c))+
+            scale_color_manual(values = c("darkblue","darkred","darkgreen"))+  # Uses ColorBrewer palette
+            theme(legend.position = "bottom", axis.text.x = element_text(),  # Show x-axis text on all facets
+                  axis.ticks.x = element_line(),panel.background = element_blank()))
+  }
+}
+## for different lambda values how do the data behave
+df_lvl3 %>% ggplot()+
+  geom_point(aes(x = log(avgMSE), y = OI, 
+                 color = factor(as.numeric(Nsim)) ) , alpha =0.5)+
+  scale_color_brewer(palette = "Dark2") +
+  facet_wrap(~bigN)+
+  #scale_color_manual(values = c("darkblue","darkred","darkgreen"))+
+  theme(legend.position = "bottom", 
+        axis.text.x = element_text(),
+        axis.ticks.x = element_line(),
+        panel.background = element_blank())
+
+## subset of lvl3 OL NW 3
+df_lvl3_3 <- df_lvl3 %>% filter(bigN == 3)
+df_lvl3_3 %>% ggplot()+geom_point(aes(x = OI, y = Conductance, color = MissPct))+
+  facet_wrap(~Nsim, nrow = 3)+
+  theme(legend.position = "bottom", 
+        axis.text.x = element_text(),
+        axis.ticks.x = element_line(),
+        panel.background = element_blank())
+
+## plotting the igraph bigN and Nsim
+df_lvl3_op17 <- readRDS(paste0(boxFolder,"MultParamCoordPenaltyCompMissingData41.rds"))[[1]][[17]]
+df_lvl3_op15 <- readRDS(paste0(boxFolder,"MultParamCoordPenaltyCompMissingData41.rds"))[[1]][[15]]
+plot(1:9103, df_lvl3_op15$Loglik[,2])
+plot(1:5883, df_lvl3_op17$Loglik[,2])
+G1 <- readRDS(paste0(boxFolder,"MultParamCoordPenaltyCompMissingData41.rds"))[[6]][[17]]
+print(igraph::plot.igraph(G1,vertex.label = NA, vertex.size = 5,
+                          vertex.color = as.factor(V(G1)$Cluster),
+                          edge.arrow.size= 0.1, edge.color = "grey28"))
+#view(cbind(df_lvl3_op15$Forig, df_lvl3_op17$Forig))
+#view(rbind(df_lvl3_op15[[22]][1,],df_lvl3_op17[[22]][1,]))
+```
+
+## Community cohesiveness metrics
+
+```{r, fig.height=9, fig.width=10, warning=FALSE}
+#metricsMat <- as.data.frame(metricsMat)
+metricsMat$index <- 1:nrow(metricsMat)
+
+#plotting cluster coefficent for this isolated set of data
+cc  <- cbind(metricsMat, OI = df_reg$OI, OL = df_reg$OL) 
+cc <- cc %>% filter(cc$randOI != "undirected",dir == "directed")
+cc %>% 
+  ggplot()+
+  geom_point(aes(y = as.numeric(CC), x = OI, color = OL),alpha =0.6)+
+  theme(legend.position = "bottom", panel.background = element_blank())
+
+undirMetrics <- metricsMat[metricsMat$randOI == "undirected",]
+dirMetrics <- metricsMat[metricsMat$randOI != "undirected",]
+undirMetrics <- undirMetrics[,-17]
+colnames(undirMetrics) <- c("Cond","PD","Q_HP","Q_OL","CQ","OnCut","OP","PLFit",
+                            "NetA","oi_b1","oi_b2","oi_cov","randOI","dir",
+                            "bigN","nsim", "sIdx","index")
+
+
+
+
+dirMetrics <- dirMetrics %>% select(-c(CC))
+#undirMetrics <- undirMetrics[,-ncol(undirMetrics)]
+
+#dirMetrics$index <- seq(1,nrow(metricsMat),by =2)
+#undirMetrics$index <- seq(2,nrow(metricsMat),by =2)
+
+combMet <- rbind(dirMetrics, undirMetrics)
+combMet <- combMet[order(combMet$index), ]
+
+combMet[, c(1:13,15:18)] <- lapply(combMet[, c(1:13,15:18)], as.numeric)
+
+gbg <- cbind(df_reg, combMet[,c(1:13,17)])
+
+for(ol in unique(gbg$OL)){
+  for(d in unique(gbg$dist)){
+    for(di in unique(gbg$dir)){
+    p <- list()
+    p[[1]] <- gbg %>% 
+      filter(OL == ol, dist == d, dir == di) %>% 
+      ggplot()+
+      geom_point(aes(x = OI, y = Cond, color = interaction(penalty, lambda)))+
+    theme(legend.position = "none", panel.background = element_blank())
+    p[[2]] <-  gbg %>% 
+      filter(OL == ol, dist == d, dir == di) %>% 
+      ggplot()+
+      geom_point(aes(x = OI, y = PD, color = interaction(penalty, lambda)))+
+    theme(legend.position = "none", panel.background = element_blank())
+    p[[3]] <-  gbg %>% 
+      filter(OL == ol, dist == d, dir == di) %>% 
+      ggplot()+
+      geom_point(aes(x = OI, y = PLFit, color = interaction(penalty, lambda)))+
+    theme(legend.position = "none", panel.background = element_blank())
+    p[[4]] <-  gbg %>% 
+      filter(OL == ol, dist == d, dir == di) %>% 
+      ggplot()+
+      geom_point(aes(x = OI, y = NetA, color = interaction(penalty, lambda)))+
+    theme(legend.position = "none", panel.background = element_blank())
+    p[[5]] <-  gbg %>% 
+      filter(OL == ol, dist == d, dir == di) %>% 
+      ggplot()+
+      geom_point(aes(x = OI, y = randOI, color = interaction(penalty, lambda)))+
+    theme(legend.position = "none", panel.background = element_blank())
+    
+    pt <- ggarrange(plotlist = p,nrow = 2,ncol =3,common.legend = TRUE,legend = "bottom")
+    #print(pt)
+    #pt <- ggpubr::ggarrange(plotlist = p,legend)
+    print(annotate_figure(pt,top = text_grob(paste0("OL ", ol," dist ", d," dir ", di))))
+    }
+  }
+}
+
+## Assortavity of networks
+# gbg %>% filter(dir == "directed") %>% ggplot()+
+#   geom_point(aes(x = OI, y = NetA, color = interaction(penalty, lambda)))+
+#   theme(legend.position = "bottom", panel.background = element_blank())+
+#   ylim(min(gbg$NetA), max(gbg$NetA))+
+#   facet_grid(vars(OL), vars(dist))
+# gbg %>% filter(dir == "undirected") %>% ggplot()+
+#   geom_point(aes(x = OI, y = NetA, color = interaction(penalty, lambda)))+
+#   theme(legend.position = "bottom", panel.background = element_blank())+
+#   ylim(min(gbg$NetA), max(gbg$NetA))+
+#   facet_grid(vars(OL), vars(dist))
+gbg %>% filter(dir == "directed") %>% ggplot()+
+  geom_point(aes(x = OI, y = NetA, color = OL))+ylab("Assortativity")+
+    ggtitle("Compare assortavity with OI directed")+
+  theme(legend.position = "bottom", panel.background = element_blank())
+
+gbg %>% filter(dir == "undirected") %>% ggplot()+
+  geom_point(aes(x = OI, y = NetA, color = OL))+ylab("Assortativity")+
+      ggtitle("Compare assortavity with OI undirected")+
+  theme(legend.position = "bottom", panel.background = element_blank())
+
+## Powerlaw fit
+gbg %>% filter(dir == "directed") %>% ggplot()+
+  geom_point(aes(x = OI, y = PLFit, color = OL))+ylab("Power law fit")+
+  ggtitle("Compare Powerlaw fit with OI directed")+
+  theme(legend.position = "bottom", panel.background = element_blank())
+
+gbg %>% filter(dir == "undirected") %>% ggplot()+
+  geom_point(aes(x = OI, y = PLFit, color = OL))+ylab("Power law fit")+
+    ggtitle("Compare Powerlaw fit with OI undirected")+
+  theme(legend.position = "bottom", panel.background = element_blank())
+
+## Randoi Compare null model with features scrambled
+gbg %>% filter(dir == "directed") %>% ggplot()+
+  geom_point(aes(x = OI, y = randOI, color = OL),alpha =0.8)+ ylab("Scrambled OI")+
+  theme(legend.position = "bottom", panel.background = element_blank())+
+          ggtitle("Compare Full model  to scrambled features directed")+
+  facet_wrap(~dist)
+
+gbg %>% filter(dir == "undirected") %>% ggplot()+
+  geom_point(aes(x = OI, y = randOI, color = OL),alpha =0.8)+ylab("Scrambled OI")+
+  theme(legend.position = "bottom", panel.background = element_blank())+
+            ggtitle("Compare Full model  to scrambled features undirected")+
+  facet_wrap(~dist)
+
+
+## feature struct. Compare covariate only to ground truth
+gbg %>% filter(dir == "directed") %>% ggplot()+
+  geom_boxplot(aes(x = penalty, y = oi_cov, color = OL),alpha =0.8)+ylab("cmeans Vs GT")+
+  theme(legend.position = "bottom", panel.background = element_blank())+
+        ggtitle("Compare cmeans to GT directed")+
+  facet_wrap(~dist)
+
+gbg %>% filter(dir == "undirected") %>% ggplot()+
+  geom_boxplot(aes(x = penalty, y = oi_cov, color = OL),alpha =0.8)+ylab("cmeans Vs GT")+
+  theme(legend.position = "bottom", panel.background = element_blank())+
+          ggtitle("Compare cmeans to GT undirected")+
+  facet_wrap(~dist)
+
+## Compare cmeans OI to Full model OI
+gbg %>% filter(dir == "directed") %>% ggplot()+
+  geom_point(aes(x = OI, y = oi_cov, color = OL),alpha =0.8)+ylab("cmeans Vs GT")+xlab("Full model Vs GT")+
+  theme(legend.position = "bottom", panel.background = element_blank())+
+          ggtitle("Compare cmeans to full model directed")+
+  facet_wrap(~dist)
+
+gbg %>% filter(dir == "undirected") %>% ggplot()+
+  geom_point(aes(x = OI, y = oi_cov, color = OL),alpha =0.8)+ylab("cmeans Vs GT")+xlab("Full model Vs GT")+
+  theme(legend.position = "bottom", panel.background = element_blank())+
+          ggtitle("Compare cmeans to full model undirected")+
+  facet_wrap(~dist)
+
+
+## feature struct.Compare nocov to Full model
+gbg %>% filter(dir == "directed") %>% ggplot()+
+  geom_boxplot(aes(x = penalty, y = oi_b1, color = OL),alpha =0.8)+ylab("nocov vs Full model")+
+  theme(legend.position = "bottom", panel.background = element_blank())+
+        ggtitle("Compare nocovariate to Full model directed")+
+  facet_wrap(~dist)
+
+gbg %>% filter(dir == "undirected") %>% ggplot()+
+  geom_boxplot(aes(x = penalty, y = oi_b1, color = OL),alpha =0.8)+ylab("nocov vs Full model")+
+  theme(legend.position = "bottom", panel.background = element_blank())+
+      ggtitle("Compare nocovariate to Full model undirected")+
+  facet_wrap(~dist)
+
+## feature struct.Compare cov to Full model
+gbg %>% filter(dir == "directed") %>% ggplot() +
+  geom_boxplot(aes(x = penalty, y = oi_b2, color = OL),alpha =0.8)+ylab("cmeans vs Full model") +
+  theme(legend.position = "bottom", panel.background = element_blank()) +
+  ggtitle("Compare cmeans to Full model, directed") +
+  facet_wrap(~dist)
+
+gbg %>% filter(dir == "undirected") %>% ggplot() +
+  geom_boxplot(aes(x = penalty, y = oi_b2, color = OL),alpha =0.8)+ylab("cmeans vs Full model") +
+  theme(legend.position = "bottom", panel.background = element_blank()) +
+    ggtitle("Compare cmeans to Full model undirected") +
+  facet_wrap(~dist)
+```
+
+
+## OI comparison
+
+```{r, fig.width=12, fig.height=6, warning=FALSE}
+library(legendry)
+
+#for(a in unique(df_reg$alpha)){
+for(miss in unique(df_reg$MissPct)){
+  for(ol in unique(df_reg$OL)){
+    for(pen in unique(df_reg$penalty)){
+
+             df <- df_reg %>% filter( OL == ol, penalty == pen, MissPct == miss)
+      if(nrow(df) > 0){
+        p <- df %>%
+          ggplot() +
+          geom_boxplot(aes(x = interaction(covInit,dist,sep= "/"), y = OI, color = factor(as.character(lambda)))) +
+          coord_cartesian(ylim = c(0, 1)) + 
+          ggtitle(paste0(ol, " ", pen, " misPct ", miss)) +
+          theme(legend.position = "bottom", panel.background = element_blank())+
+          facet_wrap(~dir)
+        
+        print(p)
+      } 
+    }
+  }
+}
+#}
+```
+
+## Plottin OI difference
+
+## Comparing difference in OI
+
+```{r, fig.width=12, fig.height=6, warning=FALSE}
+
+for(ol in unique(df_reg$OL)){
+  for(pen in unique(df_reg$penalty)){
+    #unique(df_reg$OL)
+    #for(a in unique(df_reg$alpha)){
+    p <- list()
+    i <- 1
+    for(d in unique(df_reg$dir)){
+      for(w in unique(df_reg$MissPct)){
+        df <- df_reg %>% filter(MissPct == w, dir == d, OL == ol, penalty == pen)
+        if(nrow(df) > 0){
+          p[[i]] <- df %>%
+            ggplot() +
+            geom_boxplot(aes(y = as.numeric(OIDiff), x =dist,color = lambda)) + 
+            ylab("Diff in OI")+ xlab("dist")+ ylim(-1,1)+
+            geom_hline(yintercept = 0, linetype = "dashed", color = "grey23", linewidth = 0.5)+
+            #scale_x_discrete(guide = guide_axis(angle = 45)) +
+            facet_wrap(~alphaLL) + 
+            ggtitle(paste0(w , ", ",d, ", ", ol, " ,", pen)) +
+            theme(legend.position = "none", panel.background = element_blank())
+          i<- i+1
+        }
+      }
+    }
+    if(length(p) > 0){
+      pt <- ggpubr::ggarrange(plotlist = p)
+      print(pt)  
+    }
+    
+  }
+}
+
+```
+
+
+
+## OI by paramteter comparison
+
+```{r, fig.width=12, fig.height=6}
+
+for(ol in unique(df_reg$OL)){
+  for(miss in unique(df_reg$MissPct)){
+    for(dis in unique(df_reg$dist)){
+      df <- df_reg %>% filter( OL == ol, MissPct == miss, dist == dis)
+      if(nrow(df) > 0){
+        print(df %>%
+                ggplot()+
+                geom_boxplot(aes(y = OI, x = interaction(factor(as.numeric(as.character(lambda))),penalty,sep = "/"),color = covInit)) +
+                #geom_hline(aes(yintercept = max(median(OI))))+
+                scale_x_discrete(guide = guide_axis(angle = 45))+
+                ylim(0,1)+
+                facet_wrap(~dir)+
+                ggtitle(paste0( "Miss pct: ",miss, " NW, ", ol, " dist ",dis )) +
+                theme(legend.position = "bottom", 
+                      panel.background = element_blank(),
+                      strip.text = element_text(size = 7),
+                      strip.background = element_rect(fill = "white")))
+      }
+    }
+  }
+}
+
+```
+
+
+## plotting MSE
+
+```{r, fig.width=14, fig.height=6}
+df_reg$avgMSE <- rowMeans(df_reg[,2:4], na.rm = TRUE)
+
+for(ol in unique(df_reg$OL)){
+  for(d in unique(df_reg$dir)){
+    print(df_reg %>%  
+            filter( OL == ol, dir == d) %>% 
+            ggplot() +
+            geom_boxplot(aes(y = avgMSE, 
+                             x = interaction(dist, covInit, sep = "."), 
+                             color = penalty)) +
+            scale_x_discrete(guide = guide_axis(angle = 90)) +
+            ylim(min(df_reg$avgMSE),100)+
+            ggtitle(paste0( ol, ", ", d)) +
+            theme(legend.position = "bottom", 
+                  panel.background = element_blank(),
+                  strip.text = element_text(size = 10),
+                  strip.background = element_rect(fill = "white"))+
+            facet_grid(vars(lambda), vars(as.numeric(MissPct))))
+  }
+}
+
+```
+
+## Within the bigN variance 
+
+```{r, fig.height=6,warning=FALSE}
+
+df_var <- df_reg %>% 
+  group_by(lambda, dir, dist, covInit, penalty, OL, MissPct, bigN) %>%
+  summarise(OIVar = var(OI), minmaxRange = max(OI) - min(OI))
+```
+
+
+```{r, fig.height=6,warning=FALSE}
+for(ol in unique(df_reg$OL)){
+  for(d in unique(df_reg$dir)){
+    for(dis in unique(df_reg$dist)){
+      print( df_var %>% filter(OL == ol, dir == d, dist == dis) %>%
+               ggplot() +
+               geom_point(aes(y = OIVar, x = factor(as.numeric(MissPct)),
+                              color = interaction(covInit,penalty, sep = ".")))+
+               scale_x_discrete(guide = guide_axis(angle = 90)) +
+               ylim(min(df_var$OIVar), max(df_var$OIVar))+
+               ggtitle(paste(ol, ", ",d, ", ", dis))+
+               theme(legend.position = "bottom", 
+                     panel.background = element_blank(),
+                     strip.text = element_text(size = 10),
+                     strip.background = element_rect(fill = "white"))+
+               facet_grid(vars(lambda), vars(as.numeric(bigN))))
+      
+    }
+  }
+}
+
+```
+
+
+```{r, fig.height=6,warning=FALSE}
+for(ol in unique(df_reg$OL)){
+  for(d in unique(df_reg$dir)){
+    for(dis in unique(df_reg$dist)){
+      print( df_var %>% filter(OL == ol, dir == d, dist == dis) %>%
+               ggplot() +
+               geom_point(aes(y = minmaxRange, x = factor(as.numeric(MissPct)),
+                              color = interaction(covInit,penalty, sep = ".")))+
+               scale_x_discrete(guide = guide_axis(angle = 90)) +
+               #ylim(min(df_var$OIVar), max(df_var$OIVar))+
+               ggtitle(paste(ol, ", ",d, ", ", dis))+
+               theme(legend.position = "bottom", 
+                     panel.background = element_blank(),
+                     strip.text = element_text(size = 10),
+                     strip.background = element_rect(fill = "white"))+
+               facet_grid(vars(lambda), vars(as.numeric(bigN))))
+      
+    }
+  }
+}
+
+```
+
+```{r, fig.width=10, fig.height=6}
+
+g <- df_reg %>% 
+  group_by(alpha, lambda, dist,OL, dir, penalty, MissPct,covInit) %>% 
+  dplyr::summarise(meanOI = mean(OI),
+                   maxOI = max(OI),
+                   minOI = min(OI),
+                   sdOI = sd(OI),
+                   meanmseavg = mean(avgMSE, na.rm=TRUE),
+                   maxmseavg = max(avgMSE, na.rm=TRUE),
+                   minmseavg = min(avgMSE, na.rm=TRUE),
+                   sdmseavg = sd(avgMSE, na.rm=TRUE))
+for(d in unique(g$dir)){
+  for(ol in unique(g$OL)){
+    #for(pen in unique(g$penalty)){
+    print(g %>% filter(dir == d, OL == ol) %>% 
+            ggplot(aes(x = interaction(covInit,lambda,sep = "/"), y = as.factor(as.numeric(MissPct)), fill = meanOI))+
+            geom_tile() +
+            scale_x_discrete(guide = guide_axis(angle = 90))+
+            scale_fill_gradientn(colors = hcl.colors(20, "RdYlGn"), limits = c(0,1)) +#scale_fill_viridis_c(limits = c(0, 1) ) +  # Color scale
+            labs(title = paste("meanOI ", d, " ",ol),
+                 x = "dist X lambda", 
+                 y = "alpha") +
+            theme(legend.position = "bottom", 
+                  panel.background = element_blank())+
+            facet_grid(vars(penalty), vars(dist)))
+    #}
+  }
+}
+
+
+
+
+```
+
+```{r, fig.width=15, fig.height=9}
+p <- list()
+cd <- 100
+for(d in unique(g$dir)){
+  for(ol in unique(g$OL)){
+    for(pen in unique(g$penalty)){
+      if(nrow(g %>% filter(dir == d, OL == ol, penalty == pen) ) > 0){
+        p[[1]] <- g %>% filter(dir == d, OL == ol, penalty == pen) %>% 
+          ggplot(aes(x = lambda, y = as.factor(as.numeric(MissPct)), fill = maxOI))+
+          geom_tile(color = "black") +scale_x_discrete(guide = guide_axis(angle = 45))+
+          scale_fill_gradientn(colors = hcl.colors(cd, "RdYlGn"), limits = c(0,1)) +
+          labs(title = paste("maxOI ", d, " ",ol," ", pen),x = "dist X lambda", y = "alpha") +
+          theme(legend.position = "bottom",panel.background = element_blank()) +
+          facet_grid(vars(covInit), vars(dist))
+        #facet_wrap(~dist)
+        
+        p[[2]] <- g %>% filter(dir == d, OL == ol, penalty == pen) %>% 
+          ggplot(aes(x = lambda, y = as.factor(as.numeric(MissPct)), fill = minOI))+
+          geom_tile(color = "black") +scale_x_discrete(guide = guide_axis(angle = 45))+
+          scale_fill_gradientn(colors = hcl.colors(cd, "RdYlGn"), limits = c(0,1)) +
+          labs(title = paste("minOI ", d, " ",ol," ", pen), x = "dist X lambda",y = "alpha") +
+          theme(legend.position = "bottom",  panel.background = element_blank())+          
+          facet_grid(vars(covInit), vars(dist))
+        #facet_wrap(~dist)
+        
+        p[[3]] <- g %>% filter(dir == d, OL == ol, penalty == pen) %>% 
+          ggplot(aes(x = lambda, y = as.factor(as.numeric(MissPct)), fill = meanOI))+
+          geom_tile(color = "black") +scale_x_discrete(guide = guide_axis(angle = 45))+
+          scale_fill_gradientn(colors = hcl.colors(cd, "RdYlGn"), limits = c(0,1)) +
+          labs(title = paste("meanOI ", d, " ",ol," ", pen), x = "dist X lambda", y = "alpha") +
+          theme(legend.position = "bottom",  panel.background = element_blank())+
+          facet_grid(vars(covInit), vars(dist))
+        #facet_wrap(~dist)
+        
+        p[[4]] <- g %>% filter(dir == d, OL == ol, penalty == pen) %>% 
+          ggplot(aes(x = lambda, y = as.factor(as.numeric(MissPct)), fill = sdOI))+
+          geom_tile(color = "black") +scale_x_discrete(guide = guide_axis(angle = 45))+
+          scale_fill_gradientn(colors = hcl.colors(cd, "RdYlGn"), limits = c(min(g$sdOI),max(g$sdOI))) +
+          labs(title = paste("sdOI ", d, " ",ol," ", pen), x = "dist X lambda", y = "alpha") +
+          theme(legend.position = "bottom", panel.background = element_blank())+
+          facet_grid(vars(covInit), vars(dist))
+        #facet_wrap(~dist)
+        pt <- ggpubr::ggarrange(plotlist = p)
+        print(pt)
+      }
+      
+    }
+  }
+}
+
+```
+
+## Plot MSE vs OI
+
+```{r, fig.height=9, fig.width=20, warning=FALSE}
+for(mp in unique(df_reg$MissPct)){
+  print(df_reg %>% filter(MissPct == mp) %>%
+          ggplot() +
+          geom_point(aes(x = avgMSE, y = OI,color = factor(bigN))) +
+          xlim(0, 100)+ ylim(0,1)+theme(legend.position = "bottom", panel.background = element_blank())+
+          facet_grid(vars(dist), vars(OL,Nsim)))
+}
+
+
+
+```
+## Find the best OI for the given paramter combinations parameter combination 
+
+The number of Good OI is maximum
+
+```{r}
+
+## group_by the different factors and find the ones with the nightest number of goodOI
+df_goodOI <- df_reg %>%
+  group_by(OL, dist, lambda, MissPct, goodOI) %>%
+  summarise(count = n(),prop = n()/220) %>%
+  filter(goodOI == TRUE)
+
+for(ol in unique(df_reg$OL)){
+  #for(mp  in unique(df_reg$MissPct)){
+  for(d in unique(df_reg$dist)){
+    print(df_goodOI %>%
+            filter(OL == ol,  dist == d) %>%
+            ggplot(aes(x = factor(as.numeric(MissPct)), y = lambda, fill = count))+
+            geom_tile() + scale_fill_gradient(limits = c( min(df_goodOI$count), max(df_goodOI$count))) + ggtitle(paste(ol, ",",d)))
+    # }
+  }
+}
+
+MaxgoodOI <- df_goodOI %>%
+  group_by(OL, dist,MissPct) %>%
+  slice_max(count, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+MingoodOI <- df_goodOI %>%
+  group_by(OL, dist,MissPct) %>%
+  slice_min(count, n = 1, with_ties = FALSE) %>%
+  ungroup()
+```
+
+
