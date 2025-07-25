@@ -354,15 +354,19 @@ ClustCoef <- function(G, dir){
   A <- as_adjacency_matrix(G, sparse = FALSE)
   if(dir == "directed"){
     cc <- ClustF(A, type = "directed")
+    return(cc$GlobaltotalCC)
   }else if(dir == "undirected"){
     cc <- ClustF(A, type = "undirected")
+    return(cc$GlobalCC)
   }
-  return(cc$GlobaltotalCC)
+  
 }
 
 ## Power law fit check
 PLfitcheck <- function(G){
-  fit <- displ$new(igraph::degree(G))
+  degD <- igraph::degree(G)
+  degD <- degD[degD != 0]
+  fit <- displ$new(degD)
   est <- estimate_xmin(fit)
   fit$setXmin(est)
   bs <- bootstrap_p(fit, threads = 4)  # KS test
@@ -372,8 +376,8 @@ PLfitcheck <- function(G){
 # 1: Perfect homophily (nodes only connect within their group).
 # 0: No homophily (random mixing).
 # < 0: Heterophily (nodes prefer different groups).
-assortativity <- function(G){
-  return(igraph::assortativity_degree(G, directed = TRUE))
+assortativityF <- function(G,dir){
+  return(igraph::assortativity_degree(G, directed = dir))
 }
 
 ## Feature structure decomposition
