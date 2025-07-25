@@ -16,7 +16,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
     test <- TRUE
     Sim <- data.frame(S[simvec,])
     ## Number of simulations
-    Nsim <- 2#Sim$Nsim
+    Nsim <- 1#Sim$Nsim
     
     ##Directed graph yes? No?
     dir <- Sim$DirType
@@ -127,7 +127,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
     lvl <- 1
     ncVal <- nc
     
-    bigN <- 2#Sim$bigN
+    bigN <- Sim$bigN
     Gtot<- list() 
     GTlogLikcovtot<- list() 
     GTlogLiknoCovtot <- list()
@@ -191,7 +191,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
       
       for (j in 1:Nsim) {
         seed <- m+j
-        for(dir in c("directed")){
+        for(dir in c("directed","undirected")){
           
           if(dir == "undirected"){
             
@@ -304,20 +304,20 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
             comnty <- data.frame(which(as.matrix(FullM) == 1, arr.ind = TRUE)) %>%
               group_by(col) %>%
               group_map(~.x)
-            
+
             # Find clustering coef global for directed and undirected network
             # High clustering coef means more clique based highly clustered Network
             # Low means more sparse network
             CC <- ClustCoef(G, dir)
-            
+
             ## Power law fit check
             PLFit <- PLfitcheck(G)
-            
+
             # 1: Perfect homophily (nodes only connect within their group).
             # 0: No homophily (random mixing).
             # < 0: Heterophily (nodes prefer different groups).
             NetA <- assortativity(G)
-            
+
             if(nocov == TRUE){
               ## find memoverlap for no covariates method
               Fm <- opf_noCov[[lvl]]$Ffin
@@ -328,12 +328,12 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
             }else{
               fsd <-  c(0, 0, 0)
               }
-            
+
             if(reg == TRUE){
              randOI <- null_models(G, nc, k = c(k_in, k_out), o = c(o_in, o_out), N, alpha,
                                           lambda, thresh, nitermax, orig, randomize = FALSE,
                                           CovNamesLinin, CovNamesLinout, CovNamesLPin, CovNamesLPout, dir,
-                                          alphaLL, test, missing, covOrig = orig_Cov[[m]],
+                                          alphaLL, test = FALSE, missing, covOrig = orig_Cov[[m]],
                                           epsilon = 0, impType = "Reg", alphaLin, penalty, seed, covInit, specOP )
 
             }else{
@@ -369,20 +369,19 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
         
       }
     }
-    colnames(op_sim) <-c("Cond","PD","Q_HP","Q_OL","CQ","OnCut","OP","CC",
-                         "PLFit","NetA","oi_b1","oi_b2", "oi_cov","randOI","dir","bigN","nsim")
+    colnames(op_sim) <-c("Cond","PD","Q_HP","Q_OL","CQ","OnCut","OP","CC","PLFit","NetA","oi_b1","oi_b2", "oi_cov","randOI","dir","bigN","nsim")
     params <- as.data.frame(params)
     print(params[1,])
     
     return(list(opf_Regcovtot, opf_noCovtot, Gtot, GTlogLikcovtot, GTlogLiknoCovtot, FS, 
-                orig_Cov, params, covtmp, op_sim))
+                orig_Cov, params, op_sim))
     #return(0)
   }
 }
 
 simvec = 1
 sim = TRUE
-InitParamFile = "/Code/InitParam_DegInit_Miss_AllCovInit.rds"
+InitParamFile = "/Code/InitParam_NetworkMetrics.rds"
 getMetrics = TRUE
 reg = TRUE
 nocov = TRUE
@@ -393,4 +392,4 @@ df<- SaveCoDASim(simvec,
                  reg, 
                  nocov)
 
-saveRDS(df, "InitParamMiss_DegInit_Missing_Wmetrics.rds")
+saveRDS(df, "InitParamMiss_NWMetrics.rds")
