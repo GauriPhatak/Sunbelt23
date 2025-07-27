@@ -30,6 +30,13 @@ library(legendry)
 library(RColorBrewer)
 library(ggiraph)
 library(plotly)
+library(network)
+library(intergraph)
+library(ergm)
+library(gridExtra)
+library(ggpubr)
+library(kableExtra)
+library(ggside)
 
 ```
 
@@ -38,14 +45,13 @@ library(plotly)
 
 ```{r}
 ##Loading city limits data 
-#hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
+hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
 #rgdal::ogrListLayers(hwpath)
-#ct <- st_read(hwpath, layer = "City_Limits__2016_")
+ct <- st_read(hwpath, layer = "City_Limits__2016_")
 
 ## reading the 2024 city limits using terra library
-citylim_path <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/City_Limits_2022/City_Limits.shp"
-ct <- sf::st_read(citylim_path)
-
+#citylim_path <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/City_Limits_2022/City_Limits.shp"
+#ct <- sf::st_read(citylim_path)
 
 ## Loading covid levels data
 WD <- paste0(fs::path_home(), "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/7.11.25/Combined_all_data_2025-07-11.xlsx")
@@ -53,7 +59,7 @@ dat <- readxl::read_excel(WD,sheet = "COVID", guess_max = 10000)
 
 
 ## cities present in ct and wastewater data
-ct_sbst <- ct$CITYNAME[ct$CITYNAME %in% unique(dat$Location)]
+ct_sbst <- ct$city_name[ct$city_name %in% unique(dat$Location)]
 
 ## Which locations are not there in the ct database
 no_ct_dat <-  unique(dat$Location)[!(unique(dat$Location) %in% ct_sbst)]
@@ -87,9 +93,9 @@ df_OHA <- df_OHA[!(df_OHA$County == "Gilliam County"),]
 
 df_OHA <- df_OHA %>%
   mutate(Date = lubridate::mdy(Date)) %>%
-   dplyr::mutate(year = lubridate::year(Date), 
-                 month = lubridate::month(Date), 
-                 day = lubridate::day(Date))
+  dplyr::mutate(year = lubridate::year(Date), 
+                month = lubridate::month(Date), 
+                day = lubridate::day(Date))
 
 df_OHA <- df_OHA %>%
   dplyr::mutate(Month_Yr = format(as.Date(Date),"%Y-%m")) %>% 
@@ -97,9 +103,9 @@ df_OHA <- df_OHA %>%
          weekno = (weekno %/% 7) + 1) %>%
   group_by(weekno) %>% 
   arrange(desc(CopiesPerul)) %>%
-    mutate(
-        maxByVal = if_else(row_number() == 1, "1", "0")
-    ) %>%
+  mutate(
+    maxByVal = if_else(row_number() == 1, "1", "0")
+  ) %>%
   arrange(weekno)%>%
   ungroup()
 
@@ -107,7 +113,7 @@ df_OHA <- df_OHA %>%
   select(c(CopiesPerul,Date,Location,MasterID,logCopies,County,weekno,Month_Yr,
            maxByVal,year,month,day )) %>%
   distinct()
-  
+
 
 aggr <- df_OHA %>%
   group_by(weekno, Location) %>%
@@ -137,12 +143,12 @@ p <- ggplot()+
              color = "grey37",alpha =0.2)+
   theme_minimal() +
   theme(axis.line = element_line(colour = "black"),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    panel.border = element_blank(),
-    panel.background = element_blank(),
-    axis.text.x = element_text(angle = 90, hjust = 1),
-    legend.position = "none") + 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.text.x = element_text(angle = 90, hjust = 1),
+        legend.position = "none") + 
   labs(x = "Week number stating from September 2nd 2020", y = "SARS-COV2 concentration in Copies per uL")+
   geom_point(data = subset(aggr, maxByVal == "1" & CopiesPerul < 300), 
              aes(x = weekno, y = CopiesPerul,color = County, group = Location))+
@@ -159,7 +165,7 @@ length(unique(aggr$Location))
 unique(aggr$Location)
 unique_count <- as.data.frame(table(aggr$weekno))
 unique_loc <- as.data.frame(table(aggr$Location ))
-
+ggplot(unique_count)+ geom_line(aes(x = as.numeric(Var1), y = Freq ))
 ```
 
 
@@ -167,7 +173,7 @@ unique_loc <- as.data.frame(table(aggr$Location ))
 
 ```{r}
 ## looks like week number 102 has the maximum number of locations? 36 locations out of 45. 
-aggr_102 <- aggr %>% filter(weekno == 102)
+aggr_102 <- aggr %>% filter(weekno == 102) %>% ungroup()
 
 ```
 
@@ -188,15 +194,17 @@ city_cntr <- ct %>%
   st_transform(4326) %>% 
   st_coordinates()
 
-attr <- as.data.frame(cbind(as.data.frame(vertex_attr(directGrph)), city_cntr))
-
-attr <- attr[attr$name %in% aggr_102$Location,]
+O_attr <- as.data.frame(cbind(as.data.frame(vertex_attr(directGrph)), city_cntr))
 
 plot.igraph(directGrph, vertex.label = NA, vertex.size = 1,
             vertex.color = V(directGrph)$included, 
             vertex.frame.color = V(directGrph)$included, 
             edge.color = "darkgrey", edge.width = 1, 
             layout = city_cntr)
+
+
+attr <- O_attr[O_attr$name %in% aggr_102$Location,]
+attr <- left_join(attr, aggr_102 %>% select(Location, CopiesPerul), by=join_by(name == Location))
 
 G_subGrph <- induced_subgraph(directGrph, vids = attr$name)
 plot.igraph(G_subGrph, vertex.label = NA, vertex.size = 1,
@@ -210,7 +218,7 @@ plot.igraph(G_subGrph, vertex.label = NA, vertex.size = 1,
 ## Running method on the above sub graph induced network.
 
 ```{r}
-G_subGrph <- set_vertex_attr(G_subGrph,name = "CopiesPerul", value = sub_attrs$CopiesPerul)
+#
 G_subGrph <- set_vertex_attr(G_subGrph, name = "X", value = as.matrix(attr[,3]))
 G_subGrph <- set_vertex_attr(G_subGrph, name = "Y", value = as.matrix(attr[,4]))
 ## for now use nc =3
@@ -218,6 +226,7 @@ sub_attrs <-  as.data.frame(vertex_attr(G_subGrph))
 sub_attrs <- left_join(sub_attrs, aggr_102 %>% 
                          select(CopiesPerul, Location), 
                        by = join_by(name == Location))
+G_subGrph <- set_vertex_attr(G_subGrph,name = "CopiesPerul", value = attr$CopiesPerul)
 G <- G_subGrph
 nc <- 3 ## Can change
 N <- nrow(sub_attrs)
@@ -226,41 +235,43 @@ thresh <- 0.00005
 nitermax <- 10000
 dir <- "undirected"
 alphaLL <- 0.001
+alpha  <-  0.0001
 test = TRUE
 missing <- NULL
 covOrig <- sub_attrs$CopiesPerul
 alphaLin <- 0.001 
 penalty <- "LASSO" 
 seed <- 5
-covInit <- sub_attrs$CopiesPerul
+covInit <- "Nmean"
 printFlg <- FALSE
 specOP <- CovAssistedSpecClust(G, as.data.frame(sub_attrs$CopiesPerul), nc, alpha = 0.5)
 C <- letters[specOP]
 op <- model.matrix( ~ C - 1)
 colnames(op) <- letters[1:nc]
-orig <- op
+orig <- specOP
 for (i in 1:nc) {
-    G <- G %>%
-      set_vertex_attr(name = letters[i], 
-                      value = c(op[, i]))
-  }
+  G <- G %>%
+    set_vertex_attr(name = letters[i], 
+                    value = c(op[, i]))
+}
+as.data.frame(vertex_attr(G))
 
-op <- CoDA(G, nc, k = c(0, 0), o = c(0, 1), N, alpha,lambda, thresh, nitermax, 
-           orig, randomize = FALSE,c(), c("CopiesPerul"), c(), c(), dir,
-           alphaLL, test, missing, covOrig,epsilon = 0, impType = "Reg", 
-           alphaLin, penalty, seed, covInit, specOP )
+op <- CoDA(G, nc, k = c(0, 0), o = c(0, 1), N, alpha,lambda, thresh, nitermax,orig, randomize = FALSE, 
+           CovNamesLinin = c(),CovNamesLinout= c("CopiesPerul"),CovNamesLPin = c(),CovNamesLPout= c(), 
+           dir,alphaLL, test, missing, covOrig,epsilon = 0, impType = "Reg",alphaLin, penalty, seed, 
+           covInit, specOP )
 
 delta <- getDelta(N)
 Fin_mem <- op$Ffin > delta
 colnames(Fin_mem) <- letters[1:nc]
-attr <- cbind(as.data.frame(vertex_attr(G)), Fin_mem)
+attr <- cbind(as.data.frame(vertex_attr(G))[,1:5], Fin_mem)
 eList <- as_edgelist(G)
 eList <- as.data.frame(cbind(eList, pair = c(1:nrow(eList)))) %>% 
   pivot_longer(!pair, values_to = "name",names_to = "gbg") %>%
   left_join(attr %>% select(name, X, Y) )
 
 ggplot()+ 
-    geom_line(data = eList, aes(x = X, y = Y, group = pair), color = "grey80")+
+  geom_line(data = eList, aes(x = X, y = Y, group = pair), color = "grey80")+
   geom_point(data = attr, aes(x = X, y = Y), color = "grey30")+
   ggforce::geom_mark_hull(data = attr %>% filter(a == TRUE),
                           aes(x = X, y = Y,fill = a), 
@@ -282,7 +293,135 @@ ggplot()+
 ## Run method on the full network with missing data imputation.
 
 ```{r}
+G_FullGrph <- delete_vertices(directGrph, V(directGrph)[included == "grey37"])
+fg_attr <- O_attr[O_attr$included == "orangered3",]
+fg_attr <- fg_attr[fg_attr$name %in% unique(aggr$Location), ]
+plot.igraph(G_FullGrph, vertex.label = NA, vertex.size = 1,
+            vertex.color = V(G_FullGrph)$included, 
+            vertex.frame.color = V(G_FullGrph)$included, 
+            edge.color = "darkgrey", edge.width = 1, 
+            layout = city_cntr[V(directGrph)[included != "grey37"], ])
+G_FullGrph <- induced_subgraph(G_FullGrph,vids = fg_attr$name)
+plot.igraph(G_FullGrph, vertex.label = NA, vertex.size = 1,
+            vertex.color = V(G_FullGrph)$included, 
+            vertex.frame.color = V(G_FullGrph)$included, 
+            edge.color = "darkgrey", edge.width = 1, 
+            layout = city_cntr[O_attr$name %in% fg_attr$name, ])
+```
 
+```{r}
+as.data.frame(vertex_attr(G_FullGrph))
+
+## joining the data and creating na's for where there is no data
+fg_attr <- left_join(fg_attr,aggr_102 %>% 
+                       select(CopiesPerul, Location), 
+                     by = join_by(name == Location))
+
+G_FullGrph <- set_vertex_attr(G_FullGrph,name = "CopiesPerul", value = fg_attr$CopiesPerul )
+G_FullGrph <- set_vertex_attr(G_FullGrph, name = "X", value = as.matrix(fg_attr$X ))
+G_FullGrph <- set_vertex_attr(G_FullGrph, name = "Y", value = as.matrix(fg_attr$Y ))
+
+```
+
+```{r, warning=FALSE}
+G <- G_FullGrph
+nc <- 3 ## Can change
+N <- nrow(fg_attr)
+lambda <- 0.0001
+thresh <- 0.00005
+nitermax <- 10000
+dir <- "undirected"
+alphaLL <- 0.001
+alpha <- 0.0001
+test = TRUE
+missing <- NULL
+alphaLin <- 0.001 
+penalty <- "LASSO" 
+seed <- 5
+covInit <- "Nmean"
+printFlg <- FALSE
+cov <- fg_attr$CopiesPerul
+cov[is.na(cov)] <- mean(cov, na.rm=T)
+covOrig <- as.data.frame(cov)
+specOP <- CovAssistedSpecClust(G, as.data.frame(cov), nc, alpha = 0.5)
+C <- letters[specOP]
+op <- model.matrix( ~ C - 1)
+colnames(op) <- letters[1:nc]
+orig <- specOP
+for (i in 1:nc) {
+  G <- G %>%
+    set_vertex_attr(name = letters[i], 
+                    value = c(op[, i]))
+}
+as.data.frame(vertex_attr(G))
+
+op <- CoDA(G, nc, k = c(0, 0), o = c(0, 1), N, alpha,lambda, thresh, nitermax,orig, randomize = FALSE,
+           CovNamesLinin = c(),CovNamesLinout= c("CopiesPerul"),CovNamesLPin = c(),CovNamesLPout= c(), 
+           dir,alphaLL, test, missing = NULL, covOrig,epsilon = 0, impType = "Reg",alphaLin, penalty, 
+           seed, covInit, specOP )
+
+delta <- getDelta(N)
+Fin_mem <- op$Ffin > delta
+colnames(Fin_mem) <- letters[1:nc]
+attr <- cbind(as.data.frame(vertex_attr(G))[,1:5], Fin_mem)
+eList <- as_edgelist(G)
+eList <- as.data.frame(cbind(eList, pair = c(1:nrow(eList)))) %>% 
+  pivot_longer(!pair, values_to = "name",names_to = "gbg") %>%
+  left_join(attr %>% select(name, X, Y) )
+
+ggplot()+ 
+  geom_line(data = eList, aes(x = X, y = Y, group = pair), color = "grey80")+
+  geom_point(data = attr, aes(x = X, y = Y), color = "grey30")+
+  ggforce::geom_mark_hull(data = attr %>% filter(a == TRUE),
+                          aes(x = X, y = Y,fill = a), 
+                          concavity = 3, expand = unit(2, "mm"),
+                          alpha = 0.1, fill = "#1f77b4", color = "#1f77b4")+
+  ggforce::geom_mark_hull(data = attr %>% filter(b == TRUE),
+                          aes(x = X, y = Y,fill = b), 
+                          concavity = 3, expand = unit(2, "mm"),
+                          alpha = 0.1, fill = "#ff7f0e", color = "#ff7f0e")+
+  ggforce::geom_mark_hull(data = attr %>% filter(c == TRUE),
+                          aes(x = X, y = Y,fill = c), 
+                          concavity = 3, expand = unit(2, "mm"),
+                          alpha = 0.1, fill = "#2ca02c", color = "#2ca02c")+
+  xlab("Latitude") + ylab("Longitude")+
+  theme(legend.position = "bottom", panel.background = element_blank()) 
+
+
+```
+
+## Nocovariate CD
+
+```{r,warning=FALSE}
+op_noCov <- CoDA(G, nc, k = c(0, 0), o = c(0, 0), N, alpha, lambda,thresh, nitermax, 
+                 orig, randomize = TRUE, CovNamesLinin = c(),CovNamesLinout = c(), 
+                 CovNamesLPin = c(), CovNamesLPout = c(),dir, alphaLL, test, missing = missing,
+                 covOrig ,epsilon = 0, impType = "", alphaLin, penalty, seed, covInit, specOP)
+Fin_mem <- op_noCov$Ffin > delta
+colnames(Fin_mem) <- letters[1:nc]
+attr <- cbind(as.data.frame(vertex_attr(G))[,1:5], Fin_mem)
+eList <- as_edgelist(G)
+eList <- as.data.frame(cbind(eList, pair = c(1:nrow(eList)))) %>% 
+  pivot_longer(!pair, values_to = "name",names_to = "gbg") %>%
+  left_join(attr %>% select(name, X, Y) )
+
+ggplot()+ 
+  geom_line(data = eList, aes(x = X, y = Y, group = pair), color = "grey80")+
+  geom_point(data = attr, aes(x = X, y = Y), color = "grey30")+
+  ggforce::geom_mark_hull(data = attr %>% filter(a == TRUE),
+                          aes(x = X, y = Y,fill = a), 
+                          concavity = 3, expand = unit(2, "mm"),
+                          alpha = 0.1, fill = "#1f77b4", color = "#1f77b4")+
+  ggforce::geom_mark_hull(data = attr %>% filter(b == TRUE),
+                          aes(x = X, y = Y,fill = b), 
+                          concavity = 3, expand = unit(2, "mm"),
+                          alpha = 0.1, fill = "#ff7f0e", color = "#ff7f0e")+
+  ggforce::geom_mark_hull(data = attr %>% filter(c == TRUE),
+                          aes(x = X, y = Y,fill = c), 
+                          concavity = 3, expand = unit(2, "mm"),
+                          alpha = 0.1, fill = "#2ca02c", color = "#2ca02c")+
+  xlab("Latitude") + ylab("Longitude")+ggtitle("Community detection without covariates.")+
+  theme(legend.position = "bottom", panel.background = element_blank()) 
 
 
 ```
@@ -290,6 +429,120 @@ ggplot()+
 ## Compare the output of community detection of missing data and full network.
 
 ```{r}
-
 ```
+
+
+## Applying the method with covariate to different weeks with missing data
+
+```{r, warning = FALSE}
+
+nc <- 3 ## Can change
+thresh  <- 0.00005
+nitermax <- 10000
+dir <- "undirected"
+alphaLL <- 0.001
+#alpha <- 0.0001
+test = FALSE
+missing <- NULL
+alphaLin <- 0.001
+#penalty <- "LASSO"
+seed <- 5
+#covInit <- "Nmean"
+printFlg <- FALSE
+
+## Save output ##MSE, MSEmd, lambda, week, number of available, penalty, initializing of covariate, alpha 
+finOP <- matrix(0, nrow =0, ncol = 7)
+pdf("COVID_data_plots.pdf", width = 10, height = 6)  # Adjust dimensions as needed
+
+for(covInit in c("NNmedian","Nmedian","Nmode","Nmean")){
+  for(alpha in c(0.00001, 0.0001, 0.001, 0.01)){
+    for(penalty in c("Ridge","LASSO","ElasticNet")){
+      for(week in as.numeric(unique_count$Var1[unique_count$Freq > 24])){
+        
+        p <- list()
+        j <- 1
+        
+        for(lambda in c(0.00001, 0.0001, 0.001, 0.01)){
+          print(paste0("The week number ", week))
+          sub_aggr <- aggr %>% filter(weekno == week) %>% ungroup()
+          
+          ## joining the data and creating na's for where there is no data
+          fg_attr <- O_attr[O_attr$included == "orangered3",]
+          fg_attr <- fg_attr[fg_attr$name %in% unique(aggr$Location), ]
+          fg_attr <- left_join(fg_attr,sub_aggr %>% 
+                                 select(CopiesPerul, Location), 
+                               by = join_by(name == Location)) %>% distinct()
+          
+          G_FullGrph <- set_vertex_attr(G_FullGrph,name = "CopiesPerul", value = fg_attr$CopiesPerul )
+          G_FullGrph <- set_vertex_attr(G_FullGrph, name = "X", value = as.matrix(fg_attr$X ))
+          G_FullGrph <- set_vertex_attr(G_FullGrph, name = "Y", value = as.matrix(fg_attr$Y ))
+          
+          G <- G_FullGrph
+          N <- nrow(fg_attr)
+          cov <- fg_attr$CopiesPerul
+          cov[is.na(cov)] <- mean(cov, na.rm=T)
+          covOrig <- as.data.frame(cov)
+          specOP <- CovAssistedSpecClust(G, as.data.frame(cov), nc, alpha = 0.5)
+          C <- letters[specOP]
+          op <- model.matrix( ~ C - 1)
+          colnames(op) <- letters[1:nc]
+          orig <- specOP
+          for (i in 1:nc){
+            G <- G %>% 
+              set_vertex_attr(name = letters[i],value = c(op[, i])) 
+          }
+          
+          op <- CoDA(G, nc, k = c(0, 0), o = c(0, 1), N, alpha,lambda, thresh, nitermax,orig, randomize = FALSE,
+                     CovNamesLinin = c(),CovNamesLinout= c("CopiesPerul"),CovNamesLPin = c(),CovNamesLPout= c(), 
+                     dir,alphaLL, test, missing = NULL, covOrig,epsilon = 0, impType = "Reg",alphaLin, penalty, 
+                     seed, covInit, specOP )
+          
+          delta <- getDelta(N)
+          Fin_mem <- op$Ffin > delta
+          colnames(Fin_mem) <- letters[1:nc]
+          attr <- cbind(as.data.frame(vertex_attr(G))[,1:5], Fin_mem)
+          eList <- as_edgelist(G)
+          eList <- as.data.frame(cbind(eList, pair = c(1:nrow(eList)))) %>% 
+            pivot_longer(!pair, values_to = "name",names_to = "gbg") %>%
+            left_join(attr %>% select(name, X, Y))
+          
+          p[[j]] <- ggplot() +
+            geom_line(data = eList, aes(x = X, y = Y, group = pair), color = "grey80") +
+            geom_point(data = attr, aes(x = X, y = Y), color = "grey30") +
+            ggforce::geom_mark_hull(data = attr %>% filter(a == TRUE),aes(x = X, y = Y,fill = a), 
+                                    concavity = 3, expand = unit(2, "mm"),alpha = 0.1, fill = "#1f77b4", color = "#1f77b4") +
+            ggforce::geom_mark_hull(data = attr %>% filter(b == TRUE),aes(x = X, y = Y,fill = b), 
+                                    concavity = 3, expand = unit(2, "mm"),alpha = 0.1, fill = "#ff7f0e", color = "#ff7f0e") +
+            ggforce::geom_mark_hull(data = attr %>% filter(c == TRUE),aes(x = X, y = Y,fill = c), 
+                                    concavity = 3, expand = unit(2, "mm"),alpha = 0.1, fill = "#2ca02c", color = "#2ca02c") +
+            xlab("Latitude") + ylab("Longitude")+ ggtitle(paste0("lambda ", lambda)) +
+            theme(legend.position = "bottom", panel.background = element_blank())
+          j <- j + 1
+          
+          ## filling the final output
+          #MSE, MSEmd, lambda, week, number of available, penalty, initializing of covariate, alpha 
+          finOP <- rbind(finOP, c(tail(op$MSE,1),tail(op$MSEMD,1),week,unique_count$Freq[week],penalty,covInit,alpha))
+        }
+        
+        pt <- ggarrange(plotlist = p, nrow = 2, ncol = 2)
+        fig <- annotate_figure(pt, top = text_grob(paste0("Week ", week, 
+                                                         " avail ", unique_count$Freq[week], 
+                                                         " penalty ", penalty, 
+                                                         " alpha ", alpha)))
+        # Convert to grob and draw
+        grob <- ggplotGrob(fig)
+        grid.newpage()
+        grid.draw(grob)
+        
+      }
+    }
+  }
+}
+
+dev.off()
+
+colnames(finOP) <- c("MSE","MSEMD","Week","Freq","Penalty","covInit","Alpha")
+saveRDS(finOP, "realCOVID_DataOP.rds")
+```
+
 
