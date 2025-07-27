@@ -598,7 +598,6 @@ for(ol in unique(df_reg$OL)){
       pt <- ggpubr::ggarrange(plotlist = p)
       print(pt)  
     }
-    
   }
 }
 
