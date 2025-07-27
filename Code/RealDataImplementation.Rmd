@@ -1,0 +1,295 @@
+---
+title: "RealDataImplementation"
+output: pdf_document
+date: "2025-07-25"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(terra)
+library(sf)
+library(tidyverse)
+library(dplyr)
+library(mapview)
+library(sp)
+library(usmap)
+library(raster)
+library(igraph)
+library(GGally)
+library(ggnet)
+#library(network)
+#library(sna)
+#library(ggplot2)
+#require(rgdal)
+library(geosphere)
+library(lubridate)
+library(gganimate)
+library(gifski)
+library(png)
+library(legendry)
+library(RColorBrewer)
+library(ggiraph)
+library(plotly)
+
+```
+
+
+## Loading time series of covid data.
+
+```{r}
+##Loading city limits data 
+#hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
+#rgdal::ogrListLayers(hwpath)
+#ct <- st_read(hwpath, layer = "City_Limits__2016_")
+
+## reading the 2024 city limits using terra library
+citylim_path <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/City_Limits_2022/City_Limits.shp"
+ct <- sf::st_read(citylim_path)
+
+
+## Loading covid levels data
+WD <- paste0(fs::path_home(), "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/7.11.25/Combined_all_data_2025-07-11.xlsx")
+dat <- readxl::read_excel(WD,sheet = "COVID", guess_max = 10000)
+
+
+## cities present in ct and wastewater data
+ct_sbst <- ct$CITYNAME[ct$CITYNAME %in% unique(dat$Location)]
+
+## Which locations are not there in the ct database
+no_ct_dat <-  unique(dat$Location)[!(unique(dat$Location) %in% ct_sbst)]
+no_ct_dat
+
+df <- dat[dat$Location %in% ct_sbst, ]
+
+
+df_OHA <- df[df$Study == "OHA",]
+#df_OHA <- df_OHA[df_OHA$QualCall == "Negative",]
+
+df_OHA <- df_OHA[!(is.na(df_OHA$Location)),]
+
+df_OHA <- df_OHA[df_OHA$Location %in% ct_sbst,]
+
+df_OHA <- df_OHA[df_OHA$CopiesPerul > 0 , ]
+
+df_OHA <- df_OHA[!is.na(df_OHA$SampleType),]
+
+df_OHA <- df_OHA[!(is.na(df_OHA$County)),]
+
+gbg <- data.frame(table(df_OHA$Location, df_OHA$County))
+gbg <- gbg[gbg$Freq > 0,]
+
+## Removing gilliam county
+
+df_OHA <- df_OHA[!(df_OHA$County == "Gilliam County"),]
+
+#gbg <- df_OHA[df_OHA$Location == "Corvallis",]
+## remove columns that we wont use
+
+df_OHA <- df_OHA %>%
+  mutate(Date = lubridate::mdy(Date)) %>%
+   dplyr::mutate(year = lubridate::year(Date), 
+                 month = lubridate::month(Date), 
+                 day = lubridate::day(Date))
+
+df_OHA <- df_OHA %>%
+  dplyr::mutate(Month_Yr = format(as.Date(Date),"%Y-%m")) %>% 
+  mutate(weekno = as.numeric(Date - min(Date, na.rm = TRUE)),
+         weekno = (weekno %/% 7) + 1) %>%
+  group_by(weekno) %>% 
+  arrange(desc(CopiesPerul)) %>%
+    mutate(
+        maxByVal = if_else(row_number() == 1, "1", "0")
+    ) %>%
+  arrange(weekno)%>%
+  ungroup()
+
+df_OHA <- df_OHA %>% 
+  select(c(CopiesPerul,Date,Location,MasterID,logCopies,County,weekno,Month_Yr,
+           maxByVal,year,month,day )) %>%
+  distinct()
+  
+
+aggr <- df_OHA %>%
+  group_by(weekno, Location) %>%
+  filter(CopiesPerul == max(CopiesPerul, na.rm = TRUE)) %>%
+  mutate(yy = substr(year, 3,4))
+
+# colors <-  c("cornflowerblue", "coral2","chocolate3", "chartreuse4","brown4","blue4",
+#              "darkorchid", "orangered","gold1","cyan2","slateblue3","salmon4",
+#              "darkolivegreen1", "aquamarine","firebrick2", "maroon2","dodgerblue",
+#              "sienna3")
+colors <- c(
+  "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2",
+  "#1AFF1A", "#bcbd22", "#17becf", "#aec7e8", "#ffbb78", "#98df8a", "#ff9896",
+  "#c5b0d5", "#c49c94", "#f7b6d2", "#c7c7c7", "#dbdb8d", "#9edae5", "#393b79",
+  "#637939", "#8c6d31", "#843c39", "#b5cf6b", "#cedb9c", "#8ca252", "#6b6ecf")
+colors_cb <- c(
+  "#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00",
+  "#CC79A7", "#999999", "#332288", "#88CCEE", "#44AA99", "#117733", "#999933",
+  "#DDCC77", "#661100", "#CC6677", "#AA4466", "#882255", "#AA4499", "#777777",
+  "#5D3A9B", "#E66100", "#40B0A6", "#E1BE6A", "#1AFF1A", "#4B0092", "#FF6E3A"
+)
+
+
+p <- ggplot()+
+  geom_point(data = subset(aggr, CopiesPerul < 300) , 
+             aes(x = weekno, y = CopiesPerul, group = Location), 
+             color = "grey37",alpha =0.2)+
+  theme_minimal() +
+  theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    legend.position = "none") + 
+  labs(x = "Week number stating from September 2nd 2020", y = "SARS-COV2 concentration in Copies per uL")+
+  geom_point(data = subset(aggr, maxByVal == "1" & CopiesPerul < 300), 
+             aes(x = weekno, y = CopiesPerul,color = County, group = Location))+
+  scale_color_manual(values = colors)
+
+ggplotly(p)
+```
+
+
+## Find the total number missing values per week.
+
+```{r}
+length(unique(aggr$Location))
+unique(aggr$Location)
+unique_count <- as.data.frame(table(aggr$weekno))
+unique_loc <- as.data.frame(table(aggr$Location ))
+
+```
+
+
+## Decide on the week with the least number of missing data. Maybe 10 such weeks.
+
+```{r}
+## looks like week number 102 has the maximum number of locations? 36 locations out of 45. 
+aggr_102 <- aggr %>% filter(weekno == 102)
+
+```
+
+## Loading the network.
+```{r}
+## Reading the shortest path graph created in MapNetworkCode.Rmd
+directGrph <- readRDS("ShortestPathGrph.rds")
+
+```
+
+## Subsetting network with the selected week.
+
+```{r}
+city_cntr <- ct %>% 
+  st_as_sf() %>% 
+  st_centroid() %>% 
+  st_cast("POINT") %>% 
+  st_transform(4326) %>% 
+  st_coordinates()
+
+attr <- as.data.frame(cbind(as.data.frame(vertex_attr(directGrph)), city_cntr))
+
+attr <- attr[attr$name %in% aggr_102$Location,]
+
+plot.igraph(directGrph, vertex.label = NA, vertex.size = 1,
+            vertex.color = V(directGrph)$included, 
+            vertex.frame.color = V(directGrph)$included, 
+            edge.color = "darkgrey", edge.width = 1, 
+            layout = city_cntr)
+
+G_subGrph <- induced_subgraph(directGrph, vids = attr$name)
+plot.igraph(G_subGrph, vertex.label = NA, vertex.size = 1,
+            vertex.color = V(G_subGrph)$included, 
+            vertex.frame.color = V(G_subGrph)$included, 
+            edge.color = "darkgrey", edge.width = 1, 
+            layout = as.matrix(attr[,3:4]))
+
+```
+
+## Running method on the above sub graph induced network.
+
+```{r}
+G_subGrph <- set_vertex_attr(G_subGrph,name = "CopiesPerul", value = sub_attrs$CopiesPerul)
+G_subGrph <- set_vertex_attr(G_subGrph, name = "X", value = as.matrix(attr[,3]))
+G_subGrph <- set_vertex_attr(G_subGrph, name = "Y", value = as.matrix(attr[,4]))
+## for now use nc =3
+sub_attrs <-  as.data.frame(vertex_attr(G_subGrph))
+sub_attrs <- left_join(sub_attrs, aggr_102 %>% 
+                         select(CopiesPerul, Location), 
+                       by = join_by(name == Location))
+G <- G_subGrph
+nc <- 3 ## Can change
+N <- nrow(sub_attrs)
+lambda <- 0.0001
+thresh <- 0.00005
+nitermax <- 10000
+dir <- "undirected"
+alphaLL <- 0.001
+test = TRUE
+missing <- NULL
+covOrig <- sub_attrs$CopiesPerul
+alphaLin <- 0.001 
+penalty <- "LASSO" 
+seed <- 5
+covInit <- sub_attrs$CopiesPerul
+printFlg <- FALSE
+specOP <- CovAssistedSpecClust(G, as.data.frame(sub_attrs$CopiesPerul), nc, alpha = 0.5)
+C <- letters[specOP]
+op <- model.matrix( ~ C - 1)
+colnames(op) <- letters[1:nc]
+orig <- op
+for (i in 1:nc) {
+    G <- G %>%
+      set_vertex_attr(name = letters[i], 
+                      value = c(op[, i]))
+  }
+
+op <- CoDA(G, nc, k = c(0, 0), o = c(0, 1), N, alpha,lambda, thresh, nitermax, 
+           orig, randomize = FALSE,c(), c("CopiesPerul"), c(), c(), dir,
+           alphaLL, test, missing, covOrig,epsilon = 0, impType = "Reg", 
+           alphaLin, penalty, seed, covInit, specOP )
+
+delta <- getDelta(N)
+Fin_mem <- op$Ffin > delta
+colnames(Fin_mem) <- letters[1:nc]
+attr <- cbind(as.data.frame(vertex_attr(G)), Fin_mem)
+eList <- as_edgelist(G)
+eList <- as.data.frame(cbind(eList, pair = c(1:nrow(eList)))) %>% 
+  pivot_longer(!pair, values_to = "name",names_to = "gbg") %>%
+  left_join(attr %>% select(name, X, Y) )
+
+ggplot()+ 
+    geom_line(data = eList, aes(x = X, y = Y, group = pair), color = "grey80")+
+  geom_point(data = attr, aes(x = X, y = Y), color = "grey30")+
+  ggforce::geom_mark_hull(data = attr %>% filter(a == TRUE),
+                          aes(x = X, y = Y,fill = a), 
+                          concavity = 3, expand = unit(2, "mm"),
+                          alpha = 0.1, fill = "#1f77b4", color = "#1f77b4")+
+  ggforce::geom_mark_hull(data = attr %>% filter(b == TRUE),
+                          aes(x = X, y = Y,fill = b), 
+                          concavity = 3, expand = unit(2, "mm"),
+                          alpha = 0.1, fill = "#ff7f0e", color = "#ff7f0e")+
+  ggforce::geom_mark_hull(data = attr %>% filter(c == TRUE),
+                          aes(x = X, y = Y,fill = c), 
+                          concavity = 3, expand = unit(2, "mm"),
+                          alpha = 0.1, fill = "#2ca02c", color = "#2ca02c")+
+  theme(legend.position = "bottom", panel.background = element_blank()) 
+
+
+```
+
+## Run method on the full network with missing data imputation.
+
+```{r}
+
+
+
+```
+
+## Compare the output of community detection of missing data and full network.
+
+```{r}
+
+```
+
