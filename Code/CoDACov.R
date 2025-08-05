@@ -1078,7 +1078,9 @@ LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir,
 
 
 updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, 
-                                 impType, alphaLin, penalty){
+                                 impType, alphaLin, penalty,seed){
+  
+  set.seed(seed)
   
   if(dir == "directed"){
     cm <- cbind( Wtm1 , Wtm2)
@@ -1289,8 +1291,10 @@ initCov <- function(covtmp, CovNames) {
 
 initWtmat <- function(G, mode, N, nc, seed,specOP){
   set.seed(seed)
+  
   colwts <- igraph::degree(G, mode = mode) / sum(igraph::degree(G, mode = mode))
   Wtmat <- replicate(nc, colwts) + matrix(nrow = N, ncol = nc, runif(nc * N, 0.0001,0.001))
+  #Wtmat <- matrix(nrow = N, ncol = nc, runif(nc * N, 0.0001,0.001))
   return(Wtmat)
 }
 
@@ -1596,7 +1600,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     
     ### Updating the beta matrix for continuous covariates
     c1 <- updateLinearRegParam(betaout,missValsout,Z_out,Ftot,Htot,alpha,
-                               lambda,N,dir, impType, alphaLin, penalty)
+                               lambda,N,dir, impType, alphaLin, penalty,seed)
     betaout <- c1[[1]]
     Z_out <- c1[[2]]
     sigmaSqout <- c1[[3]]

@@ -381,14 +381,14 @@ assortativityF <- function(G,dir){
 }
 
 ## Feature structure decomposition
-Feature_struct_decomp <- function(G, nc, N, delta, noCov, FullM){
+Feature_struct_decomp <- function(G, nc, N, delta, noCov, FullM, covNames){
   
   ## Baseline 1 : CD using NW structure. No covariate community detection
   ## noCov
   
   ## Baseline 2: CD using NW only features (k-means)
   ## Get the covariates
-  X <-  as.data.frame(vertex_attr(G))[4:6]
+  X <-  as.data.frame(vertex_attr(G)) %>% dplyr::select(covNames)
   ### using cmeans function from e1071 library
   Cov_op <- cmeans(X , nc)
   ##Find the overlap 
