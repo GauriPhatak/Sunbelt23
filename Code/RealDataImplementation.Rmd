@@ -122,35 +122,35 @@ aggr <- df_OHA %>%
 #              "darkorchid", "orangered","gold1","cyan2","slateblue3","salmon4",
 #              "darkolivegreen1", "aquamarine","firebrick2", "maroon2","dodgerblue",
 #              "sienna3")
-colors <- c(
-  "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2",
-  "#1AFF1A", "#bcbd22", "#17becf", "#aec7e8", "#ffbb78", "#98df8a", "#ff9896",
-  "#c5b0d5", "#c49c94", "#f7b6d2", "#c7c7c7", "#dbdb8d", "#9edae5", "#393b79",
-  "#637939", "#8c6d31", "#843c39", "#b5cf6b", "#cedb9c", "#8ca252", "#6b6ecf")
-colors_cb <- c(
-  "#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00",
-  "#CC79A7", "#999999", "#332288", "#88CCEE", "#44AA99", "#117733", "#999933",
-  "#DDCC77", "#661100", "#CC6677", "#AA4466", "#882255", "#AA4499", "#777777",
-  "#5D3A9B", "#E66100", "#40B0A6", "#E1BE6A", "#1AFF1A", "#4B0092", "#FF6E3A"
-)
-
-
-p <- ggplot()+
-  geom_point(data = subset(aggr, CopiesPerul < 300) , 
-             aes(x = weekno, y = CopiesPerul, group = Location), 
-             color = "grey37",alpha =0.2)+
-  theme_minimal() +
-  theme(axis.line = element_line(colour = "black"),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        panel.background = element_blank(),
-        axis.text.x = element_text(angle = 90, hjust = 1),
-        legend.position = "none") + 
-  labs(x = "Week number stating from September 2nd 2020", y = "SARS-COV2 concentration in Copies per uL")+
-  geom_point(data = subset(aggr, maxByVal == "1" & CopiesPerul < 300), 
-             aes(x = weekno, y = CopiesPerul,color = County, group = Location))+
-  scale_color_manual(values = colors)
+# colors <- c(
+#   "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2",
+#   "#1AFF1A", "#bcbd22", "#17becf", "#aec7e8", "#ffbb78", "#98df8a", "#ff9896",
+#   "#c5b0d5", "#c49c94", "#f7b6d2", "#c7c7c7", "#dbdb8d", "#9edae5", "#393b79",
+#   "#637939", "#8c6d31", "#843c39", "#b5cf6b", "#cedb9c", "#8ca252", "#6b6ecf")
+# colors_cb <- c(
+#   "#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00",
+#   "#CC79A7", "#999999", "#332288", "#88CCEE", "#44AA99", "#117733", "#999933",
+#   "#DDCC77", "#661100", "#CC6677", "#AA4466", "#882255", "#AA4499", "#777777",
+#   "#5D3A9B", "#E66100", "#40B0A6", "#E1BE6A", "#1AFF1A", "#4B0092", "#FF6E3A"
+# )
+# 
+# 
+# p <- ggplot()+
+#   geom_point(data = subset(aggr, CopiesPerul < 300) , 
+#              aes(x = weekno, y = CopiesPerul, group = Location), 
+#              color = "grey37",alpha =0.2)+
+#   theme_minimal() +
+#   theme(axis.line = element_line(colour = "black"),
+#         panel.grid.major = element_blank(),
+#         panel.grid.minor = element_blank(),
+#         panel.border = element_blank(),
+#         panel.background = element_blank(),
+#         axis.text.x = element_text(angle = 90, hjust = 1),
+#         legend.position = "none") + 
+#   labs(x = "Week number stating from September 2nd 2020", y = "SARS-COV2 concentration in Copies per uL")+
+#   geom_point(data = subset(aggr, maxByVal == "1" & CopiesPerul < 300), 
+#              aes(x = weekno, y = CopiesPerul,color = County, group = Location))+
+#   scale_color_manual(values = colors)
 
 #ggplotly(p)
 ```
@@ -363,10 +363,12 @@ delta <- getDelta(N)
 Fin_mem <- op$Ffin > delta
 colnames(Fin_mem) <- letters[1:nc]
 attr <- cbind(as.data.frame(vertex_attr(G))[,1:5], Fin_mem)
+
 eList <- as_edgelist(G)
 eList <- as.data.frame(cbind(eList, pair = c(1:nrow(eList)))) %>% 
   pivot_longer(!pair, values_to = "name",names_to = "gbg") %>%
   left_join(attr %>% select(name, X, Y) )
+
 attr$Available <- !is.na(attr$CopiesPerul)
 ggplot()+ 
   geom_line(data = eList, aes(x = X, y = Y, group = pair), color = "grey80")+
@@ -659,6 +661,242 @@ finOP %>% ggplot()+
 
 ```
 
+## BIC for simulated data
+
+```{r}
+getwd()
+N <- 200
+test_nc <- c(3,4,5,6,7,8)
+simbic <- matrix(0, nrow =0, ncol = 5)
+##directed
+dirSim <- readRDS("../4clustersims_op1Dir.rds")
+for(i in 1:length(dirSim[[1]])){
+  ll <- -1*tail(dirSim[[1]][[i]]$Loglik,1)[1]
+  simbic <- rbind(simbic, c("D", test_nc[i],ll, 
+                            BIC(ll, test_nc[i], N),
+                            as.numeric(tail(dirSim[[1]][[i]]$OmegaIndex,1))
+  )
+  )
+}
+
+##undirected
+undirSim <- readRDS("../4clustersims_op1unDir.rds")
+for(i in 1:length(dirSim[[1]])){
+  ll <- -1*round(tail(undirSim[[1]][[i]]$Loglik,1)[1],2)
+  simbic <- rbind(simbic, c("U", test_nc[i],ll, 
+                            round(as.numeric(BIC(ll, test_nc[i], N),2)),
+                            as.numeric(tail(undirSim[[1]][[i]]$OmegaIndex,1))
+  )
+  )
+}
+
+simbic <- as.data.frame(simbic)
+colnames(simbic) <- c("Dir","nc","ll","bic")
+simbic  %>%
+  ggplot()+
+  geom_point(aes(x = nc, y = as.numeric(bic), color = Dir))+
+  facet_wrap(~Dir)
+```
+
+
+```{r}
+getwd()
+N <- 200
+test_nc <- rep(c(3,4,5,6,7,8), 2)
+simbic <- matrix(0, nrow =0, ncol = 6)
+##directed
+dirSim <- opf_Regcov#readRDS("../4clustersims_op1Dir.rds")
+for(i in 1:length(dirSim)){
+  ll <- -1*tail(dirSim[[i]]$Loglik,1)[1]
+  simbic <- rbind(simbic, c("D", test_nc[i],ll, 
+                           dirSim[[i]]$bic[1],
+                            as.numeric(tail(dirSim[[i]]$OmegaIndex,1)),
+                            i
+  )
+  )
+}
+
+simbic <- as.data.frame(simbic)
+colnames(simbic) <- c("Dir","nc","ll","bic","OI","i")
+simbic$Dir <- rep(c("D","U"), each = 6)
+simbic  %>%
+  ggplot()+
+  geom_point(aes(x = nc, y = as.numeric(bic), color = Dir))+
+  facet_wrap(~Dir)
+
+```
+
+```{r}
+
+getwd()
+## Reading combination of parameters
+filePath <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/4clustersims_comb.rds"
+S <- readRDS(filePath)
+S$penalty <- as.character(S$penalty)
+## Reading names of files
+boxFolder <- "C:/Users/gauph/Box/SimulationOutput/CoDAOP/4ClusterBICtest_big/"
+files <- list.files(boxFolder)
+
+N <- 200
+test_nc <- rep(c(3,4,5,6,7,8), 3)
+simbic <- matrix(0, nrow =0, ncol = 14)
+nocov <- matrix(0, nrow =0, ncol = 14)
+
+for(fn in files){
+  df_rds <- readRDS(paste0(boxFolder,fn))
+  sIdx <- as.numeric(str_extract_all(fn, "\\d+")[[1]])[2]
+  seqv <- 1:length(df_rds[[1]])
+  #for(i in seqv)
+  i <- 1
+  for(bigN in 1:S$bigN[1]){
+    #for(nsim in 1:S$Nsim[1]){
+      for(dir in c("directed","undirected")){
+        for(nc in S$test_nc[[1]]){
+        simbic <- rbind(simbic, unlist(c(dir, nc, bigN, 
+                                  df_rds[[1]][[i]]$bic, 
+                                  df_rds[[1]][[i]]$OmegaIndex,
+                                  S$alpha[sIdx],
+                                  S$lambda[sIdx],
+                                  S$pClustOL[sIdx],
+                                  S$penalty[sIdx],
+                                  sIdx)))
+        if(length(df_rds[[2]]) > 0){
+                  nocov <- rbind(nocov, unlist(c(dir, nc, bigN, 
+                                  df_rds[[2]][[i]]$bic, 
+                                  df_rds[[2]][[i]]$OmegaIndex,
+                                  S$alpha[sIdx],
+                                  S$lambda[sIdx],
+                                  S$pClustOL[sIdx],
+                                  S$penalty[sIdx],
+                                  sIdx)))
+        }
+
+        i <- i+1
+        }
+      }
+    #}
+  }
+}
+
+simbic <- as.data.frame(simbic)
+colnames(simbic) <- c("Dir","nc","bigN","bic","ll","nc2","Nnodes","Nedges","OI",
+                      "alpha","lambda","pClustOL","penalty", "sIdx")
+
+simbic[,2:11] <- as.data.frame(apply(simbic[,2:11],2,as.numeric))
+simbic$Dir <- unlist(simbic$Dir)
+simbic$penalty <- unlist(simbic$penalty)
+simbic$pClustOL <- unlist(simbic$pClustOL)
+
+## get the values with minimum BIC values in each bigN value and different types of overlap
+minBIC <- simbic %>% 
+  group_by(pClustOL, bigN, Dir, penalty) %>% 
+    slice_min(bic, n = 1)
+
+## max bic
+maxBIC <- simbic %>% 
+  group_by(pClustOL, bigN, Dir) %>% 
+    slice_max(bic, n = 1)
+
+## maximum OI
+maxOI <- simbic %>% 
+  group_by(pClustOL, bigN, Dir) %>% 
+    slice_max(OI, n = 1)
+
+
+simbic  %>% filter(pClustOL == "NoOL", Dir == "directed") %>%
+  ggplot()+
+  geom_point(aes(x = as.numeric(bic), y = OI, color = as.factor(nc))) +
+  xlim(min(simbic$bic),800000)+
+  facet_grid(rows= vars(lambda), cols = vars(alpha), scales = "free_y")
+
+simbic  %>% filter(pClustOL == "2GrpOL1", Dir == "directed") %>%
+  ggplot()+
+  geom_point(aes(x = as.numeric(bic), y = OI, color = as.factor(nc))) +
+  xlim(min(simbic$bic),10000)+
+  facet_grid(rows= vars(lambda), cols = vars(alpha), scales = "free_y")
+
+simbic  %>% filter(pClustOL == "NoOL", Dir == "undirected") %>%
+  ggplot()+
+  geom_point(aes(x = as.numeric(bic), y = OI, color = as.factor(nc))) +
+  xlim(min(simbic$bic),100000)+
+  facet_grid(rows= vars(lambda), cols = vars(alpha), scales = "free_y")
+
+simbic  %>% filter(pClustOL == "2GrpOL1", Dir == "undirected") %>%
+  ggplot()+
+  geom_point(aes(x = as.numeric(bic), y = OI, color = as.factor(nc))) +
+  xlim(min(simbic$bic),100000)+
+  facet_grid(rows= vars(lambda), cols = vars(alpha), scales = "free_y")
+
+simbic %>% filter(Dir == "directed", pClustOL == "NoOL") %>%
+ggplot()+
+  geom_point(aes(y = as.numeric(bic), x = nc, color = as.factor(bigN)  )) +
+  ylim(min(simbic$bic),100000)+
+  facet_grid(rows= vars(lambda), cols = vars(alpha), scales = "free_y")
+
+simbic %>% filter(Dir == "directed", pClustOL == "2GrpOL1") %>%
+ggplot()+
+  geom_point(aes(y = as.numeric(bic), x =nc, color = as.factor(bigN)  )) +
+  ylim(min(simbic$bic),100000)+
+  facet_grid(rows= vars(lambda), cols = vars(alpha), scales = "free_y")
+```
+
+
+## running BIC for different values of K for COVID data
+
+```{r}
+## Alpha: learning rate
+## Lambda: penalty param
+## k : number of clusters
+## 1. BIC (Have to use for smaller networks)
+## 2. CV
+## Number of folds
+## 3. Consensus based methods
+Nnodes <- 45
+Nedges <- 123
+boxFolder <- "C:/Users/gauph/Box/SimulationOutput/CoDAOP/RealCOVIDData/"
+files <- list.files(boxFolder)
+NumWeeks <- 253
+test_nc <- rep(c(2,3,4,5,6,7,8), each = 4*3*4*3 )
+finOP <- matrix(0, nrow = 0, ncol = 16 )
+numCom <- readRDS(paste0(boxFolder,"realCOVID_NumberOfCommunities","102",".rds"))
+names <- rownames(numCom)
+imputedVals <- matrix(0, ncol = 7, nrow = 0)
+for(i in c(1:4, 6,7, 9:21, 23:32, 34:39, 41:NumWeeks)){
+  finOP_i <- as.data.frame(cbind(readRDS(paste0(boxFolder,"realCOVID_DataOP", i,".rds")), test_nc, i)) 
+  finOP_i[,c(1:8, 11:14)] <- as.data.frame(apply(finOP_i[,c(1:8, 11:14)],2,as.numeric))
+  finOP_i <- finOP_i %>% 
+    mutate(BICnet = BIC(LLTot, test_nc, Nedges, Nnodes),
+           BICReg = BICReg(LLTot, test_nc, Nedges, Nnodes))
+  finOP <- rbind(finOP, finOP_i)
+  
+  ## reading imputed values. Mean, Stddev, minBIcnet and minBIcReg
+  imputedV <- as.data.frame(readRDS(paste0(boxFolder,"ImputedValues",i,".rds")))
+  mean_i <- apply(imputedV, 1, mean)
+  median_i <- apply(imputedV, 1, median)
+  sd_i <- apply(imputedV,1,sd)
+  minBICnet_i <- imputedV[,which.min(finOP_i$BICnet)]
+  minBICreg_i <- imputedV[,which.min(finOP_i$BICReg)]
+  imputedVals <- rbind(imputedVals, cbind(mean_i, median_i, sd_i, minBICnet_i,minBICreg_i,i,names))
+}
+
+## Dataframe of imputed values
+imputedVals <- as.data.frame(imputedVals)
+
+finOPMinBIC_net <- finOP %>%
+  group_by(Week) %>%
+  slice_min(BICnet, n = 1)
+
+finOPMinBIC_reg <- finOP %>%
+  group_by(Week) %>%
+  slice_min(BICReg, n = 1)
+
+finOP102 <- finOP %>% filter(Week == 102)
+# numCom <- readRDS(paste0(boxFolder,"realCOVID_NumberOfCommunities",i,".rds"))
+# numCom_nocov <- readRDS(paste0(boxFolder,"realCOVID_NumberOfCommunitiesNoCov",i,".rds"))
+# op_sim <- readRDS(paste0(boxFolder,"realCOVID_NetworkMetricsOutput",i,".rds"))
+
+
+```
 
 
 
