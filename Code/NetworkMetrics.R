@@ -148,13 +148,16 @@ memOverlapCalc <- function(Fm, Hm, delta, N, nc){
 OmegaIdx_ <- function(OrigVal, memoverlap,nc,N){
   
   ol <- list()
-  for(i in 1:nc){
+  for(i in 1:dim(OrigVal)[2]){
     ol[[i]] <- which(OrigVal[,i] == 1)
   }
-  
-  posCom <- rbind(expand.grid(ol[[1]],ol[[1]]),
-                  expand.grid(ol[[2]],ol[[2]]),
-                  expand.grid(ol[[3]],ol[[3]]))
+  posCom <- matrix(0, nrow = 0, ncol = nc)
+  for(i in 1:dim(OrigVal)[2]){
+    posCom <- rbind(posCom, expand.grid(ol[[i]], ol[[i]]))
+  }
+  #posCom <- rbind(expand.grid(ol[[1]],ol[[1]]),
+  #                expand.grid(ol[[2]],ol[[2]]),
+  #                expand.grid(ol[[3]],ol[[3]]))
   posCom <- paste0(posCom[,1],"-",posCom[,2])
   valuesOrig <- as.data.frame(table(posCom))
   
@@ -162,10 +165,13 @@ OmegaIdx_ <- function(OrigVal, memoverlap,nc,N){
   for(i in 1:nc){
     ol[[i]] <- which(memoverlap[,i] == 1)
   }
-  
-  posCom <- rbind(expand.grid(ol[[1]],ol[[1]]),
-                  expand.grid(ol[[2]],ol[[2]]),
-                  expand.grid(ol[[3]],ol[[3]]))
+  posCom <- matrix(0, nrow = 0, ncol = nc)
+  for(i in 1:nc){
+    posCom <- rbind(posCom, expand.grid(ol[[i]], ol[[i]]))
+  }
+  #posCom <- rbind(expand.grid(ol[[1]],ol[[1]]),
+  #                expand.grid(ol[[2]],ol[[2]]),
+  #                expand.grid(ol[[3]],ol[[3]]))
   posCom <- paste0(posCom[,1],"-",posCom[,2])
   valuesMem <- as.data.frame(table(posCom))
   
@@ -190,7 +196,7 @@ OmegaIdx <- function(G, Fm, Hm, N, delta, nc) {
   memoverlap <- memOverlapCalc(Fm, Hm, delta, N, nc)
   
   OrigVal <-  as.data.frame(vertex_attr(G)) %>%
-    dplyr::select(all_of(c(letters[1:nc]))) %>%
+    dplyr::select(any_of(c(letters[1:nc]))) %>%
     abs()
   
   oi <- OmegaIdx_(OrigVal, memoverlap,nc,N)
@@ -405,14 +411,13 @@ Feature_struct_decomp <- function(G, nc, N, delta, noCov, FullM, covNames){
   
   ## Compare covariate only to ground truth
   OrigVal <-  as.data.frame(vertex_attr(G)) %>%
-    dplyr::select(all_of(c(letters[1:nc]))) %>%
+    dplyr::select(any_of(c(letters[1:nc]))) %>%
     abs()
   oi_cov <- OmegaIdx_(OrigVal, cov, nc, N)
   
   return(list(oi_b1, oi_b2, oi_cov))
   
 }
-
 
 ## Variance Explained: Using log likelihood ratio
 VarExp <- function(){
