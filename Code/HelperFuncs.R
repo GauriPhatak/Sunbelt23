@@ -14,7 +14,7 @@ library(intergraph)
 library(tidygraph)
 library(ggraph)
 library(statnet)
-library(caret)
+#library(caret)
 library(ggnet)
 library(stringr)
 f <- function(x, n){
@@ -413,6 +413,30 @@ findEdges <- function(geom, hwd, id, type){
   edges <- cbind(edges, type)
   colnames(edges) <- c("to","from","hwy_id","distance","type")
   return(edges)
+}
+
+## Calculate Bayesian Informatin Criterion(BIC)
+BIC <- function(logLik, nc, N,E){
+  BIC <- -2*logLik + nc*N*log(E)
+  return(BIC)
+}
+
+BICReg <- function(logLik, nc, N,E){
+  BIC <- -2*logLik + nc*log(N)
+  return(BIC)
+}
+
+## Calculate Entropy to measure uncertainty of cluster assignments
+Entropy <- function(WtMat){
+  Ent <- sum(WtMat * log(WtMat), na.rm = TRUE)
+  return(Ent)
+}
+
+## Calculate integrated complete likelihood using both BIC and Entropy
+ICL <- function(logLik,WtMat,nc,N,E){
+  BIC <- BIC(logLik,nc,N,E)
+  Ent <- Entropy(WtMat)
+  return(BIC + (2*Ent))
 }
 
 
