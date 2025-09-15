@@ -8,7 +8,6 @@ library(poweRlaw)
 library(e1071)
 
 ## Part of log likelihood contributed by the penalty term
-
 penLL <- function(penalty, beta){
   if(penalty =="Ridge"){
     return(sum(beta^2))
@@ -58,7 +57,7 @@ MSE <- function(Wtmat1,Wtmat2,Z,beta,N,dir){
   if(dir=="directed"){
     pred <- cbind(1, Wtmat1, Wtmat2) %*% beta
   }else{
-    pred <- cbind(1, Wtmat1) %*% beta
+    pred <- cbind(1, matrix(Wtmat1, ncol = (dim(beta)[1]-1))) %*% beta
   }
   mse <- sqrt(colSums((pred - Z) ^ 2) / N)
   return(mse)
@@ -67,7 +66,7 @@ MSE <- function(Wtmat1,Wtmat2,Z,beta,N,dir){
 MSEop <- function(Ftot, Htot, covOrig, betaout,N, dir, o_in,o_out, missValsout){
   mseouttot <- matrix(nrow = 0, ncol = (o_in+o_out))
   mse_outMD <- c()#matrix(nrow = 0, ncol = (o_in + o_out))
-  
+  covOrig <- as.matrix(covOrig)
   if((o_in + o_out) > 0){
     mseout <- 0
     mseouttot <- 0
@@ -131,8 +130,8 @@ accuOP <- function(k_in, k_out,Wout,Ftot, Htot,covOrig,dir,missValsout){
   return(list(c(accuracy_outMD), c(accuracy_out)))
 }
 
-getDelta <- function(N){
-  delta <- sqrt(-1*log(1-(1/N)))
+getDelta <- function(N, epsilon =0 ){
+  delta <- sqrt(-1*log(1-(1/N)))#sqrt(-1*log(1 - epsilon)) #
   return(delta)
 }
 
@@ -146,21 +145,20 @@ memOverlapCalc <- function(Fm, Hm, delta, N, nc){
 }
 
 OmegaIdx_ <- function(OrigVal, memoverlap,nc,N){
-  
+  ## Original values of community assignment
   ol <- list()
   for(i in 1:dim(OrigVal)[2]){
     ol[[i]] <- which(OrigVal[,i] == 1)
   }
-  posCom <- matrix(0, nrow = 0, ncol = nc)
+  posCom <- matrix(0, nrow = 0, ncol = dim(OrigVal)[2])
   for(i in 1:dim(OrigVal)[2]){
     posCom <- rbind(posCom, expand.grid(ol[[i]], ol[[i]]))
   }
-  #posCom <- rbind(expand.grid(ol[[1]],ol[[1]]),
-  #                expand.grid(ol[[2]],ol[[2]]),
-  #                expand.grid(ol[[3]],ol[[3]]))
+  
   posCom <- paste0(posCom[,1],"-",posCom[,2])
   valuesOrig <- as.data.frame(table(posCom))
   
+  ## Detected value of memory assignment
   ol <- list()
   for(i in 1:nc){
     ol[[i]] <- which(memoverlap[,i] == 1)
@@ -169,12 +167,10 @@ OmegaIdx_ <- function(OrigVal, memoverlap,nc,N){
   for(i in 1:nc){
     posCom <- rbind(posCom, expand.grid(ol[[i]], ol[[i]]))
   }
-  #posCom <- rbind(expand.grid(ol[[1]],ol[[1]]),
-  #                expand.grid(ol[[2]],ol[[2]]),
-  #                expand.grid(ol[[3]],ol[[3]]))
+  
   posCom <- paste0(posCom[,1],"-",posCom[,2])
   valuesMem <- as.data.frame(table(posCom))
-  
+  ## Joining original and detected values
   values <- full_join(valuesOrig, valuesMem, by = "posCom")
   tot <- expand.grid(1:N, 1:N)
   tot <- as.data.frame( paste0(tot[,1],"-",tot[,2]))
@@ -188,19 +184,469 @@ OmegaIdx_ <- function(OrigVal, memoverlap,nc,N){
   
   return(oi)
 }
+OmegaIdx <- function(G, Fm, Hm, N, delta, nc, nc_sim) {
+  # A_mat, B_mat: binary membership matrices, same number of rows (items)
+  A_mat <- as.matrix(memOverlapCalc(Fm, Hm, delta,N, nc))
+  B_mat <- as.data.frame(vertex_attr(G)) %>%
+    dplyr::select(any_of(c(letters[1:nc_sim]))) %>%
+    abs() %>% as.matrix()
+  # columns = clusters of each clustering (they can be different number of clusters)
+  
+  N <- nrow(A_mat)
+  P <- choose(N, 2)
+  
+  
+  coA <- A_mat %*% t(A_mat)  # NxN matrix, integer counts
+  coA <- coA[upper.tri(coA)]
+  coB <- B_mat %*% t(B_mat)
+  coB <- coB[upper.tri(coB)]
+  
+  
+  J <- max(coA)
+  K <- max(coB)
+  UL <- min(J,K)
+  O <- E <- 0
+  for(j in 0:UL){
+    N_j1 <- (coA == j)
+    N_j2 <- (coB == j)
+    M <- (N_j1 == TRUE) &  (N_j2 == TRUE)
+    A_j  <- sum(M)
+    O <- O + A_j
+    
+    E <- E + (sum(N_j1)*sum(N_j2))
+  }
+  O <- O/P
+  E <- E/P^2
+  OI <- (O-E)/(1-E)
 
-OmegaIdx <- function(G, Fm, Hm, N, delta, nc) {
+  return(OI)
+}
+
+Wrong_OmegaIdx <- function(G, Fm, Hm, N, delta, nc, nc_sim) {
   if(printFlg == TRUE){
     print("In OmegaIdx Func")
   }
   memoverlap <- memOverlapCalc(Fm, Hm, delta, N, nc)
   
   OrigVal <-  as.data.frame(vertex_attr(G)) %>%
-    dplyr::select(any_of(c(letters[1:nc]))) %>%
+    dplyr::select(any_of(c(letters[1:nc_sim]))) %>%
     abs()
   
   oi <- OmegaIdx_(OrigVal, memoverlap,nc,N)
   return(oi)
+}
+
+## Community wise average triangle participation ratio
+Comm_TPR <- function(G, Fm, Hm, delta, N, nc, dir){
+  C <- memOverlapCalc(Fm, Hm, delta, N, nc)
+  tpr <- 0
+  tprVec <- c()
+  
+  ##Create a new community of background nodes that as unassigned
+  NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
+  C[,nc+1] <- as.numeric(NodesWoAssignment)
+  # print(igraph::plot.igraph(G,vertex.label = NA,vertex.size = 5,
+  #                           vertex.color = as.factor(V(G)$Cluster),
+  #                           edge.arrow.size= 0.1, edge.color = "grey28"))
+  for(i in 1:dim(C)[2]){
+    idx <- which(C[,i] == 1)
+    iG <- induced_subgraph(G,idx)
+    
+    # print(igraph::plot.igraph(iG,vertex.label = NA,vertex.size = 5,
+    #                           vertex.color = as.factor(V(iG)$Cluster),
+    #                           edge.arrow.size= 0.1, edge.color = "grey28"))
+    # 
+    #com <- rep(1, length(idx))
+    # Count triangles for each vertex
+    triangle_counts <- count_triangles(iG)
+    
+    # Identify vertices participating in triangles
+    participating_vertices <- sum(triangle_counts > 0)
+    
+    # Calculate the triangle participation ratio
+    total_vertices <- vcount(iG)
+    #tpr <- tpr + (participating_vertices / total_vertices)
+    tprVec <- c(tprVec,(participating_vertices / total_vertices) )
+  }
+  ## Triangle participation ratio of the whole network
+  Total_triangle_counts <- count_triangles(G)
+  
+  # Identify vertices participating in triangles
+  Total_participating_vertices <- sum(Total_triangle_counts > 0)
+  
+  # Calculate the triangle participation ratio
+  total_vertices <- vcount(G)
+  NWTPR <-  Total_participating_vertices / total_vertices
+  
+  ##TPR W the background cluster
+  tprW <- mean(tprVec, na.rm =TRUE)
+  
+  ##TPR not including the new unassigned cluster
+  tprWo <- mean(tprVec[1:nc], na.rm =TRUE)
+return(c(tprVec,tprW,tprWo,NWTPR,tprW/NWTPR))  
+  
+}
+
+## Ego splitting the graph to calculate conductance
+
+## implementing directed network 
+EgoSplitConductanceDirected <- function(G,Fm = FALSE, Hm = F, dir, delta = F, N =F, nc=F){
+  C <- memOverlapCalc(Fm, Hm, delta, N, nc)
+
+  G <- set_vertex_attr(G, "name", value = 1:vcount(G))
+  print(igraph::plot.igraph(G,vertex.label = NA,vertex.size = 5,edge.arrow.size= 0.1, edge.color = "grey28"))
+  
+  ##Create a new community of background nodes that as unassigned
+  NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
+  C[,nc+1] <- as.numeric(NodesWoAssignment)
+  
+  
+  Gsub <- list()
+  for(i in 1:dim(C)[2]){
+    Gsub[[i]] <- induced_subgraph(G, vids = which(C[,i] == 1))
+    Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "Origname", value = vertex_attr(Gsub[[i]],"name"))
+    Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "Group", value = i)
+    Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "name", value = paste0(vertex_attr(Gsub[[i]],"name"),"_",i))#rename_vertices(Gsub[[i]], paste0("_", i))
+    igraph::plot.igraph(Gsub[[i]],vertex.label = NA,vertex.size = 5,edge.arrow.size= 0.1, edge.color = "grey28")
+  }
+  CombinedGraph <- disjoint_union(Gsub)
+  
+  Vatt <- as.data.frame(vertex_attr(CombinedGraph)) %>% 
+    select(c(Origname, name, Group)) %>%
+    group_by(Origname) %>%
+    filter(n() > 1) %>%
+    tidyr::expand(item1 = name, item2 = name) %>%
+    filter(item1 != item2) %>%  # Avoid duplicates and self-pairs
+    ungroup()  
+  CombinedGraph <- set_edge_attr(CombinedGraph, name = "color", value = "grey28")
+  
+  CombinedGraph <- add_edges(CombinedGraph, as.vector(t(Vatt[,2:3])), color = "darkred")
+  
+    print(igraph::plot.igraph(CombinedGraph,vertex.label = NA,vertex.size = 5,
+                              vertex.color = as.factor(as.numeric(V(CombinedGraph)$Group)),
+                              edge.arrow.size= 0.1, edge.color = E(CombinedGraph)$color))
+  ConductanceVal <- rep(0,dim(C)[2])
+  for (i in 1:dim(C)[2]) {
+    S <- V(CombinedGraph)$name[which(as.numeric(V(CombinedGraph)$Group) == i)]
+    Sc <- V(CombinedGraph)$name[which(as.numeric(V(CombinedGraph)$Group) != i)]
+    
+    # Calculate cut size between S and Sc
+    cut_edges <- 0
+    for (edge in E(CombinedGraph)) {
+      ends <- ends(CombinedGraph, edge)
+      if ((ends[1] %in% S && ends[2] %in% Sc) || 
+          (ends[1] %in% Sc && ends[2] %in% S)) {
+        cut_edges <- cut_edges + 1
+      }
+    }
+    
+    # Calculate volume of S
+    vol_S <- sum(igraph::degree(CombinedGraph)[which(as.numeric(V(CombinedGraph)$Group) == i)])
+    vol_Sc <- sum(igraph::degree(CombinedGraph)[which(as.numeric(V(CombinedGraph)$Group) != i)])
+    
+    ConductanceVal[i] <- cut_edges / min(vol_S, vol_Sc)
+  }
+  ##punish internal density if nodes have no assignment
+  numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
+  
+  ## MEan conductance W the new background cluster
+  MeanConductanceW <- mean(ConductanceVal,na.rm =T)
+  
+  ## Mean conductance without the new background cluster
+  MeanConductanceWo <- mean(ConductanceVal[1:nc],na.rm =T )
+  
+  ## Punish based on unassigned nodes
+  WeightedMeanConductanceW <- MeanConductanceW*(N/(N - numNodesWoAssignment ))
+  WeightedMeanConductanceWo <- MeanConductanceWo*(N/(N - numNodesWoAssignment ))
+  
+  #ConductanceVal <- clustAnalytics::conductance(CombinedGraph, as.numeric(V(CombinedGraph)$Group))
+  return(c(ConductanceVal, MeanConductanceW, MeanConductanceWo,WeightedMeanConductanceW, WeightedMeanConductanceWo))
+}
+
+
+##Implementation below is the where I convert directed network into an undirected network. 
+EgoSplitConductance <- function(G,Fm = FALSE, Hm = F, dir, delta = F, N =F, nc=F){
+  C <- memOverlapCalc(Fm, Hm, delta, N, nc)
+
+  #if(dir == "directed"){
+  #  G <- convertToUndir(G,nc)
+  #}
+  G <- set_vertex_attr(G, "name", value = 1:vcount(G))
+  #print(igraph::plot.igraph(G,vertex.label = NA,vertex.size = 5,edge.arrow.size= 0.1, edge.color = "grey28"))
+  
+  ##Create a new community of background nodes that as unassigned
+  NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
+  C[,nc+1] <- as.numeric(NodesWoAssignment)
+  
+  ## Get original graph edges
+  edge_orig <- as_edgelist(G)
+  
+  ## list of induced groups
+  Gsub <- list()
+  
+  ## List of intercluster links
+  dropped_edges <- matrix(0,nrow = 0,ncol =2)
+  for(i in 1:dim(C)[2]){
+    idx <- which(C[,i] == 1)
+    Gsub[[i]] <- induced_subgraph(G, vids = idx)
+    #edge_sub <- as_edgelist(Gsub[[i]])
+    
+    tmp_edges <-  as_data_frame(G, what = "edges")[E(G)[V(G)[-idx] %--% V(G)[idx]], c("from", "to")]
+    dropped_edges<- rbind(dropped_edges,tmp_edges)
+    Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "Origname", value = vertex_attr(Gsub[[i]],"name"))
+    Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "Group", value = i)
+    Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "name", value = paste0(vertex_attr(Gsub[[i]],"name"),"_",i))#rename_vertices(Gsub[[i]], paste0("_", i))
+   # igraph::plot.igraph(Gsub[[i]],vertex.label = NA,vertex.size = 5,edge.arrow.size= 0.1, edge.color = "grey28")
+    }
+  CombinedGraph <- disjoint_union(Gsub)
+  
+  ## keep distinct edges
+  dropped_edges <- dropped_edges %>% distinct()
+  colnames(dropped_edges) <- c("from","to")
+  edges <- matrix(0,nrow=0,ncol=2)
+  ##combined graph names and original names
+  Orig <- V(CombinedGraph)$Origname
+  name <- V(CombinedGraph)$name
+  if(nrow(dropped_edges) >0 ){
+    for(i in 1:nrow(dropped_edges)){
+      from <-  name[Orig == dropped_edges[i,1]]
+      to <-    name[Orig == dropped_edges[i,2]]
+      
+      edges <- rbind(edges, expand.grid(from, to))
+    }
+  }
+  
+  
+  Vatt <- as.data.frame(vertex_attr(CombinedGraph)) %>% 
+    select(c(Origname, name, Group)) %>%
+    group_by(Origname) %>%
+    filter(n() > 1) %>%
+    tidyr::expand(item1 = name, item2 = name)
+  
+  if(dir == "directed"){
+    Vatt <- Vatt %>% filter(item1 != item2) %>%  # Avoid duplicates and self-pairs
+      ungroup() 
+  }else{
+    Vatt <- Vatt %>% filter(item1 < item2) %>%  # Avoid duplicates and self-pairs
+    ungroup()  
+  }
+  
+  Vatt <- rbind(as.matrix(Vatt[2:3]), as.matrix(edges))
+  #CombinedGraph <- add_edges(CombinedGraph, as.vector(t(Vatt)))
+  #CombinedGraph <- add_edges(CombinedGraph, as.vector(dropped_edges))
+  CombinedGraph <- set_edge_attr(CombinedGraph, name = "color", value = "grey28")
+
+  CombinedGraph <- add_edges(CombinedGraph, as.vector(t(Vatt)), color = "darkred")
+  
+  CombinedGraph <- simplify(CombinedGraph,remove.multiple = TRUE,remove.loops = TRUE)
+  
+  # print(igraph::plot.igraph(CombinedGraph,vertex.label = NA,vertex.size = 5,
+  #                           vertex.color = as.factor(as.numeric(V(CombinedGraph)$Group)),
+  #                           edge.arrow.size= 0.1, edge.color = E(CombinedGraph)$color))
+  #    
+  ConductanceVal <- rep(0,dim(C)[2])
+  for (i in 1:dim(C)[2]) {
+    S <- V(CombinedGraph)$name[which(as.numeric(V(CombinedGraph)$Group) == i)]
+    Sc <- V(CombinedGraph)$name[which(as.numeric(V(CombinedGraph)$Group) != i)]
+    
+    # Calculate cut size between S and Sc
+    cut_edges <- 0
+    for (edge in E(CombinedGraph)) {
+      ends <- ends(CombinedGraph, edge)
+      if ((ends[1] %in% S && ends[2] %in% Sc) || 
+          (ends[1] %in% Sc && ends[2] %in% S)) {
+        cut_edges <- cut_edges + 1
+      }
+    }
+    
+    # Calculate volume of S
+    vol_S <- sum(igraph::degree(CombinedGraph)[which(as.numeric(V(CombinedGraph)$Group) == i)])
+    vol_Sc <- sum(igraph::degree(CombinedGraph)[which(as.numeric(V(CombinedGraph)$Group) != i)])
+    
+    ConductanceVal[i] <- cut_edges / min(vol_S, vol_Sc)
+  }
+  ##punish internal density if nodes have no assignment
+  numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
+  
+  ## MEan conductance W the new background cluster
+  MeanConductanceW <- mean(ConductanceVal,na.rm =T)
+  
+  ## Mean conductance without the new background cluster
+  MeanConductanceWo <- mean(ConductanceVal[1:nc],na.rm =T )
+  
+  ## Punish based on unassigned nodes
+  WeightedMeanConductanceW <- MeanConductanceW*(N/(N - numNodesWoAssignment ))
+  WeightedMeanConductanceWo <- MeanConductanceWo*(N/(N - numNodesWoAssignment ))
+  
+  #ConductanceVal <- clustAnalytics::conductance(CombinedGraph, as.numeric(V(CombinedGraph)$Group))
+ return(c(ConductanceVal, MeanConductanceW, MeanConductanceWo,WeightedMeanConductanceW, WeightedMeanConductanceWo))
+}
+
+##internal density of a cluster. Need to be maximized
+InternalDensity <- function(G, d, epsilon, dir){
+  
+  Fm <- d$Ffin
+  Hm <- d$Hfin
+  
+  N <- dim(Fm)[1]
+  nc <- dim(Fm)[2]
+  
+  delta <- getDelta(N, epsilon)
+  
+  C <- memOverlapCalc(Fm, Hm, delta, N, nc)
+  ##Create a new community of background nodes that as unassigned
+  NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
+  C[,nc+1] <- as.numeric(NodesWoAssignment)
+  
+  InternalDensityVal <- rep(0,dim(C)[2])
+  n <- rep(0,dim(C)[2])
+  for(i in 1:dim(C)[2]){
+    idx <- which(C[,i] == 1)
+    n[i] <- length(idx)
+    Gsub <- induced_subgraph(G, vids = idx)
+    if(dir == "directed"){
+      possEdges <- n[i] * (n[i]-1)
+    }else{
+      possEdges <- n[i] * (n[i]-1)/2
+    }
+    InternalDensityVal[i] <- ecount(Gsub)/possEdges
+  }
+  ## considering the background custer
+  CommInternalDensityW <- sum(InternalDensityVal, na.rm = TRUE)
+  
+  ## without considering the background cluster
+  CommInternalDensityWo <- sum(InternalDensityVal[1:nc], na.rm = TRUE)
+  
+  
+  ## Calculating the total internal density
+  if(dir == "directed"){
+    possEdges <- N * (N-1)
+  }else{
+    possEdges <- N * (N-1)/2
+  }
+  TotalInternalDensity <- ecount(G)/possEdges
+  
+  ##punish internal density if nodes have no assignment
+  numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
+  WeightedweightedInternalDensityW <- CommInternalDensityW* (N-numNodesWoAssignment)/N
+  WeightedweightedInternalDensityWo <- CommInternalDensityWo* (N-numNodesWoAssignment)/N
+  
+  return(c(InternalDensityVal, CommInternalDensityW,CommInternalDensityWo,
+           TotalInternalDensity,WeightedweightedInternalDensityW,WeightedweightedInternalDensityWo))
+}
+
+##calculate attribute cohesion
+## Dissimilarity score or distance measure. Have to minimize.
+## also includes non normalized variance. Does not take scales of the attributes into consideration
+AverageDissimilarityScore <- function(d,epsilon){
+  
+  Z <- as.data.frame(d$Zout_cov) 
+  
+  Fm <- d$Ffin
+  Hm <- d$Hfin
+  
+  N <- dim(Fm)[1]
+  nc <- dim(Fm)[2]
+  
+  delta <- getDelta(N, epsilon)
+  C <- memOverlapCalc(Fm, Hm, delta, N, nc)
+  ##Create a new community of background nodes that as unassigned
+  NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
+  C[,nc+1] <- as.numeric(NodesWoAssignment)
+  
+  numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
+  
+  colnames(C) <- letters[1:dim(C)[2]]
+  
+  n_cov <- dim(Z)[2]
+  vm <- matrix(0, nrow = dim(C)[2], ncol = n_cov)
+  vmNorm <- matrix(0, nrow =  dim(C)[2], ncol = n_cov)
+  
+  gm <- matrix(0, nrow = 1, ncol = n_cov)
+  n <- colSums(C)
+  for(i in 1:n_cov){
+    gm[1,i] <- sum((Z[,i] - mean(Z[,i]))^2) / N
+    for(j in 1:dim(C)[2]){
+      ## for each attribute a find the variance in cluster C
+      idx <- which(C[,j] == 1)
+      vm[j, i] <- sum((Z[idx, i] - mean(Z[idx,i]))^2) / length(idx)
+      vmNorm[j,i] <- vm[j,i]/gm[1,i]
+    }
+  }
+  
+  AvgVarianceW <- sum((rowSums(vm)/n_cov) * (n), na.rm =  TRUE)/N
+  DispersionScoreW <- sum((rowSums(vmNorm)/n_cov) * (n), na.rm = TRUE)/N
+  
+  ## Average variance and dispersion score without taking the unassigned nodes into consideration
+  AvgVarianceWo <- sum((rowSums(vm[1:nc, ])/n_cov) * (n[1:nc]))/N
+  DispersionScoreWo <- sum((rowSums(vmNorm[1:nc, ])/n_cov) * (n[1:nc]))/N
+  
+  ## Punish the value of variance and dispersion if there are nodes that have not been assigned
+  WeightedAvgVarianceW <- AvgVarianceW * (N/(N - numNodesWoAssignment ))
+  WeightedDispersionScoreW <- DispersionScoreW * (N/(N - numNodesWoAssignment ))
+  
+  return(c(AvgVarianceW, DispersionScoreW,AvgVarianceWo, DispersionScoreWo,WeightedAvgVarianceW,WeightedDispersionScoreW))
+}
+
+## similarity within each cluster
+# Have to maximizehigher the better
+## Need to implement Jaccard similarity for categorical variables
+AverageSimilarityScore <- function(d, epsilon){
+  
+  Z <- as.data.frame(d$Zout_cov) 
+  
+  
+  Fm <- d$Ffin
+  Hm <- d$Hfin
+  
+  N <- dim(Fm)[1]
+  nc <- dim(Fm)[2]
+  
+  delta <- getDelta(N, epsilon)
+  C <- memOverlapCalc(Fm, Hm, delta, N, nc)
+  
+  ##Create a new community of background nodes that as unassigned
+  NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
+  C[,nc+1] <- as.numeric(NodesWoAssignment)
+  
+  numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
+  
+  colnames(C) <- letters[1:dim(C)[2]]
+  
+  n_cov <- dim(Z)[2]
+  sim <- rep(0,dim(C)[2])
+  numClust <- rep(0,dim(C)[2])
+  Z_normalized <- apply(Z, 2, function(x) (x - min(x)) / (max(x) - min(x)))
+  for(i in 1:dim(C)[2]){
+    idx <- which(C[,i] == 1)
+    numClust[i] <- length(idx)
+    if(length(idx)>0){
+      sim[i] <- AvgCosineSimilarity(Z_normalized[idx,],n_cov)
+    }
+  }
+  
+  ##Global average intracluster similarity With assigned nodes
+  AvgIntraClusterSimilarityW <- sum(sim * numClust,na.rm =TRUE)/N
+  
+  ##Global average intracluster similarity Without assigned nodes
+  AvgIntraClusterSimilarityWo <- sum(sim[1:nc] * numClust[1:nc])/N
+  
+  ## Punish the score for number of nodes not assigned
+  WeightedAvgIntraClusterSimilarityW <- AvgIntraClusterSimilarityW * (N-numNodesWoAssignment)/N
+  WeightedAvgIntraClusterSimilarityWo <- AvgIntraClusterSimilarityWo * (N-numNodesWoAssignment)/N
+  
+  return(c(AvgIntraClusterSimilarityW, AvgIntraClusterSimilarityWo, WeightedAvgIntraClusterSimilarityW, WeightedAvgIntraClusterSimilarityW))
+  
+}
+
+AvgCosineSimilarity <- function(Z,n_cov){
+  Z <- as.matrix(Z, ncol = n_cov)
+  
+  L2_Norm <- apply(Z, 1 , function(x) sqrt(sum(x^2)))
+  X <- as.matrix(Z/ L2_Norm)
+  CosSim <- X %*% t(X)
+  AvgCosSim <- mean(CosSim[upper.tri(CosSim)], na.rm = TRUE)
+  return(AvgCosSim)
 }
 
 conductance <- function(graph, communities, ground_truth) {
