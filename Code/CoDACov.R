@@ -124,7 +124,7 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
     for(i in 1:dim(X_out)[2]){
       if(dir == "undirected"){
         mod <- glm(X_out[,i] ~ Fm,family = "binomial")
-          #glm(X_out[,i] ~ Fm[,1]+Fm[,2]+Fm[,3],family = "binomial")
+        #glm(X_out[,i] ~ Fm[,1]+Fm[,2]+Fm[,3],family = "binomial")
       } else{
         mod <- glm(X_out[,i] ~ Fm + Hm,family = "binomial")
         #Fm[,1]+Fm[,2]+Fm[,3]+Hm[,1]+Hm[,2]+Hm[,3],family = "binomial")
@@ -319,16 +319,16 @@ SetContinuousCov <- function(G,o, N,nc, o_start, C, connType,
   ## for each community set the covariate values. 
   for (i in 1:nc) {
     if(s < length(dist)){
-    ## set incoming community covariate
-    idx_in <- which(C[,i] == -1)
-    contVal[idx_in, i] <- rnorm(length(idx_in), dist[[s]][1], dist[[s]][2])
-    #Set outgoing community covariate
-    idx_out <- which(C[,i] == 1)
-    contVal[idx_out, i] <- rnorm(length(idx_out), dist[[s+1]][1], dist[[s+1]][2])
-    ## setting covariates for the non community nodes
-    idx_n <- which(!(1:N %in% c(idx_in, idx_out)))
-    contVal[idx_n, i] <- rnorm(length(idx_n), dist[[s+2]][1], dist[[s+2]][2])
-    s <- s+3
+      ## set incoming community covariate
+      idx_in <- which(C[,i] == -1)
+      contVal[idx_in, i] <- rnorm(length(idx_in), dist[[s]][1], dist[[s]][2])
+      #Set outgoing community covariate
+      idx_out <- which(C[,i] == 1)
+      contVal[idx_out, i] <- rnorm(length(idx_out), dist[[s+1]][1], dist[[s+1]][2])
+      ## setting covariates for the non community nodes
+      idx_n <- which(!(1:N %in% c(idx_in, idx_out)))
+      contVal[idx_n, i] <- rnorm(length(idx_n), dist[[s+2]][1], dist[[s+2]][2])
+      s <- s+3
     }
   }
   
@@ -467,7 +467,7 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
     F_u[Cnew > 0] <- rbeta(sum(Cnew > 0),a,b)
     H_u[Cnew < 0] <- rbeta(sum(Cnew < 0),a,b)
   }else {
-    F_u[Cnew > 0] <- rbeta(sum(Cnew > 0),a,b)
+    F_u[Cnew > 0] <- 0.4#rbeta(sum(Cnew > 0),a,b)
     H_u <- F_u
   }
   
@@ -530,7 +530,9 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
 
 updateWtmat <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W, alphaLL, 
                         missVals, alpha, start, end, dir, inNeigh, outNeigh, lambda, penalty){
-  
+  if(printFlg == TRUE){
+    print("in updateWtmat")
+  }
   ## Getting sum of all the weights of Fv. Have to modify this for CoDa as opposed to CESNA 
   
   # calculate the sigma sq value
@@ -892,7 +894,7 @@ SigmaSqCalc <- function(Z, beta, Ftot, Htot, missVals,dir) {
     Fm <- cbind(1,Ftot, Htot)
   }else{  
     Fm <- cbind(1,Ftot)
-    }
+  }
   
   for (i in 1:dim(beta)[1]) {
     z_sum <- Z[!missVals[, i], i] - (t(beta[i, ]) %*% t(Fm[!missVals[, i], ]))
@@ -1086,7 +1088,9 @@ LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir,
 
 updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, 
                                  impType, alphaLin, penalty,seed){
-  
+  if(printFlg == TRUE){
+    print("In update linear param")
+  }
   set.seed(seed)
   
   if(dir == "directed"){
@@ -1104,9 +1108,10 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
   nc <- ncol(Wtm1)
   sigmaSq <- NULL
   mod <- list()
-  
+  logLik <- 0
+  predictions <- list()
   if (length(beta) > 0) {
-
+    
     for(i in 1:dim(Z)[2]){
       ## "GroupLASSO","Ridge","LASSO","ElasticNet")
       ## filter out the missing data so we update only based on the avaiable data
@@ -1136,38 +1141,50 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
         #mod[[i]] <- cv.glmnet(X , y, alpha = 1, maxit = 1000) 
         #beta[i,] <- coef(mod[[i]], s = "lambda.min")
         
-        mod[[i]] <- glmnet(X, y, family = "gamma", lambda = lambda, alpha = 1)
-                           #start = beta[i,], maxit = 1000) 
+        mod[[i]] <- glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 1, maxit = 1000)
+        #start = beta[i,], maxit = 1000) 
         beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
         
       }else if(penalty =="ElasticNet"){
         #mod[[i]] <- cv.glmnet(X , y, alpha = 0.5, maxit = 1000) 
         #beta[i,] <- coef(mod[[i]], s = "lambda.min")
         
-        mod[[i]] <- glmnet(X, y, family = "gamma", lambda = lambda, alpha = 0.5)#, maxit = 1000) 
+        mod[[i]] <- glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 0.5, maxit = 1000) 
         beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
         
       }else if(penalty == "Ridge"){
         #mod[[i]] <- cv.glmnet(X , y, alpha = 0, maxit = 1000) 
         #beta[i,] <- as.matrix(coef(mod[[i]], s = "lambda.min"))
         
-        mod[[i]] <- glmnet(X, y, family = "gamma", lambda = lambda, alpha = 0)#, maxit = 1000) 
+        mod[[i]] <- glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 0, maxit = 1000) 
         beta[i,] <- as.matrix(coef(mod[[i]]))
       }
+      
+      predictions[[i]] <- predict(mod[[i]], newx = X, s = lambda, type = "response")
+      
+      # MANUALLY CALCULATE LOG-LIKELIHOOD
+      # For Gaussian regression (Linear Model)
+      logLik <- logLik + sum(dnorm(y, mean = predictions[[i]], sd = sqrt(mean((y - predictions[[i]])^2)), log = TRUE))
     }
     
     ## GROUP LASSO CODE IS DISABLED 
     if(penalty == "GroupLASSO"){
       betaret <- cbind(beta[,1], beta[, seq(2,((nc*2)+1),by=2)], beta[,seq(3,((nc*2)+1), by=2)])
-    } else{ betaret <- beta}
+    }else{ 
+      betaret <- beta
+    }
     
     sigmaSq <-  SigmaSqCalc(Z, betaret, Wtm1,Wtm2, missVals,dir)
     
     if (sum(missVals) > 0) {
-      Zret <- PredictCovLin(Wtm1, Wtm2, Z, betaret, missVals,dir, impType)
+      for(i in 1:dim(Z)[2]){
+        idx <- which(missVals[, i])
+        Zret[idx, i] <- predictions[[i]][idx]
+      }
+      #Zret <- PredictCovLin(Wtm1, Wtm2, Z, betaret, missVals,dir, impType)
     }
   }
-  return( list( betaret, Zret, sigmaSq) )
+  return( list( betaret, Zret, sigmaSq, logLik) )
 }
 
 OldupdateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, 
@@ -1220,9 +1237,10 @@ Lz_cal <- function(beta,N,Z,Fmat, Hmat,sigmaSq,dir,lambda,missVals, penalty, alp
       df <- sum(beta[j,] != 0)  
       
       RSS <- sum(( Z[,j]  - (Fin %*% beta[j, ])) ^ 2)
-      S <- S - N/2 * (log(2*pi) + log(RSS/N) + 1)
-        #- ((N/2)*(log((2*pi*RSS)/(N-df))+1) + (N-df)/2)
-        #(N*log(2*pi*sigmaSq[j])/2) - (S_tmp / (2 * sigmaSq[j])) - lambda * penLL(penalty , beta[j,])
+      S <- S - RSS/2
+      #N/2 * (log(2*pi) + log(RSS/N) + 1)
+      #- ((N/2)*(log((2*pi*RSS)/(N-df))+1) + (N-df)/2)
+      #(N*log(2*pi*sigmaSq[j])/2) - (S_tmp / (2 * sigmaSq[j])) - lambda * penLL(penalty , beta[j,])
     }
   }
   return(S)
@@ -1253,7 +1271,7 @@ Lg_cal <- function(G, Ftot, Htot,Eneg,epsilon, dir, E){
 findLLDir <- function(G,  Ftot, Htot, Win = NA, Wout = NA, X_in = NA,X_out = NA,
                       betain = NULL, betaout = NULL,Z_in = NA, Z_out = NA,
                       sigmaSqin = NA,sigmaSqout = NA,  alphaLL, Eneg, dir, 
-                      epsilon, lambda,missVals, penalty, alphaLin, E) {
+                      epsilon, lambda,missVals, penalty, alphaLin, E, LinLL =0) {
   if(printFlg == TRUE){
     print("In Find LLDir Func")
   }
@@ -1279,7 +1297,7 @@ findLLDir <- function(G,  Ftot, Htot, Win = NA, Wout = NA, X_in = NA,X_out = NA,
   S3_out <- Lz_cal(beta = betaout,N = N,Z = Z_out,
                    Fmat = Ftot, Hmat = Htot,
                    sigmaSq = sigmaSqout,dir,lambda, missVals, penalty, alphaLin)
-  S3 <- S3_in + S3_out
+  S3 <- LinLL#S3_in + S3_out
   
   ## Calculating the final log likelihood
   ll <- (S1 +  (S2 + S3))
@@ -1300,12 +1318,13 @@ initCov <- function(covtmp, CovNames) {
   return(list(X_in, numMissVal))
 }
 
-initWtmat <- function(G, mode, N, nc, seed,specOP){
+initWtmat <- function(G, mode, N, nc, seed,specOP,epsilon){
   set.seed(seed)
   
   #colwts <- igraph::degree(G, mode = mode) / sum(igraph::degree(G, mode = mode))
   #Wtmat <- replicate(nc, colwts) + matrix(nrow = N, ncol = nc, runif(nc * N, 0.0001,0.001))
-  Wtmat <- matrix(nrow = N, ncol = nc, runif(nc * N, 0.0001,0.001))
+  Wtmat <- matrix(nrow = N, ncol = nc,runif(nc * N, 0.0001,0.0005))#getDelta(N,epsilon))
+  #matrix(nrow = N, ncol = nc, 0.0001)#matrix(nrow = N, ncol = nc, runif(nc * N, 0.0001,0.001))
   rownames(Wtmat) <- names(igraph::degree(G, mode = mode))
   return(Wtmat)
 }
@@ -1349,7 +1368,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
                  nitermax, orig,randomize = TRUE, CovNamesLinin = c(),
                  CovNamesLinout = c(),CovNamesLPin = c(),CovNamesLPout = c(), 
                  dir, alphaLL = NULL,test = TRUE,missing = NULL, covOrig, 
-                 epsilon,  impType, alphaLin, penalty, seed, covInit, specOP) {
+                 epsilon,  impType, alphaLin, penalty, seed, covInit, specOP,nc_sim) {
   if(printFlg == TRUE){
     print("In CoDA Func")
   }
@@ -1359,12 +1378,12 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   }else{ncoef = nc}
   
   ## Community weights outgoing connections
-  Ftot <- initWtmat(G,"out",N,nc, seed, specOP)
+  Ftot <- initWtmat(G,"out",N,nc, seed, specOP,epsilon)
   Finit <- Ftot
   
   ## Community weights outgoing connections
   if(dir == "directed"){
-    Htot <- initWtmat(G,"in",N,nc, (seed+10), specOP)
+    Htot <- initWtmat(G,"in",N,nc, (seed+10), specOP,epsilon)
     Hinit <- Htot
   } else{
     Htot <- Ftot
@@ -1511,7 +1530,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   
   ## Getting the negative adjacency matrix
   Aneg <- 1 - (1 * as.matrix(as_adjacency_matrix(G)))
-  Eneg  <- as_edgelist(graph_from_adjacency_matrix(Aneg, mode = dir))
+  Eneg  <- as_edgelist(simplify(graph_from_adjacency_matrix(Aneg, mode = dir)))
   
   ##Initial log likelihood value
   LLold <- -10000
@@ -1527,26 +1546,26 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   
   corMat <- matrix(0, nrow =0 , ncol = 15)
   
-  delta <- getDelta(N)
+  delta <- getDelta(N,epsilon)
   continue <- TRUE
   s <- 1:N
   beta_old <- betaout
   
   ## get the edges in the graph
   E <- igraph::as_edgelist(G)
-  
+  LinLL = 0
   repeat{  
     ## Update the log likelihood.
     LLvec <- findLLDir(G, Ftot, Htot, Win, Wout, X_in, X_out, betain, betaout,
                        Z_in, Z_out, sigmaSqin, sigmaSqout, alphaLL, Eneg, 
-                       dir, epsilon, lambda, missValsout, penalty, alphaLin, E)
+                       dir, epsilon, lambda, missValsout, penalty, alphaLin, E, LinLL)
     LLnew <- LLvec[1]
     pctInc <- abs((LLnew - LLold) /(LLold)) * 100
     if(is.nan(pctInc)){
       if(test == FALSE){
         
         arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
-        OmegaVal <- c(OmegaVal, OmegaIdx(G, Ftot, Htot, N, delta,nc))
+        OmegaVal <- c(OmegaVal, OmegaIdx(G, Ftot, Htot, N, delta,nc, nc_sim))
         
         MSEtmp <- MSEop(Ftot, Htot, covOrig, betaout,N, dir, o_in,o_out, missValsout)
         mseMD <- rbind(mseMD, MSEtmp[[1]])
@@ -1560,7 +1579,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
       FAILURE <- TRUE
       print(paste0("ERROR in Pct increase ,total iterations ", 
                    iter, " with seed value ", seed, " Final OI ",
-                   round(OmegaIdx(G, Ftot, Htot, N, delta, nc),3)))
+                   round(OmegaIdx(G, Ftot, Htot, N, delta, nc, nc_sim),3)))
       break
     }
     
@@ -1569,7 +1588,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
         lllst <- rbind(lllst, LLvec)
         
         arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
-        OmegaVal <- c(OmegaVal, OmegaIdx(G, Ftot, Htot, N, delta,nc))
+        OmegaVal <- c(OmegaVal, OmegaIdx(G, Ftot, Htot, N, delta,nc,, nc_sim))
         
         MSEtmp <- MSEop(Ftot, Htot, covOrig, betaout,N, dir, o_in,o_out, missValsout)
         mseMD <- rbind(mseMD, MSEtmp[[1]])
@@ -1579,12 +1598,13 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
         accuracyMD <- rbind(accuracyMD, accutmp[[1]])
         accuracy <- rbind(accuracy, accutmp[[2]])
         
+        
       }
       FAILURE <- FALSE
       print(paste0("The final percent change ", round(pctInc,6), 
                    " ,total iterations ", iter, " with seed value ", seed, 
                    " Final LogLik ", round(LLnew,3),
-                   " Final OI ",round(OmegaIdx(G, Ftot, Htot, N, delta, nc),3), 
+                   " Final OI ",round(OmegaIdx(G, Ftot, Htot, N, delta, nc, nc_sim),3), 
                    " MSE ", paste0(round(tail(mse,1),3), collapse = ", "),
                    " MSE MD ", paste0(round(tail(mseMD,1),3), collapse = ", ")))
       break
@@ -1622,13 +1642,13 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     betaout <- c1[[1]]
     Z_out <- c1[[2]]
     sigmaSqout <- c1[[3]]
-    
+    LinLL <- c1[[4]]
     Z_in <- 0
     
     if(test == TRUE){
       
       arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
-      OIn <- OmegaIdx(G, Ftot, Htot, N, delta,nc)
+      OIn <- OmegaIdx(G, Ftot, Htot, N, delta,nc, nc_sim)
       OmegaVal <- c(OmegaVal, OIn)
       MSEtmp <- MSEop(Ftot, Htot, covOrig, betaout,N, dir, o_in,o_out, missValsout)
       mseMD <- rbind(mseMD, MSEtmp[[1]])
@@ -1640,13 +1660,15 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
       
     }
   }
+  
   if(dir == "directed"){
     WtMat <- cbind(Ftot, Htot)
   }else{
     WtMat <- Ftot
   }
-  BICv <- c(BIC(LLnew, nc, N, ecount(G)), ICL(LLnew, WtMat, nc, N,ecount(G)), LLnew, nc, N, ecount(G))
-  
+  BICv <- c(BIC(LLnew, nc, N, ecount(G)), 
+            ICL(LLnew, WtMat, nc, N,ecount(G)), 
+            LLnew, nc, N, ecount(G))
   Ffin <- Ftot
   Hfin <- Htot
   Winfin <- Win
