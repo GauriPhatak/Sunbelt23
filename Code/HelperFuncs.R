@@ -417,12 +417,12 @@ findEdges <- function(geom, hwd, id, type){
 
 ## Calculate Bayesian Informatin Criterion(BIC)
 BIC <- function(logLik, nc, N,E){
-  BIC <- -2*logLik + nc*N*log(E)
+  BIC <- (-2*logLik) + (nc*N*log(E))
   return(BIC)
 }
 
 BICReg <- function(logLik, nc, N,E){
-  BIC <- -2*logLik + nc*log(N)
+  BIC <- (-2*logLik) + (nc*log(N))
   return(BIC)
 }
 
