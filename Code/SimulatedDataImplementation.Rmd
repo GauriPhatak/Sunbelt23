@@ -1,0 +1,586 @@
+---
+title: "SimulatedDataImplementation"
+output: pdf_document
+date: "2025-09-22"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+getwd()
+#source(paste0(getwd(),"/CoDACov.R"))
+
+library(tidyverse)
+library(dplyr)
+library(igraph)
+library(png)
+library(RColorBrewer)
+library(gridExtra)
+library(ggpubr)
+library(ecr)
+library(nsga2R)
+
+```
+
+
+# metrics for simulated data
+
+For continuous covariates only:
+No missing data: 4clustersims_new.rds
+
+10 and 25% missing data: 4clustersims_miss.rds
+
+For Binary covariates only:
+
+
+```{r,warning=FALSE}
+
+getwd()
+## Reading combination of parameters
+filePath <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/4clustersims_new.rds"
+## Missing: "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/4clustersims_miss.rds"
+## No missing : "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/4clustersims_new.rds"
+
+S <- readRDS(filePath)
+S$penalty <- as.character(S$penalty)
+## Reading names of files
+boxFolder <- "C:/Users/gauph/Box/SimulationOutput/CoDAOP/4ClusterBICtest_big6/"
+## Missing: "C:/Users/gauph/Box/SimulationOutput/CoDAOP/4ClutserBICtest_big6_miss/"
+## No missing: "C:/Users/gauph/Box/SimulationOutput/CoDAOP/4ClusterBICtest_big6/"
+files <- list.files(boxFolder)
+
+N <- 200
+nsim <- 2
+epsilon <- 0.00001
+delta <- getDelta(N,epsilon)
+
+
+params <- matrix(0, nrow = 0, ncol = 8)
+zerocoef <- matrix(0,nrow = 0, ncol = 3)
+numNodesPerCluster <- matrix(0, nrow =0, ncol = 8)
+conduct <- matrix(0, nrow =0, ncol = 8)
+
+## setting up output for covariate simulations
+cn <- c("MeanConductanceW","MeanConductanceWo","WeightedMeanConductanceW","WeightedMeanConductanceWo",
+        "tprW","tprWo","tprWW","tprWoW",
+        "AvgVarianceW","DispersionScoreW","AvgVarianceWo","DispersionScoreWo","WeightedAvgVarianceW","WeightedDispersionScoreW",
+        "AvgIntraClusterSimilarityW","AvgIntraClusterSimilarityWo","WeightedAvgIntraClusterSimilarityW","WeightedAvgIntraClusterSimilarityWo",
+        "CommInternalDensityW","CommInternalDensityWo","TotalInternalDensity","WeightedInternalDensityW","WeightedInternalDensityWo",
+        "Silhouette",
+        "OI","sIdx","bigN","i","nc","dir")
+metricsCov <- matrix(0, nrow =0,ncol = length(cn))
+cov_opCols <- c("Dir","nc","bigN","nsim","BIC","ICL","LL","nc2","Nnodes","Nedges",
+                "OI","MSE1","MSE2","MSE3", "sIdx", "newOI","nodesWoAssignment","degree0","degree1", "i")
+cov_op <- matrix(0, nrow = 0, ncol = length(cov_opCols))
+
+## setting up output for no covariate values
+nocovCols <- c("Dir","nc","bigN","nsim","BIC","ICL","LL","nc2", "Nnodes","Nedges",
+               "OI","sIdx", "newOI","nodesWoAssignment","degree0","degree1","i")
+nocov_op <- matrix(0, nrow = 0, ncol = length(nocovCols))
+
+
+cn_nc <- c("MeanConductanceW","MeanConductanceWo","WeightedMeanConductanceW","WeightedMeanConductanceWo",
+           "tprW","tprWo","tprWW","tprWoW",
+           "CommInternalDensityW","CommInternalDensityWo","TotalInternalDensity","WeightedInternalDensityW","WeightedInternalDensityWo",
+           "OI","sIdx","bigN","dir","i","nc")
+metricsNoCov <- matrix(0,nrow =0, ncol = length(cn_nc)) 
+## find the number of nodes without assignmment
+
+numNodesWoAssignment <- c()
+nc_sim <- 4
+
+```
+
+
+```{r}
+for(fn in files){
+  
+  df_rds <- readRDS(paste0(boxFolder,fn))
+  sIdx <- as.numeric(str_extract_all(fn, "\\d+")[[1]])[2]
+  alphaV <- df_rds[[8]]$V2[1][[1]]
+  lambdaV <- df_rds[[8]]$V5[1][[1]]
+  pClustOLV <- df_rds[[8]]$V25[[1]]
+  penaltyV <- as.character(df_rds[[8]]$V29[1][[1]])
+  pctMiss <- ifelse(is.null(unlist(df_rds[[8]]$V10[1])[1]) , 0 , unlist(df_rds[[8]]$V10[1])[1])
+  params <- rbind(params, c(sIdx, alphaV,lambdaV,pClustOLV,penaltyV,pctMiss,length(df_rds[[1]]),length(df_rds[[2]])))
+  i <- 1
+  
+  for(bigN in 1:S$bigN[1]){
+    G_orig <-  df_rds[[3]][[bigN]]
+    for(nsim in 1:nsim){
+      for(dir in c("directed","undirected")){
+        for(nc in S$test_nc[[1]]){
+          
+          if(dir == "directed"){
+            G <- G_orig
+          }else{
+            G <- convertToUndir(G_orig,nc_sim)
+          }
+          
+          ## find the number of nodes with degree 0 or 1
+          degree0 <- sum(igraph::degree(G) == 0 )
+          degree1 <- sum(igraph::degree(G) == 1 )
+          
+          ## Pct missing data
+          
+          if(length(df_rds[[1]][[i]]) > 0){
+            if(!is.null(df_rds[[1]][[i]])){
+              d <- df_rds[[1]][[i]]
+              bicOP <- d$bic
+              Fm <- d$Ffin
+              Hm <- d$Hfin
+              
+              ## find the number of nodes without assigned cluster
+              C <- memOverlapCalc(Fm,Hm,delta, N, nc)
+              Z <- d$Zout_cov
+              
+              currval <- sum(rowSums(C) == 0)
+              numNodesWoAssignment <- c(numNodesWoAssignment, currval)
+              
+              ## Calculating the metrics
+              Silhouette <- SilhouetteScore(C, Z)
+              conduct <- EgoSplitConductance(G,Fm, Hm, dir, delta, N, nc)
+              TPR     <- Comm_TPR(G, Fm, Hm, delta, N, nc, dir)
+              ADS     <- AverageDissimilarityScore(d,epsilon)
+              AS      <- AverageSimilarityScore(d,epsilon)
+              ID      <- InternalDensity(G, d, epsilon, dir)
+              newOI   <- OmegaIdx(G, Fm, Hm, N, delta, nc, nc_sim)
+              metricsCov <- rbind(metricsCov, c(tail(conduct,4),tail(TPR,4),ADS,AS,tail(ID,5), Silhouette,newOI, sIdx, bigN, i,nc, dir))
+              
+              cov_op <- rbind(cov_op, unlist(c(dir, nc, bigN, nsim,
+                                               bicOP,
+                                               d$OmegaIndex,
+                                               d$MSE,
+                                               sIdx,
+                                               newOI,
+                                               currval,
+                                               degree0,
+                                               degree1,
+                                               i )))
+              zerocoef <- rbind(zerocoef, rowSums(abs(d$betaout[,-1]) == 0))
+              
+              numNodesPerCluster <- rbind(numNodesPerCluster, c(colSums(memOverlapCalc(d$Ffin,d$Hfin, delta, N, nc )),rep(0, 8-nc)))
+            }
+          }
+          
+          if(length(df_rds[[2]]) > 0){
+            if(!is.null(df_rds[[2]][[i]])){
+              dn <- df_rds[[2]][[i]]
+              Fm <- dn$Ffin
+              Hm <- dn$Hfin
+              
+              ## find the number of nodes without assigned cluster
+              currval <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
+              numNodesWoAssignment <- c(numNodesWoAssignment, currval)
+              
+              ## Calculating the metrics
+              conduct <- EgoSplitConductance(G,Fm, Hm, dir, delta, N, nc)
+              
+              TPR     <- Comm_TPR(G, Fm, Hm, delta, N, nc, dir)
+              ID      <- InternalDensity(G, dn, epsilon, dir)
+              newOI   <- OmegaIdx(G, Fm, Hm, N, delta, nc, nc_sim)
+              metricsNoCov <- rbind(metricsNoCov, c(tail(conduct,4),tail(TPR,4),tail(ID,5),newOI, sIdx, bigN, dir, i,nc))
+              
+              
+              nocov_op <- rbind(nocov_op, unlist(c(dir, nc, bigN, nsim, dn$bic,
+                                                   dn$OmegaIndex,sIdx,newOI,
+                                                   currval,degree0,degree1,i)))
+            }
+          }
+          
+          i <- i + 1
+        }
+      }
+    }
+  }
+}
+
+params <- t(as.data.frame(apply(params,1,unlist)))[,c(1:4,11:14)]
+params <- as.data.frame(cbind(params, ifelse(params[,4] == 0,"NoOL","2GrpOL1")))[,c(1:3,5:9)]
+colnames(params) <- c("sIdx", "alpha","lambda","penalty","PctMiss","lenCov","lenNoCov","OL")
+params[,c(1:3,5:7)] <- as.data.frame(apply(params[,c(1:3,5:7)],2,as.numeric))
+
+cov_op <- as.data.frame(cov_op)
+colnames(cov_op) <- cov_opCols
+cov_op[,c(2:20)] <- as.data.frame(apply(cov_op[,c(2:20)],2,as.numeric))
+cov_op$Dir <- unlist(cov_op$Dir)
+cov_op <- left_join(cov_op, params)
+
+## Recalculating the BIc cause the formula chnaged?
+cov_op <-  cov_op %>%
+  dplyr::mutate(MSEavg = rowMeans(select(., MSE1, MSE2, MSE3), na.rm = TRUE))
+
+## adding column names to metrics 
+metricsCov <- as.data.frame(metricsCov)
+colnames(metricsCov) <- cn
+
+metricsCov[,1:29] <- as.data.frame(apply(metricsCov[,1:29],2,as.numeric))
+
+metricsCov$OL <- cov_op$OL
+metricsCov$alpha <- cov_op$alpha
+metricsCov$penalty <- cov_op$penalty
+metricsCov$MSEavg <- cov_op$MSEavg
+metricsCov$lambda <- cov_op$lambda
+metricsCov$degree0 <- cov_op$degree0
+metricsCov$degree1 <- cov_op$degree1
+metricsCov$degree01 <- metricsCov$degree0+metricsCov$degree1
+metricsCov$unassigned <- cov_op$nodesWoAssignment
+metricsCov$pctMiss <- cov_op$PctMiss
+
+saveRDS(cov_op, "SimDatMets_6.rds")
+saveRDS(metricsCov, "metricsCov_6.rds")
+saveRDS(zerocoef , "zerocoef.rds")
+saveRDS(numNodesPerCluster,"numNodesPerCluster.rds")
+
+## Loading no covariate data
+nocov_op <- as.data.frame(nocov_op)
+colnames(nocov_op) <- nocovCols
+nocov_op[,2:17] <- as.data.frame(apply(nocov_op[,2:17],2,as.numeric))
+nocov_op <- left_join(nocov_op, params)
+## adding column names to metrics 
+metricsNoCov <- as.data.frame(metricsNoCov)
+colnames(metricsNoCov) <- cn_nc
+metricsNoCov[,c(1:16,18,19)] <- as.data.frame(apply(metricsNoCov[,c(1:16,18,19)],2,as.numeric))
+
+saveRDS(nocov_op, "SimDatMetsNocov_6.rds")
+saveRDS(metricsNoCov, "metricsNoCov_6.rds")
+
+```
+
+```{r, warning=FALSE, fig.height=9, fig.width=14}
+
+#cov_op  <- readRDS("SimDatMets_6.rds")
+#metricsCov <- readRDS("metricsCov_6.rds")
+
+## filtering runs where the number of unassigned nodes at greater than 0
+dir <- c("undirected","directed")
+OL <- c("2GrpOL1", "NoOL")
+I <- c(1:7)
+for(pctmiss in unique(cov_op$PctMiss)){
+  for(i in I){
+  for(dirv in dir){
+    for(OLv in OL){
+      
+      print(metricsCov %>% 
+              group_by(bigN) %>%
+              filter(dir == {{dirv}}, OL == {{OLv}}, bigN == {{i}}, pctMiss == {{pctmiss}})  %>% 
+              ggplot() +
+              geom_point(aes(x = WeightedMeanConductanceW, y = WeightedDispersionScoreW, color = OI))+
+              ggtitle(paste({{dirv}},{{OLv}},i, sep = ", ")) + scale_color_distiller(palette = "PuOr", direction = 1) +
+              facet_wrap(~nc) + theme(legend.position = "bottom", panel.background = element_blank()))
+      
+      print(metricsCov %>% 
+              group_by(bigN) %>%
+              filter(dir == {{dirv}}, OL == {{OLv}}, bigN == {{i}}, pctMiss == {{pctmiss}})  %>% 
+              ggplot() +
+              geom_point(aes(x = MeanConductanceW, y = DispersionScoreW, color = OI))+
+              ggtitle(paste({{dirv}},{{OLv}},i, sep = ", ")) + scale_color_distiller(palette = "PuOr", direction = 1) +
+              facet_wrap(~nc) + theme(legend.position = "bottom", panel.background = element_blank()))
+    }
+  }
+}
+
+}
+
+```
+
+## conductance values vs OI
+
+```{r, warning=FALSE, fig.height=9, fig.width=14}
+dir <- c("undirected","directed")
+OL <- c("2GrpOL1", "NoOL")
+I <- c(1)
+
+gbg <- metricsCov %>% filter(unassigned <= degree01 ) %>%
+  pivot_longer(!c(bigN,OI,nc,dir,OL, alpha, penalty, degree0, degree01, degree1, unassigned,lambda, pctMiss)) %>%
+  filter(name %in% c("MeanConductanceW","WeightedMeanConductanceW",
+                     "WeightedMeanConductanceWo","MeanConductanceWo" ) ) %>%
+  dplyr::group_by(dir, OL, bigN, name,penalty, pctMiss) %>%
+  dplyr::mutate(
+    normalized_value = (value - min(value)) / (max(value) - min(value))
+  ) %>%
+  ungroup()
+for(pctmiss in unique(cov_op$PctMiss)){
+for(i in I){
+  for(dirV in dir){
+    for(OLv in OL){
+      #for(met in unique(gbg$name)){
+      print(gbg %>% filter(dir == {{dirV}}, OL == {{OLv}}, bigN == {{i}}, pctMiss == {{pctmiss}}) %>% 
+              ggplot()+
+              geom_point(aes(x = OI, y = value, color = unassigned ))+
+              facet_wrap(~name, scales = "free")+
+              ggtitle(paste(dirV, " NW with ",OLv, " overlap for graph ",i, " Pct missing ", pctmiss))+
+              theme(legend.position = "bottom", panel.background = element_blank()))
+      }
+    }
+  }
+}
+
+
+```
+
+## triangle participation ratio vs OI
+
+```{r, warning=FALSE, fig.height=9, fig.width=14}
+dir <- c("undirected","directed")
+OL <- c("2GrpOL1", "NoOL")
+I <- c(1)
+
+gbg <- metricsCov %>% filter(unassigned <= degree01 ) %>%
+  pivot_longer(!c(bigN,OI,nc,dir,OL, alpha, penalty, degree0, degree01, degree1, unassigned,lambda, pctMiss)) %>%
+  filter(name %in% c("tprW","tprWo","tprWW","tprWoW" ) ) %>%
+  dplyr::group_by(dir, OL, bigN, name,penalty, pctMiss) %>%
+  dplyr::mutate(
+    normalized_value = (value - min(value)) / (max(value) - min(value))
+  ) %>%
+  ungroup()
+for(pctmiss in unique(cov_op$PctMiss)){
+for(i in I){
+  for(dirV in dir){
+    for(OLv in OL){
+      #for(met in unique(gbg$name)){
+      print(gbg %>% filter(dir == {{dirV}}, OL == {{OLv}}, bigN == {{i}}, pctMiss == {{pctmiss}}) %>% 
+              ggplot()+
+              geom_point(aes(x = OI, y = value, color = unassigned ))+
+              facet_wrap(~name, scales = "free")+
+              ggtitle(paste(dirV, " NW with ",OLv, " overlap for graph ",i, " Pct missing ", pctmiss))+
+              theme(legend.position = "bottom", panel.background = element_blank()))
+      }
+    }
+  }
+}
+
+
+```
+
+## Variance/Dispersion Score vs OI
+
+```{r, warning=FALSE, fig.height=9, fig.width=14}
+dir <- c("undirected","directed")
+OL <- c("2GrpOL1", "NoOL")
+I <- c(1)
+
+gbg <- metricsCov %>% filter(unassigned <= degree01 ) %>%
+  pivot_longer(!c(bigN,OI,nc,dir,OL, alpha, penalty, degree0, degree01, degree1, unassigned,lambda, pctMiss)) %>%
+  filter(name %in% c("AvgVarianceW","DispersionScoreW","AvgVarianceWo",
+                     "DispersionScoreWo" ,"WeightedAvgVarianceW",
+                     "WeightedDispersionScoreW" ) ) %>%
+  dplyr::group_by(dir, OL, bigN, name,penalty, pctMiss) %>%
+  dplyr::mutate(
+    normalized_value = (value - min(value)) / (max(value) - min(value))
+  ) %>%
+  ungroup()
+for(pctmiss in unique(cov_op$PctMiss)){
+for(i in I){
+  for(dirV in dir){
+    for(OLv in OL){
+      #for(met in unique(gbg$name)){
+      print(gbg %>% filter(dir == {{dirV}}, OL == {{OLv}}, bigN == {{i}}, pctMiss == {{pctmiss}}) %>% 
+              ggplot()+
+              geom_point(aes(x = OI, y = value, color = unassigned ))+
+              facet_wrap(~name, scales = "free")+
+              ggtitle(paste(dirV, " NW with ",OLv, " overlap for graph ",i, " Pct missing ", pctmiss))+
+              theme(legend.position = "bottom", panel.background = element_blank()))
+      }
+    }
+  }
+}
+
+
+```
+
+## Similarity vs OI
+
+```{r, warning=FALSE, fig.height=9, fig.width=14}
+dir <- c("undirected","directed")
+OL <- c("2GrpOL1", "NoOL")
+I <- c(1)
+
+gbg <- metricsCov %>% filter(unassigned <= degree01 ) %>%
+  pivot_longer(!c(bigN,OI,nc,dir,OL, alpha, penalty, degree0, degree01, degree1, unassigned,lambda, pctMiss)) %>%
+  filter(name %in% c("AvgIntraClusterSimilarityW","AvgIntraClusterSimilarityWo",
+                     "WeightedAvgIntraClusterSimilarityW","WeightedAvgIntraClusterSimilarityWo") ) %>%
+  dplyr::group_by(dir, OL, bigN, name,penalty, pctMiss) %>%
+  dplyr::mutate(
+    normalized_value = (value - min(value)) / (max(value) - min(value))
+  ) %>%
+  ungroup()
+for(pctmiss in unique(cov_op$PctMiss)){
+for(i in I){
+  for(dirV in dir){
+    for(OLv in OL){
+      #for(met in unique(gbg$name)){
+      print(gbg %>% filter(dir == {{dirV}}, OL == {{OLv}}, bigN == {{i}}, pctMiss == {{pctmiss}}) %>% 
+              ggplot()+
+              geom_point(aes(x = OI, y = value, color = unassigned ))+
+              facet_wrap(~name, scales = "free")+
+              ggtitle(paste(dirV, " NW with ",OLv, " overlap for graph ",i, " Pct missing ", pctmiss))+
+              theme(legend.position = "bottom", panel.background = element_blank()))
+      }
+    }
+  }
+}
+
+
+```
+
+##Internal density vs OI
+```{r, warning=FALSE, fig.height=9, fig.width=14}
+dir <- c("undirected","directed")
+OL <- c("2GrpOL1", "NoOL")
+I <- c(1)
+
+gbg <- metricsCov %>% filter(unassigned <= degree01 ) %>%
+  pivot_longer(!c(bigN,OI,nc,dir,OL, alpha, penalty, degree0, degree01, degree1, unassigned,lambda, pctMiss)) %>%
+  filter(name %in% c( "CommInternalDensityW" ,"CommInternalDensityWo",
+                      "TotalInternalDensity" ,"WeightedInternalDensityW" ,
+                      "WeightedInternalDensityWo"  ) ) %>%
+  dplyr::group_by(dir, OL, bigN, name,penalty, pctMiss) %>%
+  dplyr::mutate(
+    normalized_value = (value - min(value)) / (max(value) - min(value))
+  ) %>%
+  ungroup()
+
+for(pctmiss in unique(cov_op$PctMiss)){
+for(i in I){
+  for(dirV in dir){
+    for(OLv in OL){
+      #for(met in unique(gbg$name)){
+      print(gbg %>% filter(dir == {{dirV}}, OL == {{OLv}}, bigN == {{i}}, pctMiss == {{pctmiss}}) %>% 
+              ggplot()+
+              geom_point(aes(x = OI, y = value, color = unassigned ))+
+              facet_wrap(~name, scales = "free")+
+              ggtitle(paste(dirV, " NW with ",OLv, " overlap for graph ",i, " Pct missing ", pctmiss))+
+              theme(legend.position = "bottom", panel.background = element_blank()))
+      }
+    }
+  }
+}
+
+
+```
+
+
+## Silhouette Score
+
+```{r, warning=FALSE, fig.height=9, fig.width=14}
+dir <- c("undirected","directed")
+OL <- c("2GrpOL1", "NoOL")
+I <- c(1)
+
+gbg <- metricsCov %>% filter(unassigned <= degree01 ) %>%
+  pivot_longer(!c(bigN,OI,nc,dir,OL, alpha, penalty, degree0, degree01, degree1, unassigned,lambda, pctMiss)) %>%
+  filter(name %in% c( "Silhouette" ) ) %>%
+  dplyr::group_by(dir, OL, bigN, name,penalty, pctMiss) %>%
+  dplyr::mutate(
+    normalized_value = (value - min(value)) / (max(value) - min(value))
+  ) %>%
+  ungroup()
+
+for(pctmiss in unique(cov_op$PctMiss)){
+for(i in I){
+  for(dirV in dir){
+    for(OLv in OL){
+      #for(met in unique(gbg$name)){
+      print(gbg %>% filter(dir == {{dirV}}, OL == {{OLv}}, bigN == {{i}}, pctMiss == {{pctmiss}}) %>% 
+              ggplot()+
+              geom_point(aes(x = OI, y = value, color = unassigned ))+
+              facet_wrap(~name, scales = "free")+
+              ggtitle(paste(dirV, " NW with ",OLv, " overlap for graph ",i, " Pct missing ", pctmiss))+
+              theme(legend.position = "bottom", panel.background = element_blank()))
+      }
+    }
+  }
+}
+
+
+```
+
+## Tryout the non dominated sorting algorithm on Conductance and dispersion score
+
+```{r, fig.height=9,fig.width=14}
+metricsCov$front <- 0
+df_list <- metricsCov %>% 
+  filter(unassigned <= degree01) %>%
+  group_by(bigN, OL, dir, pctMiss) %>%
+  group_split() 
+fronts_list <- list()
+for(i in 1:length(df_list)){
+  X <-  df_list[[i]] %>%
+    select(WeightedMeanConductanceW, WeightedDispersionScoreW) %>% 
+    t()
+  fronts <- doNondominatedSorting(X)
+  #fronts <- fastNonDominatedSorting(t(X))
+  
+  df_list[[i]]$front <-  fronts$ranks
+  
+  print(df_list[[i]] %>% ggplot() +
+          geom_point(aes(y = as.factor(front) , x = OI , color = as.factor(nc))) +
+          facet_wrap(vars(alpha)) +
+          ggtitle(paste(df_list[[i]]$dir[1] , " NW with ",df_list[[i]]$OL[1] , 
+                        " overlap for graph ",df_list[[i]]$bigN[1], 
+                        " missing pct ", df_list[[i]]$pctMiss[1] )) +  xlim(c(0,1.1))+
+          theme(legend.position = "bottom", panel.background = element_blank()))
+  ## plotting the conductance vs avg dispersion linking by pareto front
+  print(df_list[[i]] %>%
+          ggplot +
+          geom_point(aes(x = WeightedMeanConductanceW, y =WeightedDispersionScoreW ), color = "darkblue") +
+          geom_line(aes(x = WeightedMeanConductanceW, y =WeightedDispersionScoreW , group = front, color= as.factor(front)))+
+          #xlim(c(0,1.1))+
+          ggtitle(paste(df_list[[i]]$dir[1] , " NW with ",df_list[[i]]$OL[1] , 
+                        " overlap for graph ",df_list[[i]]$bigN[1],
+                        " missing pct ", df_list[[i]]$pctMiss[1] )) +
+          theme(legend.position = "none", panel.background = element_blank()))
+  
+}
+
+FrontTotal <- bind_rows(df_list) 
+FirstFront <- bind_rows(df_list) %>% filter(front %in% c(1)) %>% arrange(bigN, dir, OL, pctMiss)
+FirstTwoFronts <- bind_rows(df_list) %>% filter(front %in% c(1,2)) %>% arrange(bigN, dir, OL, pctMiss, front)
+for(i in 1:7){
+  print(FirstFront %>% filter(bigN == {{i}}) %>% ggplot()+
+  geom_histogram(aes(OI), binwidth = 0.01)+
+    xlim(c(0,1.4))+
+  facet_grid(vars(OL), vars(dir))+
+  theme(legend.position = "none", panel.background = element_blank()))
+}
+
+#saveRDS(FrontTotal, "FrontTotal_nomiss.rds")
+
+```
+
+
+## Case study
+
+```{r, fig.height=7, fig.width=10}
+# Case study sidx =13, 
+dir <- "directed"
+bigN <- 5
+nc_sim <- 4
+nc <- 3
+OL = "2GrpOL1"#"NoOL"
+gbg2 <- metricsCov %>% filter(bigN == {{bigN}}, OL == {{OL}}, dir == {{dir}}, nc == {{nc}})
+i <- 91
+sIdx <- 29
+
+fn <- paste0("NW_4CTFTF",sIdx,".rds")
+df_rds <- readRDS(paste0(boxFolder,fn))
+cov_op_14 <- cov_op %>% filter(sIdx == {{sIdx}})
+d <- df_rds[[1]][[i]]
+
+Fm <- d$Ffin
+Hm <- d$Hfin
+N <- 200
+delta <- getDelta(N, 0.00001)
+
+
+C <- memOverlapCalc(Fm, Hm, delta,N, nc)
+G <- df_rds[[3]][[bigN]]
+Z <- d$Zout_cov
+
+if(dir == "undirected"){
+  G <- convertToUndir(G, nc_sim)
+}
+
+
+```
+
