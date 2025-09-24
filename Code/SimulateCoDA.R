@@ -13,10 +13,11 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
   
   if (sim == TRUE) {
     printFlg <<- FALSE
-    test <- FALSE
+    test <- F
     Sim <- data.frame(S[simvec,])
     ## Number of simulations
-    Nsim <- Sim$Nsim
+    Nsim <- 2#Sim$Nsim
+    bigN <- 7#Sim$bigN
     
     ##Directed graph yes? No?
     dir <- Sim$DirType
@@ -84,7 +85,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
     missType <- Sim$mt[[1]]
     MARparam <- Sim$mar[[1]]
     ## Number of nodes
-    N <- Sim$N
+    N <- 200#Sim$N
     
     # Probability of cluster assignment
     pClust <- Sim$pClust[[1]]
@@ -99,7 +100,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
     pConn <- Sim$pConn[[1]]
     
     ## Baseline probability of connection
-    epsilon <- Sim$epsilon
+    epsilon <- 0.000001#Sim$epsilon
     
     ## Percentage of outgoing edges in each cluster
     dirPct <- Sim$dirPct[[1]]
@@ -121,7 +122,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
     penalty <- Sim$penalty
     
     ## Delta value threshold for assigning communities
-    delta <- getDelta(N)
+    #delta <- getDelta(N)
     
     ## What type of inital imputation should be done on the missing data
     covInit <- Sim$covInit[[1]]
@@ -131,7 +132,6 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
     lvl <- 1
     ncVal <- nc_sim
     
-    bigN <- Sim$bigN
     Gtot<- list() 
     GTlogLikcovtot<- list() 
     GTlogLiknoCovtot <- list()
@@ -155,7 +155,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
     FS <- list()
     
     params <- matrix(0, nrow= 0, ncol =35)
-    nitermax <- 30000
+    nitermax <- 60000
     
     ## List for saving the original covariates
     orig_Cov <- list()
@@ -168,7 +168,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
       ## Generating network with covariates and overlapping clusters
       NWlst <- genBipartite(N,nc_sim,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
                             CovNamesLPin,CovNamesLPout,CovNamesLinin,CovNamesLinout,
-                            pConn,dir= "directed",dirPct,epsilon,missing, 
+                            pConn,dir = "directed",dirPct,epsilon,missing, 
                             a, b, Type, pClustOL, missType, MARparam, seed)
       G_orig <- NWlst[[1]]
       orig_Cov[[m]] <- NWlst[[2]]
@@ -179,10 +179,12 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
       
       F_u <- NWlst[[3]]
       H_u <- NWlst[[4]]
-      #print(igraph::plot.igraph(G_orig,vertex.label = NA,vertex.size = 5,
-      #                          vertex.color = as.factor(V(G_orig)$Cluster),
-      #                          edge.arrow.size= 0.1, edge.color = "grey28"))
+      print(igraph::plot.igraph(G_orig,vertex.label = NA,vertex.size = 5,
+                                vertex.color = as.factor(V(G_orig)$Cluster),
+                                edge.arrow.size= 0.1, edge.color = "grey28"))
       
+      
+      #
       # Run all the algorithms 
       # BigClam: Undirected + No Covariates
       # CoDA: Directed + No Covariates
@@ -192,13 +194,13 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
       # CoDA Miss: Directed + Missing Covariate Imputation
       
       for (j in 1:Nsim) {
-        seed <- m+j
-        for(dir in c("directed","undirected")){
-          for(nc in test_nc[[1]]){
+        seed <- m + j
+        for(dir in c( "undirected")){#,"undirected")){
+          for(nc in c(4)){#test_nc[[1]]){
             nc <- as.numeric(nc)
           if(dir == "undirected"){
             
-            G <- convertToUndir(G_orig, nc)
+            G <- convertToUndir(G_orig, nc_sim)
             F_u_tot <- F_u + H_u 
             F_uGT <- F_u_tot
             H_uGT <- F_u_tot
@@ -209,6 +211,11 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
             H_uGT <- H_u
           }
           
+            # getting the epsilon value
+            #E <- ecount(G)
+            #epsilon <- 2*E/(N*(N-1))
+            delta <- getDelta(N, epsilon)
+            
           ## Block to calculate base log likelihood and clustering using spectral clustering. 
           {
              GTlogLikcovLst <-  list(0,0,0)#GTLogLik(G,nc,pConn,NULL,
@@ -259,6 +266,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
                        " alpha ",alpha," alphaLL ",alphaLL," alphaLin ",alphaLin, 
                        " lambda ", lambda, " initial impute type ", covInit, 
                        " Penalty, ", penalty, " nc ", nc))
+          
           if(reg == TRUE){
             tryCatch({
               ## Algorithm with covariates + possible missing data
@@ -267,7 +275,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
                                         lambda, thresh, nitermax, orig, randomize = FALSE,
                                         CovNamesLinin, CovNamesLinout, CovNamesLPin, CovNamesLPout, dir,
                                         alphaLL, test, missing, covOrig = orig_Cov[[m]],
-                                        epsilon = 0, impType = "Reg", alphaLin, penalty, seed, covInit, specOP )
+                                        epsilon, impType = "Reg", alphaLin, penalty, seed, covInit, specOP,nc_sim )
               tme <- Sys.time() - start
               print(paste0("Total time take algo with covariates and simple regression ", round(tme, 3)))
             }, error = function(e) {
@@ -284,7 +292,7 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
                                        thresh, nitermax, orig, randomize = TRUE, CovNamesLinin = c(), 
                                        CovNamesLinout = c(), CovNamesLPin = c(), CovNamesLPout = c(), 
                                        dir, alphaLL, test, missing = missing, covOrig = orig_Cov[[m]], 
-                                       epsilon = 0, impType = "", alphaLin, penalty, seed, covInit, specOP)
+                                       epsilon = 0, impType = "", alphaLin, penalty, seed, covInit, specOP,nc_sim)
               tme <- Sys.time() - start
               print(paste0("Total time take algo without covariates ", round(tme, 3)))
             }, error = function(e) {
@@ -320,6 +328,9 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
             # 0: No homophily (random mixing).
             # < 0: Heterophily (nodes prefer different groups).
             NetA <- assortativity(G)
+            
+            ## finc the triangle participation ratio for each community and the overall average.
+            TPRvec <- Comm_TPR(G, Fm, Hm, delta, N, nc, dir)
 
             if(nocov == TRUE){
               ## find memoverlap for no covariates method
@@ -382,19 +393,23 @@ SaveCoDASim <- function(simvec, sim, InitParamFile,getMetrics,reg,nocov){
   }
 }
 
-simvec = 25
+simvec = 3
 sim = TRUE
-InitParamFile = "/Code/4clustersims.rds"
+InitParamFile = "/Code/4clustersims_new.rds"
 getMetrics = FALSE
 reg = TRUE
 nocov = FALSE
-#df <- list()
-df_biased25_3 <- SaveCoDASim(simvec,
-                   sim,
-                   InitParamFile,
-                   getMetrics, 
-                   reg, 
-                   nocov)
+df_cc <- list()
+i <- 1
+for(simvec in c(20,23,26,38,41,44)){
+  df_cc[[i]] <- SaveCoDASim(simvec,
+                     sim,
+                     InitParamFile,
+                     getMetrics, 
+                     reg, 
+                     nocov)
+  i <- i+1
 
+  }
 
-saveRDS(df, "4clustersims_op1_2.rds")
+saveRDS(df_cc, "CrossCheck.rds")
