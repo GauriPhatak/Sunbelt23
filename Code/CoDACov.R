@@ -1,13 +1,13 @@
 library(tidyverse)
 library(dplyr)
 library(igraph)
-library(network)
-library(intergraph)
-library(ergm)
+#library(network)
+#library(intergraph)
+#library(ergm)
 library(glmnet)
-library(gglasso)
+#library(gglasso)
 library(RColorBrewer)
-library(clustAnalytics)
+#library(clustAnalytics)
 
 source(paste0(getwd(),"/Code/NetworkMetrics.R"))
 source(paste0(getwd(),"/Code/HelperFuncs.R"))
@@ -1117,9 +1117,10 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
       ## filter out the missing data so we update only based on the avaiable data
       if(sum(missVals) > 0){
         mIdx <- missVals[,i]
-        X <-  cm[-mIdx,]
-        y <- Z[-mIdx,i]
+        X <-  cm[!mIdx,]
+        y <- Z[!mIdx,i]
       }else{
+        mIdx <- rep(FALSE, dim(Z)[1])
         X <- cm
         y <- Z[,i]
       }
@@ -1160,11 +1161,13 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
         beta[i,] <- as.matrix(coef(mod[[i]]))
       }
       
-      predictions[[i]] <- predict(mod[[i]], newx = X, s = lambda, type = "response")
+      predictions[[i]] <- predict(mod[[i]], newx = cm, s = lambda, type = "response")
       
       # MANUALLY CALCULATE LOG-LIKELIHOOD
       # For Gaussian regression (Linear Model)
-      logLik <- logLik + sum(dnorm(y, mean = predictions[[i]], sd = sqrt(mean((y - predictions[[i]])^2)), log = TRUE))
+      logLik <- logLik + sum(dnorm(y, 
+                                   mean = predictions[[i]][!mIdx], 
+                                   sd = sqrt(mean((y - predictions[[i]][!mIdx])^2)), log = TRUE))
     }
     
     ## GROUP LASSO CODE IS DISABLED 
@@ -1588,7 +1591,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
         lllst <- rbind(lllst, LLvec)
         
         arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
-        OmegaVal <- c(OmegaVal, OmegaIdx(G, Ftot, Htot, N, delta,nc,, nc_sim))
+        OmegaVal <- c(OmegaVal, OmegaIdx(G, Ftot, Htot, N, delta,nc, nc_sim))
         
         MSEtmp <- MSEop(Ftot, Htot, covOrig, betaout,N, dir, o_in,o_out, missValsout)
         mseMD <- rbind(mseMD, MSEtmp[[1]])
@@ -1669,6 +1672,9 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
   BICv <- c(BIC(LLnew, nc, N, ecount(G)), 
             ICL(LLnew, WtMat, nc, N,ecount(G)), 
             LLnew, nc, N, ecount(G))
+  
+  
+  
   Ffin <- Ftot
   Hfin <- Htot
   Winfin <- Win
