@@ -6,36 +6,39 @@ date: "2025-07-25"
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(terra)
-library(sf)
+#library(terra)
+#library(sf)
 library(tidyverse)
 library(dplyr)
-library(mapview)
-library(sp)
-library(usmap)
-library(raster)
+#library(mapview)
+#library(sp)
+#library(usmap)
+#library(raster)
 library(igraph)
-library(GGally)
-library(ggnet)
-library(geosphere)
-library(lubridate)
-library(gganimate)
-library(gifski)
+#library(GGally)
+#library(ggnet)
+#library(geosphere)
+#library(lubridate)
+#library(gganimate)
+#library(gifski)
 library(png)
-library(legendry)
+#library(legendry)
 library(RColorBrewer)
-library(ggiraph)
-library(plotly)
-library(network)
-library(intergraph)
-library(ergm)
+#library(ggiraph)
+#library(plotly)
+#library(network)
+#library(intergraph)
+#library(ergm)
 library(gridExtra)
 library(ggpubr)
-library(kableExtra)
-library(ggside)
-library(grid)
-library(ggnewscale)
-library(patchwork)
+library(ecr)
+library(nsga2R)
+
+#library(kableExtra)
+#library(ggside)
+#library(grid)
+#library(ggnewscale)
+#library(patchwork)
 ```
 
 
@@ -155,7 +158,6 @@ aggr <- df_OHA %>%
 #ggplotly(p)
 ```
 
-
 ## Find the total number missing values per week.
 
 ```{r}
@@ -165,7 +167,6 @@ unique_count <- as.data.frame(table(aggr$weekno))
 unique_loc <- as.data.frame(table(aggr$Location ))
 ggplot(unique_count)+ geom_line(aes(x = as.numeric(Var1), y = Freq ))
 ```
-
 
 ## Decide on the week with the least number of missing data. Maybe 10 such weeks.
 
@@ -213,80 +214,6 @@ plot.igraph(G_subGrph, vertex.label = NA, vertex.size = 1,
 
 ```
 
-## Running method on the above sub graph induced network.
-
-```{r}
-#
-G_subGrph <- set_vertex_attr(G_subGrph, name = "X", value = as.matrix(attr[,3]))
-G_subGrph <- set_vertex_attr(G_subGrph, name = "Y", value = as.matrix(attr[,4]))
-## for now use nc =3
-sub_attrs <-  as.data.frame(vertex_attr(G_subGrph))
-sub_attrs <- left_join(sub_attrs, aggr_102 %>% 
-                         select(CopiesPerul, Location), 
-                       by = join_by(name == Location))
-G_subGrph <- set_vertex_attr(G_subGrph,name = "CopiesPerul", value = attr$CopiesPerul)
-G <- G_subGrph
-nc <- 3 ## Can change
-N <- nrow(sub_attrs)
-lambda <- 0.0001
-thresh <- 0.00005
-nitermax <- 10000
-dir <- "undirected"
-alphaLL <- 0.001
-alpha  <-  0.0001
-test = TRUE
-missing <- NULL
-covOrig <- sub_attrs$CopiesPerul
-alphaLin <- 0.001 
-penalty <- "LASSO" 
-seed <- 5
-covInit <- "Nmean"
-printFlg <- FALSE
-specOP <- CovAssistedSpecClust(G, as.data.frame(sub_attrs$CopiesPerul), nc, alpha = 0.5)
-C <- letters[specOP]
-op <- model.matrix( ~ C - 1)
-colnames(op) <- letters[1:nc]
-orig <- specOP
-for (i in 1:nc) {
-  G <- G %>%
-    set_vertex_attr(name = letters[i], 
-                    value = c(op[, i]))
-}
-as.data.frame(vertex_attr(G))
-
-op <- CoDA(G, nc, k = c(0, 0), o = c(0, 1), N, alpha,lambda, thresh, nitermax,orig, randomize = FALSE, 
-           CovNamesLinin = c(),CovNamesLinout= c("CopiesPerul"),CovNamesLPin = c(),CovNamesLPout= c(), 
-           dir,alphaLL, test, missing, covOrig,epsilon = 0, impType = "Reg",alphaLin, penalty, seed, 
-           covInit, specOP )
-
-delta <- getDelta(N)
-Fin_mem <- op$Ffin > delta
-colnames(Fin_mem) <- letters[1:nc]
-attr <- cbind(as.data.frame(vertex_attr(G))[,1:5], Fin_mem)
-eList <- as_edgelist(G)
-eList <- as.data.frame(cbind(eList, pair = c(1:nrow(eList)))) %>% 
-  pivot_longer(!pair, values_to = "name",names_to = "gbg") %>%
-  left_join(attr %>% select(name, X, Y) )
-
-ggplot()+ 
-  geom_line(data = eList, aes(x = X, y = Y, group = pair), color = "grey80")+
-  geom_point(data = attr, aes(x = X, y = Y), color = "grey30")+
-  ggforce::geom_mark_hull(data = attr %>% filter(a == TRUE),
-                          aes(x = X, y = Y,fill = a), 
-                          concavity = 3, expand = unit(2, "mm"),
-                          alpha = 0.1, fill = "#1f77b4", color = "#1f77b4")+
-  ggforce::geom_mark_hull(data = attr %>% filter(b == TRUE),
-                          aes(x = X, y = Y,fill = b), 
-                          concavity = 3, expand = unit(2, "mm"),
-                          alpha = 0.1, fill = "#ff7f0e", color = "#ff7f0e")+
-  ggforce::geom_mark_hull(data = attr %>% filter(c == TRUE),
-                          aes(x = X, y = Y,fill = c), 
-                          concavity = 3, expand = unit(2, "mm"),
-                          alpha = 0.1, fill = "#2ca02c", color = "#2ca02c")+
-  theme(legend.position = "bottom", panel.background = element_blank()) 
-
-
-```
 
 ## Run method on the full network with missing data imputation.
 
@@ -322,673 +249,6 @@ G_FullGrph <- set_vertex_attr(G_FullGrph, name = "Y", value = as.matrix(fg_attr$
 saveRDS(G_FullGrph, "G_FullGrph5.rds")
 ```
 
-```{r, warning=FALSE}
-
-G <- G_FullGrph
-nc <- 3 ## Can change
-N <- nrow(fg_attr)
-lambda <- 0.0001
-thresh <- 0.00005
-nitermax <- 10000
-dir <- "undirected"
-alphaLL <- 0.001
-alpha <- 0.0001
-test = TRUE
-missing <- NULL
-alphaLin <- 0.001 
-penalty <- "LASSO" 
-seed <- 5
-covInit <- "Nmean"
-printFlg <- FALSE
-cov <- fg_attr$CopiesPerul
-cov[is.na(cov)] <- mean(cov, na.rm=T)
-covOrig <- as.data.frame(cov)
-specOP <- CovAssistedSpecClust(G, as.data.frame(cov), nc, alpha = 0.5)
-C <- letters[specOP]
-op <- model.matrix( ~ C - 1)
-colnames(op) <- letters[1:nc]
-orig <- specOP
-for (i in 1:nc) {
-  G <- G %>%
-    set_vertex_attr(name = letters[i], 
-                    value = c(op[, i]))
-}
-as.data.frame(vertex_attr(G))
-
-op <- CoDA(G, nc, k = c(0, 0), o = c(0, 1), N, alpha,lambda, thresh, nitermax,orig, randomize = FALSE,
-           CovNamesLinin = c(),CovNamesLinout= c("CopiesPerul"),CovNamesLPin = c(),CovNamesLPout= c(), 
-           dir,alphaLL, test, missing = NULL, covOrig,epsilon = 0, impType = "Reg",alphaLin, penalty, 
-           seed, covInit, specOP )
-
-delta <- getDelta(N)
-Fin_mem <- op$Ffin > delta
-colnames(Fin_mem) <- letters[1:nc]
-attr <- cbind(as.data.frame(vertex_attr(G))[,1:5], Fin_mem)
-
-eList <- as_edgelist(G)
-eList <- as.data.frame(cbind(eList, pair = c(1:nrow(eList)))) %>% 
-  pivot_longer(!pair, values_to = "name",names_to = "gbg") %>%
-  left_join(attr %>% select(name, X, Y) )
-
-attr$Available <- !is.na(attr$CopiesPerul)
-ggplot()+ 
-  geom_line(data = eList, aes(x = X, y = Y, group = pair), color = "grey80")+
-  geom_point(data = attr, aes(x = X, y = Y, color = Available))+
-  scale_color_manual(values = c("#661100", "#CC6677")) +
-  new_scale_color() + 
-  ggforce::geom_mark_hull(data = attr %>% filter(a == TRUE),
-                          aes(x = X, y = Y,fill = a), 
-                          concavity = 3, expand = unit(2, "mm"),
-                          alpha = 0.1, fill = "#1f77b4", color = "#1f77b4")+
-  ggforce::geom_mark_hull(data = attr %>% filter(b == TRUE),
-                          aes(x = X, y = Y,fill = b), 
-                          concavity = 3, expand = unit(2, "mm"),
-                          alpha = 0.1, fill = "#ff7f0e", color = "#ff7f0e")+
-  ggforce::geom_mark_hull(data = attr %>% filter(c == TRUE),
-                          aes(x = X, y = Y,fill = c), 
-                          concavity = 3, expand = unit(2, "mm"),
-                          alpha = 0.1, fill = "#2ca02c", color = "#2ca02c")+
-  xlab("Latitude") + ylab("Longitude")+
-  theme(legend.position = "bottom", panel.background = element_blank()) 
-
-
-```
-
-## Nocovariate CD
-
-```{r,warning=FALSE}
-op_noCov <- CoDA(G, nc, k = c(0, 0), o = c(0, 0), N, alpha, lambda,thresh, nitermax, 
-                 orig, randomize = TRUE, CovNamesLinin = c(),CovNamesLinout = c(), 
-                 CovNamesLPin = c(), CovNamesLPout = c(),dir, alphaLL, test, missing = missing,
-                 covOrig ,epsilon = 0, impType = "", alphaLin, penalty, seed, covInit, specOP)
-Fin_mem <- op_noCov$Ffin > delta
-colnames(Fin_mem) <- letters[1:nc]
-attr <- cbind(as.data.frame(vertex_attr(G))[,1:5], Fin_mem)
-eList <- as_edgelist(G)
-eList <- as.data.frame(cbind(eList, pair = c(1:nrow(eList)))) %>% 
-  pivot_longer(!pair, values_to = "name",names_to = "gbg") %>%
-  left_join(attr %>% select(name, X, Y) )
-
-Fm <- op_noCov$Ffin
-Hm <- op_noCov$Hfin
-NoCovM <- as.data.frame(memOverlapCalc(Fm, Hm, delta, N, nc))
-
-ggplot()+ 
-  geom_line(data = eList, aes(x = X, y = Y, group = pair), color = "grey80")+
-  geom_point(data = attr, aes(x = X, y = Y), color = "grey30")+
-  ggforce::geom_mark_hull(data = attr %>% filter(a == TRUE),
-                          aes(x = X, y = Y,fill = a), 
-                          concavity = 3, expand = unit(2, "mm"),
-                          alpha = 0.1, fill = "#1f77b4", color = "#1f77b4")+
-  ggforce::geom_mark_hull(data = attr %>% filter(b == TRUE),
-                          aes(x = X, y = Y,fill = b), 
-                          concavity = 3, expand = unit(2, "mm"),
-                          alpha = 0.1, fill = "#ff7f0e", color = "#ff7f0e")+
-  ggforce::geom_mark_hull(data = attr %>% filter(c == TRUE),
-                          aes(x = X, y = Y,fill = c), 
-                          concavity = 3, expand = unit(2, "mm"),
-                          alpha = 0.1, fill = "#2ca02c", color = "#2ca02c")+
-  xlab("Latitude") + ylab("Longitude")+ggtitle("Community detection without covariates.")+
-  theme(legend.position = "bottom", panel.background = element_blank()) 
-
-
-```
-
-## Compare the output of community detection of missing data and full network.
-
-```{r}
-```
-
-
-## Applying the method with covariate to different weeks with missing data
-
-```{r, warning = FALSE}
-nc <- 3 ## Can change
-thresh  <- 0.00005
-nitermax <- 10000
-dir <- "undirected"
-alphaLL <- 0.001
-alpha <- 0.0001
-test = FALSE
-missing <- NULL
-alphaLin <- 0.001
-penalty <- "LASSO"
-seed <- 5
-covInit <- "Nmean"
-printFlg <- FALSE
-
-## Read full graph
-#G_FullGrph <- readRDS("G_FullGrph")
-specOP <- CovAssistedSpecClust(G_FullGrph, as.data.frame(cov), nc, alpha = 0.5)
-C <- letters[specOP]
-op <- model.matrix( ~ C - 1)
-colnames(op) <- letters[1:nc]
-orig <- specOP
-for (i in 1:nc){
-  G_FullGrph <- G_FullGrph %>% 
-    set_vertex_attr(name = letters[i],value = c(op[, i])) 
-}
-
-## Aggregate data from 7/11/25
-#aggr <- readRDS("aggr_7_11.rds")
-
-## geolocations of cities in oregon. Includes column for included or not included wastewater locations
-#O_attr <- readRDS("O_attr.rds")
-
-G <- G_FullGrph
-
-## Save output ##MSE, MSEmd, lambda, week, number of available, penalty, initializing of covariate, alpha 
-finOP <- matrix(0, nrow =0, ncol = 8)
-
-## Metric values
-op_sim <- matrix(0, nrow= 0, ncol = 14)
-
-## Number of nodes. Saving the number of communities each conde belongs to
-numCom <- matrix(0, nrow = vcount(G), ncol = 0)
-
-pdf("COVID_data_plots.pdf", width = 10, height = 6)  # Adjust dimensions as needed
-
-for(alpha in c(0.00001, 0.0001, 0.001, 0.01)){
-  op_noCov <- CoDA(G, nc, k = c(0, 0), o = c(0, 0), N, alpha, lambda,thresh, nitermax, 
-                   orig, randomize = TRUE, CovNamesLinin = c(),CovNamesLinout = c(), 
-                   CovNamesLPin = c(), CovNamesLPout = c(),dir, alphaLL, test, missing = missing,
-                   covOrig ,epsilon = 0, impType = "", alphaLin, penalty, seed, covInit, specOP)
-  Fin_mem <- op_noCov$Ffin > delta
-  colnames(Fin_mem) <- letters[1:nc]
-  attr <- cbind(as.data.frame(vertex_attr(G))[,1:5], Fin_mem)
-  eList <- as_edgelist(G)
-  eList <- as.data.frame(cbind(eList, pair = c(1:nrow(eList)))) %>% 
-    pivot_longer(!pair, values_to = "name",names_to = "gbg") %>%
-    left_join(attr %>% select(name, X, Y) )
-  
-  Fm <- op_noCov$Ffin
-  Hm <- op_noCov$Hfin
-  NoCovM <- as.data.frame(memOverlapCalc(Fm, Hm, delta, N, nc))
-  for(covInit in c("NNmedian","Nmedian","Nmode","Nmean")){
-    for(penalty in c("Ridge","LASSO","ElasticNet")){
-      for(week in c(102)){#as.numeric(unique_count$Var1[unique_count$Freq > 24])){
-        
-        p <- list()
-        j <- 1
-        
-        for(lambda in c(0.00001, 0.0001, 0.001, 0.01)){
-          print(paste0("The week number ", week," avail ", unique_count$Freq[week], 
-                       " penalty ", penalty," alpha ", alpha," lambda ",lambda))
-          sub_aggr <- aggr %>% filter(weekno == week) %>% ungroup()
-          
-          ## joining the data and creating na's for where there is no data
-          fg_attr <- O_attr[O_attr$included == "orangered3",]
-          fg_attr <- fg_attr[fg_attr$name %in% unique(aggr$Location), ]
-          fg_attr <- left_join(fg_attr,sub_aggr %>% 
-                                 select(CopiesPerul, Location), 
-                               by = join_by(name == Location)) %>% distinct()
-          
-          G_FullGrph <- set_vertex_attr(G_FullGrph,name = "CopiesPerul", value = fg_attr$CopiesPerul )
-          G_FullGrph <- set_vertex_attr(G_FullGrph, name = "X", value = as.matrix(fg_attr$X ))
-          G_FullGrph <- set_vertex_attr(G_FullGrph, name = "Y", value = as.matrix(fg_attr$Y ))
-          
-          G <- G_FullGrph
-          N <- nrow(fg_attr)
-          cov <- fg_attr$CopiesPerul
-          cov[is.na(cov)] <- mean(cov, na.rm=T)
-          covOrig <- as.data.frame(cov)
-          
-          
-          op <- CoDA(G, nc, k = c(0, 0), o = c(0, 1), N, alpha,lambda, thresh, nitermax,orig, randomize = FALSE,
-                     CovNamesLinin = c(),CovNamesLinout= c("CopiesPerul"),CovNamesLPin = c(),CovNamesLPout= c(), 
-                     dir,alphaLL, test, missing = NULL, covOrig,epsilon = 0, impType = "Reg",alphaLin, penalty, 
-                     seed, covInit, specOP )
-          
-          ## Code to get network metrics
-          Fm <- op$Ffin
-          Hm <- op$Hfin
-          Q_OL <- ifelse(dir == "directed", "D","U")
-          FullM <- as.data.frame(memOverlapCalc(Fm, Hm, delta, N, nc))
-          comnty <- data.frame(which(as.matrix(FullM) == 1, arr.ind = TRUE)) %>%
-            group_by(col) %>%
-            group_map(~.x)
-          
-          # Find clustering coef global for directed and undirected network
-          # High clustering coef means more clique based highly clustered Network
-          # Low means more sparse network
-          CC <- ClustCoef(G, dir)
-          
-          ## Power law fit check
-          PLFit <- PLfitcheck(G)
-          
-          # 1: Perfect homophily (nodes only connect within their group).
-          # 0: No homophily (random mixing).
-          # < 0: Heterophily (nodes prefer different groups).
-          NetA <- assortativityF(G,dir)
-          
-          
-          ## Feature structure decomposition
-          fsd <- c(unlist(Feature_struct_decomp(G, nc, N, delta, NoCovM, FullM)))
-          
-          randOI <- null_models(G, nc, k = c(0,0), o = c(0,1), N, alpha,lambda, thresh, nitermax, orig, randomize = FALSE,
-                                CovNamesLinin = c(),CovNamesLinout= c("CopiesPerul"),CovNamesLPin = c(),CovNamesLPout= c(), 
-                                dir,alphaLL, test = FALSE, missing = NULL, covOrig,epsilon = 0,impType = "Reg", alphaLin, 
-                                penalty, seed, covInit, specOP )
-          
-          op_sim <- rbind(op_sim, c(
-            round(conductance(graph = G, communities = comnty, FullM),4),
-            round(partition_density(graph = G, communities = comnty),4),
-            round(Q_HardPartition(G, FullM),4),
-            round(Q_Overlapping(G, FullM, Q_OL),4),
-            round(CQ(G, comnty),4),
-            round(ONCut(G, comnty),4),
-            round(OP(comnty, G),4),
-            CC,
-            PLFit,
-            NetA,
-            fsd,
-            randOI))          
-          
-          
-          delta <- getDelta(N)
-          Fin_mem <- op$Ffin > delta
-          colnames(Fin_mem) <- letters[1:nc]
-          ## saving number of communities each node belongs to.
-          numCom <- cbind(numCom, colSums(Fin_mem))
-          
-          attr <- cbind(as.data.frame(vertex_attr(G))[,1:5], Fin_mem)
-          eList <- as_edgelist(G)
-          eList <- as.data.frame(cbind(eList, pair = c(1:nrow(eList)))) %>% 
-            pivot_longer(!pair, values_to = "name",names_to = "gbg") %>%
-            left_join(attr %>% select(name, X, Y))
-          attr$Available <- !is.na(attr$CopiesPerul)
-          p[[j]] <- ggplot()+ 
-            geom_line(data = eList, aes(x = X, y = Y, group = pair), color = "grey80")+
-            geom_point(data = attr, aes(x = X, y = Y, color = Available))+
-            scale_color_manual(values = c("#661100", "#CC6677")) +
-            new_scale_color() + 
-            ggforce::geom_mark_hull(data = attr %>% filter(a == TRUE),
-                                    aes(x = X, y = Y,fill = a), 
-                                    concavity = 3, expand = unit(2, "mm"),
-                                    alpha = 0.1, fill = "#1f77b4", color = "#1f77b4")+
-            ggforce::geom_mark_hull(data = attr %>% filter(b == TRUE),
-                                    aes(x = X, y = Y,fill = b), 
-                                    concavity = 3, expand = unit(2, "mm"),
-                                    alpha = 0.1, fill = "#ff7f0e", color = "#ff7f0e")+
-            ggforce::geom_mark_hull(data = attr %>% filter(c == TRUE),
-                                    aes(x = X, y = Y,fill = c), 
-                                    concavity = 3, expand = unit(2, "mm"),
-                                    alpha = 0.1, fill = "#2ca02c", color = "#2ca02c")+
-            xlab("Latitude") + ylab("Longitude")+
-            theme(legend.position = "bottom", panel.background = element_blank()) 
-          
-          j <- j + 1
-          
-          ## filling the final output
-          #MSE, MSEmd, lambda, week, number of available, penalty, initializing of covariate, alpha 
-          finOP <- rbind(finOP, c(tail(op$MSE,1),tail(op$MSEMD,1),week,unique_count$Freq[week],penalty,covInit,alpha,lambda))
-        }
-        
-        pt <- ggarrange(plotlist = p, nrow = 2, ncol = 2)
-        fig <- annotate_figure(pt, top = text_grob(paste0("Week ", week, 
-                                                          " avail ", unique_count$Freq[week], 
-                                                          " penalty ", penalty, 
-                                                          " alpha ", alpha)))
-        # Convert to grob and draw
-        grob <- ggplotGrob(fig)
-        grid.newpage()
-        grid.draw(grob)
-        
-      }
-    }
-  }
-}
-
-dev.off()
-
-colnames(finOP) <- c("MSE","MSEMD","Week","Freq","Penalty","covInit","Alpha","Lambda")
-colnames(op_sim) <- c("Cond","PD","Q_HP","Q_OL","CQ","OnCut","OP","CC","PLFit","NetA","oi_b1","oi_b2", "oi_cov","randOI")
-
-saveRDS(finOP, "realCOVID_DataOP.rds")
-```
-
-
-## Look at MSE vs frequency
-
-```{r}
-finOP %>% ggplot()+
-  geom_point(aes(x = factor(as.numeric(Freq)), y = as.numeric(MSE)))
-
-```
-
-## Network metrics for road network.
-
-```{r}
-
-```
-
-## BIC for simulated data
-
-
-```{r,warning=FALSE}
-
-getwd()
-## Reading combination of parameters
-filePath <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/4clustersims_new.rds"
-S <- readRDS(filePath)
-S$penalty <- as.character(S$penalty)
-## Reading names of files
-boxFolder <- "C:/Users/gauph/Box/SimulationOutput/CoDAOP/4ClusterBICtest_big6/"
-files <- list.files(boxFolder)
-
-N <- 200
-nsim <- 2
-epsilon <- 0.00001
-delta <- getDelta(N,epsilon)
-simbic <- matrix(0, nrow = 0, ncol = 19+1)
-nocov <- matrix(0, nrow = 0, ncol = 16)
-params <- matrix(0, nrow = 0, ncol = 7)
-zerocoef <- matrix(0,nrow = 0, ncol = 3)
-numNodesPerCluster <- matrix(0, nrow =0, ncol = 8)
-conduct <- matrix(0, nrow =0, ncol = 8)
-metrics <- matrix(0, nrow =0,ncol = 4+4+6+4+5)
-## find the number of nodes wihtout assignmment
-numNodesWoAssignment <- c()
-nc_sim <- 4
-for(fn in files){
-  df_rds <- readRDS(paste0(boxFolder,fn))
-  sIdx <- as.numeric(str_extract_all(fn, "\\d+")[[1]])[2]
-  seqv <- 1:length(df_rds[[1]])
-  alphaV <- df_rds[[8]]$V2[1][[1]]
-  lambdaV <- df_rds[[8]]$V5[1][[1]]
-  pClustOLV <- df_rds[[8]]$V25[[1]]#S$pClustOL[sIdx][[1]]#
-  penaltyV <- as.character(df_rds[[8]]$V29[1][[1]])
-  params <- rbind(params, c(sIdx, alphaV,lambdaV,pClustOLV,penaltyV,length(df_rds[[1]]),length(df_rds[[2]])))
-  #for(i in seqv)
-  i <- 1
-  for(bigN in 1:S$bigN[1]){
-    G_orig <-  df_rds[[3]][[bigN]]
-    for(nsim in 1:nsim){
-      for(dir in c("directed","undirected")){
-        for(nc in S$test_nc[[1]]){
-          d <- df_rds[[1]][[i]]
-          if(dir == "directed"){
-            G <- G_orig
-          }else{
-            G <- convertToUndir(G_orig,nc)
-          }
-          ## find the number of nodes with degree 0 or 1
-          degree0 <- sum(igraph::degree(G) == 0 )
-          degree1 <- sum(igraph::degree(G) == 1 )
-          
-          if(length(df_rds[[1]]) > 0){
-            bicOP <- d$bic
-            Fm <- d$Ffin
-            Hm <- d$Hfin
-            
-            
-            ## find the number of nodes without assigned cluster
-            currval <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
-            numNodesWoAssignment <- c(numNodesWoAssignment, currval)
-            
-            ## Calculating the metrics
-            conduct <- EgoSplitConductance(G_orig,Fm, Hm, dir, delta, N, nc)
-            #conduct <- rbind(conduct, tail(conductVal,4))
-            
-            #Conductance <- EgoSplitConductance(G,Fm, Hm, dir, delta, N, nc)
-            TPR     <- Comm_TPR(G, Fm, Hm, delta, N, nc, dir)
-            ADS     <- AverageDissimilarityScore(d,epsilon)
-            AS      <- AverageSimilarityScore(d,epsilon)
-            ID      <- InternalDensity(G, d, epsilon, dir)
-            newOI   <- OmegaIdx(G, Fm, Hm, N, delta, nc, nc_sim)
-            metrics <- rbind(metrics, c(tail(conduct,4),tail(TPR,4),ADS,AS,tail(ID,4)))
-            
-            simbic <- rbind(simbic, unlist(c(dir, nc, bigN, nsim,
-                                             bicOP,
-                                             d$OmegaIndex,
-                                             d$MSE,
-                                             #alphaV,
-                                             #lambdaV,
-                                             #0,#pClustOLV,
-                                             #penaltyV,
-                                             sIdx,
-                                             # conduct[nc+2], # nc+1
-                                             # TPR[nc+2], # nc + 1
-                                             # ADS[1:2], #2
-                                             # AS[1], #1
-                                             # ID[nc+2],# nc+1
-                                             newOI,
-                                             currval,
-                                             degree0,
-                                             degree1,
-                                             i )))
-            zerocoef <- rbind(zerocoef, rowSums(abs(d$betaout[,-1]) == 0))
-            
-            numNodesPerCluster <- rbind(numNodesPerCluster, 
-                                        c(colSums(memOverlapCalc(d$Ffin,d$Hfin, delta, N, nc )),rep(0, 8-nc)))
-          }
-          if(length(df_rds[[2]]) > 0){
-            nocov <- rbind(nocov, unlist(c(dir, nc, bigN, nsim,
-                                           df_rds[[2]][[i]]$bic, 
-                                           df_rds[[2]][[i]]$OmegaIndex,
-                                           alphaV,
-                                           lambdaV,
-                                           0,#pClustOLV,
-                                           penaltyV,
-                                           sIdx)))
-          }
-          i <- i+1
-        }
-      }
-    }
-  }
-}
-
-params <- t(as.data.frame(apply(params,1,unlist)))[,c(1:4,11:13)]
-#pClustOLV <- rep(ifelse(gbg[,3] == 0,"NoOL","2GrpOL1"), each = 140)
-params <- as.data.frame(cbind(params, ifelse(params[,3] == 0,"NoOL","2GrpOL1")))[,c(1:3,5:8)]
-colnames(params) <- c("sIdx", "alpha","lambda","penalty","lenCov","lenNoCov","OL")
-params[,c(1:3,5,6)] <- as.data.frame(apply(params[,c(1:3,5,6)],2,as.numeric))
-
-simbic <- as.data.frame(simbic)
-colnames(simbic) <- c("Dir","nc","bigN","nsim","BIC","ICL","LL","nc2","Nnodes",
-                      "Nedges","OI","MSE1","MSE2","MSE3",#"alpha","lambda","pClustOL","penalty",
-                      "sIdx", 
-                      #"Conductance","TPR","AvgVar","Dispersion","AvgSimilarity","InternalDensity",
-                      "newOI","nodesWoAssignment","degree0","degree1", "i")
-
-simbic[,c(2:20)] <- as.data.frame(apply(simbic[,c(2:20)],2,as.numeric))
-simbic$Dir <- unlist(simbic$Dir)
-#simbic$penalty <- unlist(simbic$penalty)
-simbic <- left_join(simbic, params)
-#simbic$pClustOL <- pClustOLV #unlist(simbic$pClustOL)
-
-## Recalculating the BIc cause the formula chnaged?
-#simbic <- simbic %>% mutate(BICnet = BIC(LL,nc,Nnodes,Nedges),
-#                            BICreg = BICReg(LL,nc,Nnodes,Nedges))
-simbic <-  simbic %>%
-  mutate(MSEavg = rowMeans(select(., MSE1, MSE2, MSE3), na.rm = TRUE))
-
-## adding column names to metrics 
-##c(c(TPR,rep(0,7-nc)),ADS,AS,c(ID, rep(0, 7-nc))
-metrics <- as.data.frame(metrics)
-cn <- c("MeanConductanceW", "MeanConductanceWo","WeightedMeanConductanceW", "WeightedMeanConductanceWo",
-        "tprW","tprWo","NWTPR","tprW/NWTPR",
-        "AvgVarianceW"," DispersionScoreW","AvgVarianceWo", "DispersionScoreWo","WeightedAvgVarianceW","WeightedDispersionScoreW",
-        "AvgIntraClusterSimilarityW","AvgIntraClusterSimilarityWo","WeightedAvgIntraClusterSimilarityW", "WeightedAvgIntraClusterSimilarityWo",
-        "CommInternalDensityW","CommInternalDensityWo","TotalInternalDensity","WeightedweightedInternalDensityW","WeightedweightedInternalDensityWo")
-colnames(metrics) <- cn
-metrics$nc <- simbic$nc2
-metrics$OI <- simbic$newOI
-saveRDS(simbic, "SimDatBIC_6.rds")
-saveRDS(metrics, "metrics_6.rds")
-saveRDS(zerocoef , "zerocoef.rds")
-saveRDS(numNodesPerCluster,"numNodesPerCluster.rds")
-## Loading no covariate data
-# nocov <- as.data.frame(nocov)
-# colnames(nocov) <- c("Dir","nc","bigN","nsim","BIC","ICL","LL","nc2","Nnodes",
-#                      "Nedges","OI","alpha","lambda",
-#                      "pClustOL","penalty","sIdx")
-# nocov[,2:14] <- as.data.frame(apply(nocov[,2:14],2,as.numeric))
-# nocov$Dir <- unlist(nocov$Dir)
-# nocov$penalty <- unlist(nocov$penalty)
-# nocov$pClustOL <- pClustOLV #unlist(simbic$pClustOL)
-# nocov <- nocov %>% mutate(BICnet = BIC(LL,nc,Nnodes,Nedges))
-# 
-# ## get the values with minimum BIC values in each bigN value and different types of overlap
-# NCminBICnet <- nocov %>% 
-#   group_by(pClustOL, bigN, Dir) %>% 
-#   slice_min(BICnet, n = 1)
-# 
-# ## max bic
-# NCmaxBICnet <- nocov %>% 
-#   group_by(pClustOL, bigN, Dir,penalty) %>% 
-#   slice_max(BICnet, n = 1)
-# 
-# ## maximum OI
-# NCmaxOInet <- nocov %>% 
-#   group_by(pClustOL, bigN, Dir,penalty) %>% 
-#   slice_max(OI, n = 1)
-
-```
-
-
-```{r}
-##How does the MSE look for different values of ns
-
-simbic %>%  
-  filter(Dir =="directed", pClustOL == "NoOL") %>% 
-  ggplot() +
-  geom_point(aes(y = newOI, x = MSEavg, color = factor(nc)))+
-  facet_grid(vars(alpha), vars(lambda)) +
-  #  xlim(min(simbic$ICL), 1e+20)+
-  theme(legend.position = "bottom", panel.background = element_blank())
-
-
-simbic %>%  
-  filter(Dir =="undirected", pClustOL == "NoOL") %>% 
-  ggplot() +
-  geom_point(aes(y = newOI, x = MSEavg, color = factor(nc)))+
-  facet_grid(vars(alpha), vars(lambda)) +
-  #  xlim(min(simbic$ICL), 1e+20)+
-  theme(legend.position = "bottom", panel.background = element_blank())
-
-```
-
-
-```{r}
-# Case study sidx =13, 
-i = 2
-dir <- "directed"
-bigN = 1
-sIdx <- 13
-nc_sim <- 4
-nc <-4
-fn <- paste0("NW_4CTFTF",sIdx,".rds")
-df_rds <- readRDS(paste0(boxFolder,fn))
-simbic_13 <- simbic %>% filter(sIdx == {{sIdx}})
-d <- df_rds[[1]][[i]]
-
-Fm <- d$Ffin
-Hm <- d$Hfin
-N <- 200
-
-C <- memOverlapCalc(Fm, Hm, delta,N, nc)
-delta <- getDelta(N, 0.00001)
-G <- df_rds[[3]][[bigN]]
-igraph::plot.igraph(G,vertex.label = NA,vertex.size = 5,edge.arrow.size= 0.1, edge.color = "grey28")
-#if(dir == "directed"){
-#  G <- convertToUndir(G, nc_sim)
-#}
-printFlg<- FALSE
-
-#EgoSplitConductanceDirected(G_orig,Fm, Hm, dir, delta, N, nc)
-EgoSplitConductance(G_orig,Fm, Hm, dir, delta, N, nc)
-Comm_TPR(G, Fm, Hm, delta, N, nc, dir)
-AverageDissimilarityScore(d, 0.00001)
-AverageSimilarityScore(d, 0.00001)
-InternalDensity(G, d, epsilon, dir = "directed")
-
-```
-
-
-
-```{r, warning=FALSE, fig.height=9, fig.width=14}
-metrics$bigN <- simbic$bigN
-metrics$dir <- simbic$Dir
-metrics$OL <- simbic$OL
-metrics$alpha <- simbic$alpha
-metrics$penalty <- simbic$penalty
-metrics$MSEavg <- simbic$MSEavg
-metrics$lambda <- simbic$lambda
-metrics$Conductance <- simbic$Conductance
-metrics$degree0 <- simbic$degree0
-metrics$degree1 <- simbic$degree1
-metrics$degree01 <- metrics$degree0+metrics$degree1
-metrics$unassigned <- simbic$nodesWoAssignment
-
-## filtering runs where the number of unassigned nodes at greater than 0
-gbg <- metrics#%>% filter(OI > 0.8)  ##%>% filter((metrics$unassigned <= metrics$degree01) == TRUE)
-
-dir <- c("directed")
-OL <- c("NoOL")
-I <- c(1)
-
-gbg <- gbg %>% pivot_longer(!c(bigN,OI,nc,dir,OL, alpha, penalty, degree0, degree01, degree1, unassigned,lambda))
-
-for(i in I){
-  for(dirV in dir){
-    for(OLv in OL){
-      for(met in unique(gbg$name)){
-        print(gbg %>% filter(dir == {{dirV}}, OL == {{OLv}}, bigN == {{i}}, name == {{met}}) %>% 
-                ggplot()+
-                geom_point(aes(x = OI, y = value, color = unassigned ))+
-                facet_wrap(~alpha)+
-                ggtitle(paste(met,dirV,OLv,bigN, sep = ", "))+
-                theme(legend.position = "bottom", panel.background = element_blank()))
-      }
-    }
-  }
-}
-
-## correctg metrics
-
-## minimum dispersion and avg variance metric
-## minimum conductance 
-## maximum internal density
-## Avg MSE
-for(dirv in unique(metrics$dir)){
-  for(OLv in unique(metrics$OL)){
-    for(i in 1:7){
-      
-# print(metrics %>% 
-#    filter(dir == {{dirv}}, OL == {{OLv}}, bigN == {{i}}, unassigned <= 10)  %>% 
-#    ggplot() +
-#    geom_point(aes(x = WeightedMeanConductanceW, y = WeightedAvgVarianceW, color = OI))+
-#         ggtitle(paste({{dirv}},{{OLv}},i, sep = ", "))+
-#                 theme(legend.position = "bottom", panel.background = element_blank()))
-
-print(metrics %>% group_by(bigN) %>%
-   filter(dir == {{dirv}}, OL == {{OLv}}, bigN =={{i}})  %>% 
-   ggplot() +
-   geom_point(aes(x = WeightedMeanConductanceW, y = WeightedDispersionScoreW, color = OI))+
-        ggtitle(paste({{dirv}},{{OLv}},i, sep = ", "))+
-                theme(legend.position = "bottom", panel.background = element_blank()))
-    }
-  }
-}
-
-
-min_metrics <- gbg %>%
-  group_by(name, dir, OL,bigN) %>%
-        slice(which.min(value)) %>%
-  mutate(type = "min")
-max_metrics <- gbg %>%
-  group_by(name, dir, OL,bigN) %>%
-        slice(which.max(value)) %>%
-  mutate(type = "max")
-min_max_metrics <- rbind(min_metrics,max_metrics)
-
-
-
-```
-
-
 
 ## running BIC for different values of K for COVID data
 
@@ -1021,6 +281,35 @@ degV <- igraph::degree(G_FullGrph)
 degV <- data.frame(cbind(City = names(degV), Value = as.numeric(degV)))
 degV$Value <- as.numeric(degV$Value)
 
+
+test_nc <- c(2,3,4,5,6,7,8) ## Can change
+N <- vcount(G_FullGrph)
+thresh  <- 0.00005
+nitermax <- 30000
+dir <- "undirected"
+alphaLL <- 0.001
+alphaOpt <- c(0.00001, 0.0001, 0.001)
+test = FALSE
+missing <- NULL
+alphaLin <- 0.001
+penaltyOpt <- c("Ridge","LASSO","ElasticNet")
+seed <- 5
+lambdaOpt <- c(0.00001, 0.0001, 0.001)
+covInitOpt <- c("Nmean")
+
+paramGrid <-  matrix(0, nrow =0, ncol = 4)#expand_grid(test_nc, alphaOpt, covInitOpt, penaltyOpt, lambdaOpt)
+for(nc in test_nc){
+  for(alpha in alphaOpt){
+    for(covInit in covInitOpt){
+      for(pen in penaltyOpt){
+        for(lambda in lambdaOpt){
+          paramGrid <- rbind(paramGrid, c(alpha,covInit,pen,lambda))
+        }
+      }
+    }
+  }
+}
+colnames(paramGrid) <-c("alpha","covInit","penalty","lambda")
 ## make a list of neighbours of each node
 allneigh <- list()
 for(node in V(G_FullGrph)){
@@ -1029,21 +318,21 @@ for(node in V(G_FullGrph)){
 degV$neigh <- allneigh
 Nnodes <- vcount(G_FullGrph)
 Nedges <- ecount(G_FullGrph)
-boxFolder <- "C:/Users/gauph/Box/SimulationOutput/CoDAOP/RealCOVIDData_Grph5/"
+boxFolder <- "C:/Users/gauph/Box/SimulationOutput/CoDAOP/RealCOVIDData_102_metrics/"
 files <- list.files(boxFolder)
-NumWeeks <- 253
+NumWeeks <- c(102)
 test_nc <- rep(c(2,3,4,5,6,7,8), each = 3*3*3*1 )
 finOP <- matrix(0, nrow = 0, ncol = 16 )
-numCom <- readRDS(paste0(boxFolder,"realCOVID_NumberOfCommunitiesLogcopies","94",".rds"))
+numCom <- readRDS(paste0(boxFolder,"realCOVID_NumberOfCommunitiesLogcopies","102",".rds"))
 names <- rownames(numCom)
 imputedVals <- matrix(0, ncol = 7, nrow = 0)
-for(i in 1:253){
+for(i in NumWeeks){
   df <- readRDS(paste0(boxFolder,"realCOVID_DataOPLogcopies", i,".rds"))
   finOP_i <- as.data.frame(cbind(df, test_nc, i)) 
   finOP_i[,c(1:8, 11:14)] <- as.data.frame(apply(finOP_i[,c(1:8, 11:14)],2,as.numeric))
   finOP_i <- finOP_i %>% 
-    mutate(BICnet = BIC(LLTot, test_nc, Nedges, Nnodes),
-           BICReg = BICReg(LLTot, test_nc, Nedges, Nnodes))
+    dplyr::mutate(BICnet = BIC(LLTot, test_nc, Nedges, Nnodes), 
+                  BICReg = BICReg(LLTot, test_nc, Nedges, Nnodes))
   finOP <- rbind(finOP, finOP_i)
   
   ## reading imputed values. Mean, Stddev, minBIcnet and minBIcReg
@@ -1054,6 +343,9 @@ for(i in 1:253){
   minBICnet_i <- imputedV[,which.min(finOP_i$BICnet)]
   minBICreg_i <- imputedV[,which.min(finOP_i$BICReg)]
   imputedVals <- rbind(imputedVals, cbind(mean_i, median_i, sd_i, minBICnet_i,minBICreg_i,i,names))
+  
+  ## reading metrics values 
+  Weekmetrics <- as.data.frame(cbind( readRDS(paste0(boxFolder,"MetricsPO",i,".rds")), paramGrid ))
 }
 
 ## Dataframe of imputed values
@@ -1061,6 +353,9 @@ imputedVals <- as.data.frame(imputedVals)
 imputedVals[,1:6] <- apply(imputedVals[,1:6], 2, as.numeric)
 imputedVals$Missing <- !(imputedVals$sd_i == 0)
 
+```
+
+```{r}
 ## for each locations for each week, find the number of neighbours that are missing 
 MissingNeighPerWeek <- left_join(imputedVals %>% select(names,Missing,i), degV %>% select(City, neigh, Value),join_by(names == City) )
 
@@ -1115,7 +410,36 @@ Weeklymin <- imputedVals %>%
   summarise(across(where(is.numeric), min, na.rm = T)) %>%
   pivot_longer(!i) 
 
+```
 
+
+```{r}
+## finding the pareto front for the week using the conductance and variance metrics
+Weekmetrics[,c(1:25,27,30) ] <- apply( Weekmetrics[,c(1:25,27,30)] , 2, as.numeric)
+Weekmetrics$BICnet <- finOP$BICnet
+Weekmetrics$BICreg <- finOP$BICReg
+X <-  Weekmetrics %>%
+    select(WeightedMeanConductanceW, WeightedDispersionScoreW ) %>% 
+    t()
+fronts <- doNondominatedSorting(X)
+
+Weekmetrics$front <-  fronts$ranks
+  
+  ## plotting the conductance vs avg dispersion linking by pareto front
+Weekmetrics %>%
+          ggplot +
+          geom_point(aes(x = WeightedMeanConductanceW, y =WeightedDispersionScoreW ), color = "darkblue") +
+          geom_line(aes(x = WeightedMeanConductanceW, y =WeightedDispersionScoreW , group = front, color= as.factor(front)))+
+          theme(legend.position = "none", panel.background = element_blank())
+
+
+FirstTwoFronts <- Weekmetrics %>% filter(front %in% c(1,2))
+```
+
+
+
+```{r}
+##Plotting for BIC values
 ## plotting the values of the covariate 
 Weeklyavg %>% 
   filter(name != "sd_i") %>%
@@ -1316,11 +640,11 @@ imputedV102 <- cbind(imputedV102, imputedVals %>% filter(i == 102) %>% select(Mi
 aggr %>% group_by(weekno) %>% summarise(sdCpsperul = sd(CopiesPerul, na.rm = TRUE), sdlogCps = sd(logCopies, na.rm =TRUE))
 # numCom <- readRDS(paste0(boxFolder,"realCOVID_NumberOfCommunities",i,".rds"))
 # numCom_nocov <- readRDS(paste0(boxFolder,"realCOVID_NumberOfCommunitiesNoCov",i,".rds"))
-# op_sim <- readRDS(paste0(boxFolder,"realCOVID_NetworkMetricsOutput",i,".rds"))
+# op_sim <- readRDS(paste0(boxFolder,"realCOVID_NetworkmetricsCovOutput",i,".rds"))
 
 ```
 
-## Small NW experiments
+# Small NW experiments
 
 ```{r}
 getwd()
@@ -1440,203 +764,6 @@ for(G in graph_list){
 ```
 
 
-```{r, fig.width=8, fig.height=8}
-##For instances that have a missing value. What is the range of imputed value? What is the relationship betweem OI and MSE and BIC.
-
-## Graph 1
-OP %>% filter( GraphId ==1) %>% ggplot()+
-  geom_point(aes(y = OI, x = ICL, color = factor(alpha)))+
-  ylim(0,1)+
-  facet_grid(cols = vars(covName), scales= "free")+
-  #facet_wrap(~GraphId, scales = "free")+
-  theme(legend.position = "bottom", panel.background = element_blank())
-
-OP %>% filter( GraphId ==1) %>% ggplot()+
-  geom_point(aes(y = OI, x = BIC, color = factor(alpha)))+
-  ylim(0,1)+
-  facet_grid(cols = vars(covName), scales= "free")+
-  #facet_wrap(~GraphId, scales = "free")+
-  theme(legend.position = "bottom", panel.background = element_blank())
-
-## Graph 2
-OP %>% filter( GraphId ==2) %>% ggplot()+
-  geom_point(aes(y = OI, x = ICL, color = factor(alpha)))+
-  ylim(0,1)+
-  facet_grid(cols = vars(covName), scales= "free")+
-  #facet_wrap(~GraphId, scales = "free")+
-  theme(legend.position = "bottom", panel.background = element_blank())
-
-OP %>% filter( GraphId ==2) %>% ggplot()+
-  geom_point(aes(y = OI, x = BIC, color = factor(alpha)))+
-  ylim(0,1)+
-  facet_grid(cols = vars(covName), scales= "free")+
-  #facet_wrap(~GraphId, scales = "free")+
-  theme(legend.position = "bottom", panel.background = element_blank())
-## Graph 3
-OP %>% filter( GraphId ==3) %>% ggplot()+
-  geom_point(aes(y = OI, x = ICL, color = factor(alpha)))+
-  ylim(0,1)+
-  facet_grid(cols = vars(covName), scales= "free")+
-  #facet_wrap(~GraphId, scales = "free")+
-  theme(legend.position = "bottom", panel.background = element_blank())
-
-OP %>% filter( GraphId ==3) %>% ggplot()+
-  geom_point(aes(y = OI, x = BIC, color = factor(alpha)))+
-  ylim(0,1)+
-  facet_grid(cols = vars(covName), scales= "free")+
-  #facet_wrap(~GraphId, scales = "free")+
-  theme(legend.position = "bottom", panel.background = element_blank())
-```
-
-
-```{r, fig.width=14, fig.height=8}
-
-for(grphId in unique(OP$GraphId)){
-  # print(OP %>% filter(GraphId == grphId)  %>% ggplot()+
-  #   geom_point(aes(y = OI, x = ICL, color = interaction(alpha, lambda)))+
-  #   ylim(0,1)+ ggtitle(grphId)+
-  #   #facet_grid(cols = vars(covName), scales= "free")+
-  #   facet_wrap(~covName)+
-  #     theme(legend.position = "bottom", panel.background = element_blank()))
-  print(OP %>%  filter(GraphId == grphId)  %>% ggplot()+
-          geom_point(aes(y = OI, x = MSE, color = interaction(alpha, lambda)))+
-          ylim(0,1)+ ggtitle(grphId)+
-          #facet_grid(cols = vars(covName), scales= "free")+
-          facet_wrap(~covName)+
-          theme(legend.position = "bottom", panel.background = element_blank())  )
-}
-
-```
-
-```{r, fig.width=8, fig.height=8}
-grp1 <- OP %>% filter(GraphId == 1) 
-
-## 1 for i  2,4,5
-OP %>% filter(GraphId == 1, i==2 ) %>%
-  ggplot()+
-  geom_point(aes(y = BIC, x = MSEMD, color = OI))+
-  theme(legend.position = "bottom", panel.background = element_blank())
-OP %>% filter(GraphId == 1, i== 4 ) %>%
-  ggplot()+
-  geom_point(aes(y = BIC, x = MSEMD, color = OI))+
-  theme(legend.position = "bottom", panel.background = element_blank())
-OP %>% filter(GraphId == 1, i== 5 ) %>%
-  ggplot()+
-  geom_point(aes(y = BIC, x = MSEMD, color = OI))+
-  theme(legend.position = "bottom", panel.background = element_blank())
-
-grp1 %>% filter(covName == "TwoCovOneMiss") %>% ggplot()+geom_histogram(aes(Cov2))+facet_wrap(~covName)
-
-grp1 %>% filter(covName == "OneCovOneMiss") %>% ggplot()+geom_histogram(aes(Cov5))+facet_wrap(~covName)
-
-grp1 %>% filter(covName == "TwoCovTwoMiss") %>% ggplot()+geom_histogram(aes(Cov2))+facet_wrap(~covName)
-
-grp1 %>% filter(covName == "TwoCovTwoMiss") %>% ggplot()+geom_histogram(aes(Cov8))+facet_wrap(~covName)
-
-```
-
-
-```{r, fig.width=8, fig.height=8}
-grp2 <- OP %>% filter(GraphId == 2) 
-
-## 2 for i 9, 7 
-OP %>% filter(GraphId == 2, i== 7 ) %>%
-  ggplot()+
-  geom_point(aes(y = BIC, x = MSEMD, color = OI))+
-  theme(legend.position = "bottom", panel.background = element_blank())
-OP %>% filter(GraphId == 2, i== 9 ) %>%
-  ggplot()+
-  geom_point(aes(y = BIC, x = MSEMD, color = OI))+
-  theme(legend.position = "bottom", panel.background = element_blank())
-
-grp2 %>% filter(covName == "OneCovOneMiss") %>% ggplot()+geom_histogram(aes(Cov5))+facet_wrap(~covName)
-
-grp2 %>% filter(covName == "TwoCovOneMiss") %>% ggplot()+geom_histogram(aes(Cov5))+facet_wrap(~covName)
-
-```
-
-
-```{r, fig.width=8, fig.height=8}
-grp3 <- OP %>% filter(GraphId == 3) 
-
-#3 for i 11 and 14 find the range of values for the missing data and plot it again the OI values
-OP %>% filter(GraphId == 3, i== 14 ) %>%
-  ggplot()+
-  geom_point(aes(y = BIC, x = MSEMD, color = OI))+
-  theme(legend.position = "bottom", panel.background = element_blank())
-
-OP %>% filter(GraphId == 3, i== 11 ) %>%
-  ggplot()+
-  geom_point(aes(y = BIC, x = MSEMD, color = OI))+
-  theme(legend.position = "bottom", panel.background = element_blank())
-
-
-grp3 %>% filter(covName == "OneCovComMiss") %>% ggplot()+geom_histogram(aes(Cov5))+facet_wrap(~covName)
-
-grp3 %>% filter(covName == "TwoCovComMiss") %>% ggplot()+geom_histogram(aes(Cov5))+facet_wrap(~covName)
-
-```
-
-
-
-
-
-
-## Same starting point experiments
-
-```{r}
-getwd()
-S <- readRDS("4clustersims_new_comb.rds")
-df <- readRDS("../4clustersims_updated.rds")
-colN <- c("OI",paste0("MSE",1:3), "BIC","ICL","LL","nc2","Nnodes","Nedges",paste0("LL",1:4),"nsim","Len","id") 
-OutP <- matrix(0, ncol = length(colN), nrow=0)
-for(i in 1:54){
-  for(j in 1:2){
-    d <- df[[i]][[1]][[j]]
-    OutP <- rbind(OutP, c(d$OmegaIndex,d$MSE, d$bic, tail(d$Loglik,1),j, length(d$Loglik[,1]), i))
-  }
-  
-}
-OutP <- as.data.frame(as.matrix(OutP))
-colnames(OutP) <- colN
-S <- S %>% slice(rep(1:n(), each = 2))
-
-OutP <- cbind(OutP, S)
-OutP$MSEAvg <- rowSums(OutP[,2:4])/3
-
-```
-
-
-```{r}
-OutP %>% filter(pClustOL == "NoOL") %>%
-  ggplot()+
-  geom_point(aes(x = log(BIC), y = OI, color = as.factor(alpha)))
-
-OutP %>% filter(pClustOL == "2GrpOL1") %>%
-  ggplot()+
-  geom_point(aes(x = log(BIC), y = OI, color = as.factor(alpha)))
-
-OutP %>% filter(pClustOL == "NoOL") %>%
-  ggplot()+
-  geom_point(aes(x = log(BIC), y = MSEAvg, color = OI))
-
-OutP %>% filter(pClustOL == "2GrpOL1") %>%
-  ggplot()+
-  geom_point(aes(x = log(BIC), y = MSEAvg, color = OI))
-```
-
-
-```{r}
-gbg <- df[[28]][[1]]
-plot(y = df[[28]][[1]][[1]]$Loglik[,1], 
-     x = 1:length(df[[28]][[1]][[1]]$Loglik[,1]))
-plot(y = df[[28]][[1]][[1]]$Loglik[,2], 
-     x = 1:length(df[[28]][[1]][[1]]$Loglik[,1]))
-plot(y = df[[28]][[1]][[1]]$Loglik[,4], 
-     x = 1:length(df[[28]][[1]][[1]]$Loglik[,1]))
-```
-
-
 ```{r}
 #egoconductance example
 e <- c(1,2,1,3,1,4,2,3,3,4,3,5,4,5,4,6,4,8,5,6,5,7,7,8,4,11,11,9,11,10,10,9,6,7)
@@ -1647,168 +774,3 @@ com <- matrix(cbind(c(1,1,1,1,1,0,0,0,0,0,0), c(0,0,0,1,1,1,1,1,0,0,0), c(0,0,0,
 EgoSplitConductance(G, Fm = com, Hm = com, dir ="undirected", delta, N= vcount(G), nc=3)
 
 ```
-
-
-```{r}
-nsim <- 2
-#conduct <- matrix(0, nrow =0, ncol = 9)
-#numNodesWoAssignment <- c()
-#newOI <- c()#matrix(0,nrow=0,ncol =1)
-N <- 200
-newnewOI <- c()
-nc_sim <- 4
-
-for(fn in files){
-  df_rds <- readRDS(paste0(boxFolder,fn))
-  sIdx <- as.numeric(str_extract_all(fn, "\\d+")[[1]])[2]
-  
-  i <- 1
-  for(bigN in 1:S$bigN[1]){
-    G_orig <-  df_rds[[3]][[bigN]]
-    for(nsim in 1:nsim){
-      for(dir in c("directed","undirected")){
-        for(nc in S$test_nc[[1]]){
-          d <- df_rds[[1]][[i]]
-          
-          if(dir == "directed"){
-            G <- G_orig
-          }else{
-            G <- convertToUndir(G_orig, nc_sim)
-          }
-          
-          if(length(df_rds[[1]]) > 0){
-            Fm <- d$Ffin
-            Hm <- d$Hfin
-            
-            ## Calculating the metrics
-            #conduct <- rbind(conduct, c(i, EgoSplitConductance(G_orig,Fm, Hm, dir, delta, N, nc), rep(0, 7-nc)))
-            ##newOI <- c(newOI, OmegaIdx(G,Fm,Hm,N,delta,nc,nc_sim = 4))
-            ##numNodesWoAssignment <- c(numNodesWoAssignment, sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 ))
-            A_mat <- as.matrix(memOverlapCalc(Fm, Hm, delta,N, nc))
-            B_mat <- as.data.frame(vertex_attr(G)) %>%
-              dplyr::select(any_of(c(letters[1:nc_sim]))) %>%
-              abs() %>% as.matrix()
-            newnewOI <- c(newnewOI,omega_index(A_mat, B_mat))
-            i <- 1 + i
-          }
-        }
-      }
-    }
-  }
-}
-simbic$newnewOI <- newnewOI
-#simbic$unassignedNodes <- numNodesWoAssignment
-#gbg <- simbic
-#simbic$newOI <- newOI
-```
-
-
-
-```{r}
-## find the number of nodes with 0 degrees
-degree0 <- rep(0,bigN)
-degree1 <- rep(0,bigN)
-
-for(i in 1:S$bigN[1]){
-  degree0[i] <- sum( igraph::degree(df_rds[[3]][[i]]) == 0 )
-  degree1[i] <- sum( igraph::degree(df_rds[[3]][[i]]) == 1 )
-}
-
-```
-
-
-
-
-
-For each cluster $k$, for each attribute $a$, calculate the variance $\sigma_{k,a}^2$.
-
-Normalize these variances to make attributes comparable.
-
-Compute the global variance $$\sigma_{\text{global}, a}^2$$ for each attribute $a$ across the entire dataset.
-
-Compute the normalized variance for each cluster-attribute pair:
-$$\text{NormVar}_{k,a} = \frac{\sigma_{k,a}^2}{\sigma_{\text{global}, a}^2}$$
-
-This tells you: "The spread of attribute $a$ in cluster $k$ is X times the spread of that attribute in the entire dataset." A value << 1 indicates strong cohesion.
-
-Compute a cohesion score for each cluster.
-
-Average the normalized variances for the three attributes:
-$$\text{ClusterScore}k = \frac{1}{3} \sum_{a=1}^{3} \text{NormVar}_{k,a}$$
-
-Compute the final, total score weighted by cluster size.
-
-$$\text{Total Attribute Cohesion Score} = \sum_{k=1}^{4} \left( \frac{n_k}{N} \cdot \text{ClusterScore}_k \right)$$
-
-1. Sum of Squares / Variance (Most Common and Highly Effective)
-This is the workhorse metric for this task. It's fast, easy to understand, and directly relates to the assumptions of many algorithms like K-Means.
-
-For a single attribute in a single cluster:
-
-Calculate the cluster's mean for that attribute, $\mu_c$.
-
-Within-Cluster Sum of Squares (WCSS) for the attribute:
-$WCSS_{a, c} = \sum_{i=1}^{n_c} (x_{i, a} - \mu_c)^2$
-where $n_c$ is the number of nodes in cluster $c$.
-
-This is proportional to the variance. You can use the variance directly: $\text{Var}{a, c} = \frac{WCSS{a, c}}{n_c}$
-
-To get a single score for all clusters and all attributes:
-
-Normalize (Crucial Step): Different attributes are on different scales (e.g., age vs. income). You must normalize the WCSS or variance for each attribute by its global variance across the entire dataset.
-$\text{NormVar}{a, c} = \frac{\text{Var}{a, c}}{\text{Var}_{a, \text{global}}}$
-This answers: "Is the spread of this attribute inside the cluster tighter than its spread in the whole population?" A value of 0.1 means the attribute is 10 times more concentrated in the cluster.
-
-Average across attributes for the cluster:
-$\text{ClusterScore}c = \frac{1}{3} \sum{a=1}^{3} \text{NormVar}_{a, c}$
-
-Calculate a Weighted Average across all clusters:
-$\text{Total Attribute Dispersion} = \sum_{c=1}^{4} \left( \frac{n_c}{N} \cdot \text{ClusterScore}_c \right)$
-where $N$ is the total number of nodes. This ensures larger clusters have a greater impact on the score.
-
-Goal: Minimize this "Total Attribute Dispersion" score.
-
-2. Average Pairwise Distance
-This is even more direct but computationally more expensive ($O(n_c^2)$ per cluster). It measures the average distance between any two points in the cluster for a given attribute.
-
-For a single attribute in a single cluster:
-$\text{AvgDistance}{a, c} = \frac{1}{n_c(n_c-1)} \sum{i=1}^{n_c} \sum_{j \neq i} |x_{i, a} - x_{j, a}|$
-(Often the Euclidean distance is used if combining attributes, but for a single attribute, the absolute difference is fine).
-
-Aggregation: Follow the same process as above: normalize per attribute by the global average pairwise distance, average across attributes, then take a weighted average across clusters.
-Goal: Minimize this score.
-
-3. Silhouette Score for Attributes
-The Silhouette Score is a powerful metric that measures both cohesion (distance to own cluster) and separation (distance to next closest cluster). You can apply it directly to your attribute space.
-
-For a single node: Calculate its average distance to all other nodes in its own cluster ($a_i$). Calculate its average distance to all nodes in the next nearest cluster ($b_i$). The silhouette for node $i$ is:
-$s_i = \frac{b_i - a_i}{\max(a_i, b_i)}$
-
-The score ranges from -1 to 1:
-
-+1: The node is perfectly matched to its own cluster and far from others.
-
-0: The node is on the boundary between two clusters.
-
--1: The node is probably assigned to the wrong cluster.
-
-To get a single score: The mean silhouette width across all nodes is the overall score for the clustering.
-
-Pros:
-
-Very intuitive and has a built-in scale (-1 to 1).
-
-Doesn't require normalization beforehand.
-
-Directly incorporates separation, not just cohesion.
-
-Cons:
-
-Computationally expensive: $O(N^2)$, which can be prohibitive for very large networks.
-
-The result is for the entire attribute space, not broken down by individual attribute.
-
-
-
-
-
