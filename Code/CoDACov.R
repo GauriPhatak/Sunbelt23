@@ -267,50 +267,6 @@ SetBinarycov <- function(G, k, N,nc, k_start, Cnew,connType, pC,
   return(list(G, binVal_orig))
 }
 
-OldSetContinuousCov <- function(G,o, N,nc, o_start, C, connType, 
-                                dist,CovNamesLin,missing,missType, MARparam=NULL){
-  ## Based on the mean and variance indicated by the dist matrix we assign continuous values to the network covariates.
-  contVal <- matrix(ncol = o, nrow = N, 0) 
-  s <- 1 
-  
-  for (i in 1:nc) {
-    idx <- which(C[,i] == connType)
-    contVal[idx, i] <- rnorm(length(idx), dist[[s]][1], dist[[s]][2])
-    idx_n <- which(!(1:N %in% idx))
-    contVal[idx_n, i] <- rnorm(length(idx_n), dist[[s+1]][1], dist[[s+1]][2])
-    s <- s+2
-  }
-  
-  contVal_orig <- contVal
-  if(!is.null(missing)) {
-    for (j in 1:o) {
-      ## Create missingness based on type of missingness. 
-      if(missType[j] == "Random"){ # 1) Random (MCAR)
-        contVal[sample(1:N, round(missing[j] * N / 100)), j] <- NA
-      }else if(missType[j] == "GT_MAR"){ # 2) Greater Than a particular value (MAR)
-        sampTot <- which(floor(contVal[,j]) > MARparam[1]) ## Indices to be sampled from based on restriction
-        contVal[sample(sampTot,round(missing[j]*MARparam[2]/100)),j] <- NA
-        contVal[sample(which(!((1:N) %in% sampTot)), round(missing[j]*(100-MARparam[2])/100)), j] <- NA
-      }else if(missType[j] == "LT_MAR"){ # 3) Less than a particular value (MAR)
-        sampTot <- which(contVal[,j] < MARparam[1]) ## Indices to be sampled from based on restriction
-        contVal[sample(sampTot,round(missing[j]*MARparam[2]/100)),j] <- NA
-        contVal[sample(which(!((1:N) %in% sampTot)), round(missing[j]*(100-MARparam[2])/100)), j] <- NA
-      }else if(missType[j] == "CovDep_MAR"){ # 4) Dependent on another covariate that is not missing (MAR)
-        
-      }
-      
-      G <- G %>% set_vertex_attr(name = CovNamesLin[j], value = c(contVal[, j]))
-    }
-  } else{
-    for (j in 1:o) {
-      G <- G %>% set_vertex_attr(name = CovNamesLin[j], value = c(contVal[, j]))
-    }
-  }
-  
-  return(list(G, contVal_orig))
-  
-}
-
 SetContinuousCov <- function(G,o, N,nc, o_start, C, connType, 
                              dist,CovNamesLin,missing,missType, MARparam=NULL){
   ## Based on the mean and variance indicated by the dist matrix we assign continuous values to the network covariates.
@@ -635,50 +591,6 @@ CmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
 }
 
 
-WithBacktracking_CmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
-                                         Z_u = NULL, beta = NULL ,sigmaSq ,alpha ,alphaLL ,
-                                         nc ,start ,end ,mode,dir, lambda, penalty ) {
-  rho <- 0.8
-  cv <- 0.1
-  llG <- rep(0,nc)
-  
-  ## Gradient function to update log likelihood of G
-  #First part of Likelihood based on graph only.
-  llG <- GraphComntyWtUpdt(W1_u,W2_u,W2_neigh,W2_sum)
-  
-  #Second part of Likelihood based on binary covariates
-  llX <- BincovCmntyWtUpdt(nc*2, W1_u, W2_u, W, X_u, dir)
-  
-  #Third part of likelihood based on continuous covariates
-  if(dir == "directed"){
-    if(mode == "in"){
-      llZ <- ContcovCmntyWtUpdt(nc, Z_u, beta, W1_u, W2_u, sigmaSq, dir)
-    }else if(mode == "out"){
-      beta <- cbind(beta[,1], beta[,start:end], beta[,(start-nc):(end-nc)])
-      llZ <- ContcovCmntyWtUpdt(nc, Z_u, beta, W1_u,W2_u, sigmaSq, dir)
-    }
-  }else{
-    llZ <- ContcovCmntyWtUpdt(nc, Z_u, beta, W1_u, W2_u, sigmaSq, dir)
-  }
-  
-  ## Function to update the community weights vector using non negative matrix factorization
-  
-  f_curr <- objective_f(W1_u,W2_u,W2_neigh,W2_sum, beta, Z_u, lambda, penalty)
-  grad <- c(llG) +  llX[2:(nc+1)] + llZ[1:nc]
-  W_u_prop <- W1_u + (alpha * grad)
-  W_u_prop[W_u_prop < 0] <- 0
-  f_prop <- objective_f(W_u_prop,W2_u,W2_neigh,W2_sum, beta, Z_u, lambda, penalty)
-  
-  while(f_prop < (f_curr + (cv * alpha * sum(grad^2)) )){
-    alpha <- rho *alpha
-    W_u_prop <- W1_u + (alpha * grad)
-    W_u_prop[W_u_prop < 0] <- 0
-    f_prop <- objective_f(W_u_prop,W2_u,W2_neigh,W2_sum, beta, Z_u, lambda, penalty)
-  }
-  W1_u_new <- W_u_prop
-  return(W1_u_new)
-  
-}
 ## future implementation
 objective_f <- function(W1_u,W2_u,W2_neigh, W2_sum, beta, Z, lambda, penalty){
   ## Graph section of loglikelihood
@@ -698,48 +610,6 @@ objective_f <- function(W1_u,W2_u,W2_neigh, W2_sum, beta, Z, lambda, penalty){
   return(p1 + p2 + S)
 }
 
-OldCmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
-                           Z_u = NULL, beta = NULL ,sigmaSq ,alpha ,alphaLL ,
-                           nc ,start ,end ,mode,dir ) {
-  
-  llG <- rep(0,nc)
-  
-  ## Gradient function to update log likelihood of G
-  #First part of Likelihood based on graph only.
-  llG <- GraphComntyWtUpdt(W1_u,W2_u,W2_neigh,W2_sum)
-  
-  #Second part of Likelihood based on binary covariates
-  llX <- BincovCmntyWtUpdt(nc, W1_u, W2_u, W, X_u, dir)
-  #Third part of likelihood based on continuous covariates
-  if(dir == "directed"){
-    if(mode == "in"){
-      llX <- BincovCmntyWtUpdt(nc, W1_u, W2_u, W, X_u, dir)
-    }else if(mode == "out"){
-      W <- cbind(W[,1], W[,start:end], W[,(start-nc):(end-nc)])
-      llX <- BincovCmntyWtUpdt(nc, W1_u, W2_u, W, X_u, dir)
-    }
-  }else{
-    llX <- BincovCmntyWtUpdt(nc, W1_u, W2_u, W, X_u, dir)
-  }
-  
-  #Third part of likelihood based on continuous covariates
-  if(dir == "directed"){
-    if(mode == "in"){
-      llZ <- ContcovCmntyWtUpdt(nc, Z_u, beta, W1_u, W2_u, sigmaSq, dir)
-    }else if(mode == "out"){
-      beta <- cbind(beta[,1], beta[,start:end], beta[,(start-nc):(end-nc)])
-      llZ <- ContcovCmntyWtUpdt(nc, Z_u, beta, W1_u,W2_u, sigmaSq, dir)
-    }
-  }else{
-    llZ <- ContcovCmntyWtUpdt(nc, Z_u, beta, W1_u, W2_u, sigmaSq, dir)
-  }
-  ## Function to update the community weights vector using non negative matrix factorization
-  W1_u_new <- W1_u + (alpha * (c(llG) +  alphaLL *(llX[1:nc] + llZ[1:nc])))
-  W1_u_new[(W1_u_new < 0) | (W1_u_new == 0)] <- 0
-  
-  return(W1_u_new)
-  
-}
 
 ## Graph Community Weight updates
 GraphComntyWtUpdt <- function(W1_u,W2_u,W2_neigh, W2_sum){
@@ -778,25 +648,6 @@ BincovCmntyWtUpdt <- function(nc, f_u,h_u, W, X_u, dir){
     llX <- t((X_u - Q_u) %*% W[,2:(nc+1)])
   }
   return(llX)
-}
-
-## Continuous covariates community weight
-OldContcovCmntyWtUpdt <- function(nc, Z_u, beta, W1_u,W2_u, sigmaSq, dir){
-  
-  if(dir =="directed"){
-    llZ <- rep(0, nc*2 )
-    WW <- matrix(c(1,W1_u,W2_u), ncol = 1+(nc*2))
-    
-  }else{
-    llZ <- rep(0, nc )
-    WW <- matrix(c(1,W1_u), ncol = (1+nc))
-    
-  }
-  if (length(beta) > 0) {
-    ## Adding the gradient based on continuous covariates
-    llZ <- 1 * ((Z_u - t(beta %*% t(WW))) %*% beta[,2:(nc+1)])/sigmaSq
-  }
-  return(llZ)
 }
 
 ## Continuous covariates community weight
@@ -1188,25 +1039,6 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
     }
   }
   return( list( betaret, Zret, sigmaSq, logLik) )
-}
-
-OldupdateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, 
-                                    impType, alphaLin, penalty){
-  if(printFlg == TRUE){
-    print("In updateLinearRegParam Func")
-  }
-  betaret <- beta
-  Zret <-  Z
-  sigmaSq <- NULL
-  if (length(beta) > 0) {
-    betaret <- LinRParamUpdt(beta, Z, Wtm1,Wtm2, alpha, lambda, N, missVals,dir, impType, alphaLin, penalty)
-    sigmaSq <-  SigmaSqCalc(Z, betaret, Wtm1,Wtm2, missVals,dir)
-    
-    if (sum(missVals) > 0) {
-      Zret <- PredictCovLin(Wtm1, Wtm2, Z, beta, missVals,dir, impType)
-    }
-  }
-  return(list(betaret,Zret,sigmaSq))
 }
 
 ## Log likleihood calculations
