@@ -829,18 +829,6 @@ Feature_struct_decomp <- function(G, nc, N, delta, noCov, FullM, covNames){
   
 }
 
-## Variance Explained: Using log likelihood ratio
-VarExp <- function(){
-  ## L_f  : log-lik of cov + struct
-  L_f  <- 0
-  ## L_b1 : log-lik of using only NW struct
-  L_b1 <- 0
-  ## L_b2 : log-lik of using covariates
-  L_b2 <- 0
-  R <- (L_f - L_b1)/(L_f - L_b2)
-  return(R)
-}
-
 ## null models: Randomize feature labels -> if performance drops features matter
 null_models <- function(G, nc, k, o, N, alpha,lambda, thresh, nitermax, orig, randomize,
                         CovNamesLinin, CovNamesLinout, CovNamesLPin, CovNamesLPout, dir,
@@ -923,96 +911,4 @@ Surprise <- function(graph, membership) {
   ))
 }
 
-# reading the simulated networks and the original assignments
-# param <- "InitParamMiss_Coh_MCAR_LASSO_Cont_2.rds"#"InitParamMiss_Cohesive_MCAR_B15_LASSO.rds"
-# param_c <- "InitParamMiss_Coh_MCAR_LASSO_Cont_2_comp.rds"#"InitParamMiss_Cohesive_MCAR_B15_LASSO_comb.rds"
-# getwd()
-# fileName <- list.files("Code/CoDAOP/CohesiveMCAR_2_NoDiag/")#"CoDAOP/CohesiveMCAR_B15_LASSO/")
-# #k <- 0
-# op_sim <- matrix(0, nrow =0 , ncol = 11)
-# op_orig <- matrix(0, nrow =0 , ncol = 9)
-# type <- c("Reg","Nocov","Sto","Mean")
-# dir <- c("D","U")
-# for(file in fileName){
-#   
-#   print(file)
-#   idx <- str_extract_all(file, "\\d+")[[1]][2]
-#   df <- readRDS(paste0("Code/CoDAOP/CohesiveMCAR_2_NoDiag/",file))
-#   #df_reg <- df[[1]]
-#   #df_sto <- df[[3]]
-#   #df_nocov <- df[[2]]
-#   grp <- 1
-#   pb = txtProgressBar(min = 0, max = length(seq(from = 1, to = 2*length(df[[4]]), by = 2)), initial = 0)
-#   
-#   for(i in seq(from = 1, to = 2*length(df[[5]]), by = 2)){
-#     setTxtProgressBar(pb,i)
-#     
-#     G <- df[[5]][[grp]]
-#     N <- vcount(G)
-#     delta <- getDelta(N)
-#     nc <- 3
-#     OrigVal <-  as.data.frame(vertex_attr(G)) %>%
-#       dplyr::select(all_of(c(letters[1:nc])))
-#     OrigVal[OrigVal == -1] <- 1
-#     
-#     for(j in 1:4){
-#       FinOP <- list()
-#       for(k in 1:2){
-#         Fm <- df[[j]][[i+k-1]]$Ffin
-#         Hm <- df[[j]][[i+k-1]]$Hfin
-#         FinOP[[k]] <- as.data.frame(memOverlapCalc(Fm, Hm, delta, N, nc))
-#         comnty <- data.frame(which(as.matrix(FinOP[[k]]) == 1, arr.ind = TRUE)) %>%
-#           group_by(col) %>%
-#           group_map(~.x)
-#         op_sim <- rbind(op_sim, c(
-#           round(conductance(graph = G, communities = comnty, FinOP[[k]]),4),
-#           round(partition_density(graph = G, communities = comnty),4),
-#           round(Q_HardPartition(G, FinOP[[k]]),4),
-#           round(Q_Overlapping(G, FinOP[[k]], dir[k]),4),
-#           #round(Suprise(G, ),4),
-#           #omega_index(communities[1], communities[2]),
-#           #NMI(factor(OrigVal), factor(FinOP[[k]])),
-#           #f1_score(ground_truth =  OrigVal, detected =  FinOP[[k]]),
-#           #permanence(g, communities[[1]], 15),
-#           round(CQ(G, comnty),4),
-#           round(ONCut(G, comnty),4),
-#           round(OP(comnty, G),4),
-#           dir[k],
-#           type[j],
-#           idx,
-#           grp))
-#       }
-#     }
-#     
-#     comnty <- data.frame(which(as.matrix(OrigVal) == 1, arr.ind = TRUE)) %>%
-#       group_by(col) %>%
-#       group_map(~.x)
-#     op_orig <- rbind(op_orig, c(
-#       round(conductance(graph = G, communities = comnty, OrigVal),4),
-#       round(partition_density(graph = G, communities = comnty),4),
-#       round(Q_HardPartition(G, OrigVal),4),
-#       round(Q_Overlapping(G, OrigVal, dir[1]),4),
-#       #round(Suprise(G, ),4),
-#       #omega_index(communities[1], communities[2]),
-#       #NMI(factor(OrigVal), factor(FinOP[[k]])),
-#       #f1_score(ground_truth =  OrigVal, detected =  FinOP[[k]]),
-#       #permanence(g, communities[[1]], 15),
-#       round(CQ(G, comnty),4),
-#       round(ONCut(G, comnty),4),
-#       round(OP(comnty, G),4),
-#       idx,
-#       grp))
-#     grp <- grp + 1
-#   }
-#   
-#   close(pb)
-# }
-# 
-# colnames(op_sim) <- c("Conductance", "Partition Density","modHP", "Qov",  "Cover Quality", "ONCut", "Overlap Proportion", "Dir","type","idx", "grp")
-# colnames(op_orig) <- c("Conductance", "Partition Density","modHP", "Qov",  "Cover Quality", "ONCut", "Overlap Proportion", "idx", "grp")
-# 
-# saveRDS(op_sim, "MetricsDataSim.rds")
-# saveRDS(op_orig, "MetricsDataOrig.rds")
-
-#gbg <- readRDS("MetricsDataSim.rds")
 
