@@ -949,10 +949,6 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
   }else{
     cm <- Wtm1
   }
-  ##FOR GRUOP LASSO
-  ## GROUPLASSO CODE IS DISABLED
-  #cm <- matrix(0, nrow = N, ncol =0)
-  #for(i in 1:ncol(Wtm1)){ cm <- cbind(cm, Wtm1[,i], Wtm2[,i])}
   
   betaret <- beta
   Zret <-  Z
@@ -964,7 +960,7 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
   if (length(beta) > 0) {
     
     for(i in 1:dim(Z)[2]){
-      ## "GroupLASSO","Ridge","LASSO","ElasticNet")
+      ##"Ridge","LASSO","ElasticNet" 
       ## filter out the missing data so we update only based on the avaiable data
       if(sum(missVals) > 0){
         mIdx <- missVals[,i]
@@ -976,37 +972,17 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
         y <- Z[,i]
       }
       
-      if(penalty =="GroupLASSO"){
-        ## GROUPLASSO CODE IS DISABLED
-        ##mod[[i]] <- gglasso(cm[-mIdx,], Z[-mIdx,i], group = rep(1:3, each= 2), lambda = lambda)
-        ##beta[i,] <- unname(as.matrix(coef(mod[[i]]))[,1])
-        
-        {##Find the R-sq value
-          # Get predictions
-          #preds <- predict(mod[[i]], newx = cm)
-          # For regression (continuous y)
-          #mse <- mean((Z[,i] - preds)^2)
-          #rsq <- 1 - sum((Z[,i]-preds)^2)/sum((Z[,i]-mean(Z[,i]))^2)
-          # print(paste("r-squared for ", i, " :",rsq, " mse ", mse))
-        }
-      }else if(penalty =="LASSO"){
-        #mod[[i]] <- cv.glmnet(X , y, alpha = 1, maxit = 1000) 
-        #beta[i,] <- coef(mod[[i]], s = "lambda.min")
+      if(penalty =="LASSO"){
         
         mod[[i]] <- glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 1, maxit = 1000)
-        #start = beta[i,], maxit = 1000) 
         beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
         
       }else if(penalty =="ElasticNet"){
-        #mod[[i]] <- cv.glmnet(X , y, alpha = 0.5, maxit = 1000) 
-        #beta[i,] <- coef(mod[[i]], s = "lambda.min")
         
         mod[[i]] <- glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 0.5, maxit = 1000) 
         beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
         
       }else if(penalty == "Ridge"){
-        #mod[[i]] <- cv.glmnet(X , y, alpha = 0, maxit = 1000) 
-        #beta[i,] <- as.matrix(coef(mod[[i]], s = "lambda.min"))
         
         mod[[i]] <- glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 0, maxit = 1000) 
         beta[i,] <- as.matrix(coef(mod[[i]]))
@@ -1021,13 +997,8 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
                                    sd = sqrt(mean((y - predictions[[i]][!mIdx])^2)), log = TRUE))
     }
     
-    ## GROUP LASSO CODE IS DISABLED 
-    if(penalty == "GroupLASSO"){
-      betaret <- cbind(beta[,1], beta[, seq(2,((nc*2)+1),by=2)], beta[,seq(3,((nc*2)+1), by=2)])
-    }else{ 
-      betaret <- beta
-    }
-    
+
+    betaret <- beta
     sigmaSq <-  SigmaSqCalc(Z, betaret, Wtm1,Wtm2, missVals,dir)
     
     if (sum(missVals) > 0) {
@@ -1035,7 +1006,6 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
         idx <- which(missVals[, i])
         Zret[idx, i] <- predictions[[i]][idx]
       }
-      #Zret <- PredictCovLin(Wtm1, Wtm2, Z, betaret, missVals,dir, impType)
     }
   }
   return( list( betaret, Zret, sigmaSq, logLik) )
