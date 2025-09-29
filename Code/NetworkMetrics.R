@@ -184,6 +184,7 @@ OmegaIdx_ <- function(OrigVal, memoverlap,nc,N){
   
   return(oi)
 }
+
 OmegaIdx <- function(G, Fm, Hm, N, delta, nc, nc_sim) {
   # A_mat, B_mat: binary membership matrices, same number of rows (items)
   A_mat <- as.matrix(memOverlapCalc(Fm, Hm, delta,N, nc))
@@ -221,20 +222,6 @@ OmegaIdx <- function(G, Fm, Hm, N, delta, nc, nc_sim) {
   OI <- (O-E)/(1-E)
 
   return(OI)
-}
-
-Wrong_OmegaIdx <- function(G, Fm, Hm, N, delta, nc, nc_sim) {
-  if(printFlg == TRUE){
-    print("In OmegaIdx Func")
-  }
-  memoverlap <- memOverlapCalc(Fm, Hm, delta, N, nc)
-  
-  OrigVal <-  as.data.frame(vertex_attr(G)) %>%
-    dplyr::select(any_of(c(letters[1:nc_sim]))) %>%
-    abs()
-  
-  oi <- OmegaIdx_(OrigVal, memoverlap,nc,N)
-  return(oi)
 }
 
 ## Calculating the silhouette score based on covariate values
