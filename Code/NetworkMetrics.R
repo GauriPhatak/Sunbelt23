@@ -229,7 +229,6 @@ SilhouetteScore <- function(C, Z){
   nc <- ncol(C)
   
   A <- as.matrix(dist(apply(Z, 2, scales::rescale, to = c(0,1))))
-  #distances(G)
 
   NodesWoAssignment <- (rowSums(C) == 0)
   if(sum(NodesWoAssignment) > 0){
@@ -285,18 +284,11 @@ Comm_TPR <- function(G, Fm, Hm, delta, N, nc, dir){
   NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
   numNodesWoAssignment <- sum(NodesWoAssignment)
   C[,nc+1] <- as.numeric(NodesWoAssignment)
-  # print(igraph::plot.igraph(G,vertex.label = NA,vertex.size = 5,
-  #                           vertex.color = as.factor(V(G)$Cluster),
-  #                           edge.arrow.size= 0.1, edge.color = "grey28"))
+
   for(i in 1:dim(C)[2]){
     idx <- which(C[,i] == 1)
     iG <- induced_subgraph(G,idx)
     
-    # print(igraph::plot.igraph(iG,vertex.label = NA,vertex.size = 5,
-    #                           vertex.color = as.factor(V(iG)$Cluster),
-    #                           edge.arrow.size= 0.1, edge.color = "grey28"))
-
-    #com <- rep(1, length(idx))
     # Count triangles for each vertex
     triangle_counts <- count_triangles(iG)
     
@@ -305,7 +297,7 @@ Comm_TPR <- function(G, Fm, Hm, delta, N, nc, dir){
     
     # Calculate the triangle participation ratio
     total_vertices <- vcount(iG)
-    #tpr <- tpr + (participating_vertices / total_vertices)
+
     tprVec <- c(tprVec,(participating_vertices / total_vertices) )
   }
   ## Triangle participation ratio of the whole network
@@ -336,17 +328,10 @@ return(c(tprVec,tprW,tprWo,tprWW, tprWoW))
 }
 
 ## Ego splitting the graph to calculate conductance
-
-##Implementation below is the where I convert directed network into an undirected network. 
 EgoSplitConductance <- function(G,Fm , Hm, dir, delta , N , nc){
   C <- memOverlapCalc(Fm, Hm, delta, N, nc)
 
-  #if(dir == "directed"){
-  #  G <- convertToUndir(G,nc)
-  #}
   G <- set_vertex_attr(G, "name", value = 1:vcount(G))
-  #print(igraph::plot.igraph(G,vertex.label = NA,vertex.size = 5,edge.arrow.size= 0.1, edge.color = "grey28"))
-  
   ##Create a new community of background nodes that as unassigned
   NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
   C[,nc+1] <- as.numeric(NodesWoAssignment)
@@ -375,42 +360,21 @@ EgoSplitConductance <- function(G,Fm , Hm, dir, delta , N , nc){
   for(i in 1:dim(C)[2]){
     idx <- which(C[,i] == 1)
     Gsub[[i]] <- induced_subgraph(G, vids = idx)
-    #edge_sub <- as_edgelist(Gsub[[i]])
-    
-    #tmp_edges <-  as_data_frame(G, what = "edges")[E(G)[V(G)[-idx] %--% V(G)[idx]], c("from", "to")]
-    #dropped_edges <- rbind(dropped_edges,tmp_edges)
+
     Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "Origname", value = vertex_attr(Gsub[[i]],"name"))
     Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "Group", value = i)
     Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "VertColor", value = vertex_attr(Gsub[[i]],"VertColor"))
-    Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "name", value = paste0(vertex_attr(Gsub[[i]],"name"),"_",i))#rename_vertices(Gsub[[i]], paste0("_", i))
-   # igraph::plot.igraph(Gsub[[i]],vertex.label = NA,vertex.size = 5,edge.arrow.size= 0.1, edge.color = "grey28")
+    Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "name", value = paste0(vertex_attr(Gsub[[i]],"name"),"_",i))
     }
   CombinedGraph <- disjoint_union(Gsub)
   
   if(nrow(dropped_edges) > 0 ){
   ## keep distinct edges
   dropped_edges <- dropped_edges %>% distinct()
-  #colnames(dropped_edges) <- c("from","to")
-  # edges <- matrix(0,nrow=0,ncol=2)
-  # ##combined graph names and original names
-  # Orig <- V(CombinedGraph)$Origname
-  # name <- V(CombinedGraph)$name
-  #   for(i in 1:nrow(dropped_edges)){
-  #     from <-  name[Orig == dropped_edges[i,1]]
-  #     to <-    name[Orig == dropped_edges[i,2]]
-  #     
-  #     edges <- rbind(edges, expand.grid(from, to))
-  #   }
-  # edges <- distinct(edges)
+  
   CombinedGraph <- set_edge_attr(CombinedGraph, name = "color", value = "grey28")
   
   CombinedGraph <- add_edges(CombinedGraph, as.vector(t(dropped_edges)), color = "darkred")
-  # print(igraph::plot.igraph(CombinedGraph,vertex.label = NA,vertex.size = 5,
-  #                           vertex.color = as.factor(as.numeric(V(CombinedGraph)$Group)),
-  #                           edge.arrow.size= 0.1, edge.color = E(CombinedGraph)$color))
-  #  print(igraph::plot.igraph(CombinedGraph,vertex.label = NA,vertex.size = 5,
-  #                            vertex.color = V(CombinedGraph)$VertColor,
-  #                           edge.arrow.size= 0.1, edge.color = E(CombinedGraph)$color))
   
   }
   
@@ -435,18 +399,9 @@ EgoSplitConductance <- function(G,Fm , Hm, dir, delta , N , nc){
     
   }
 
-# print(igraph::plot.igraph(CombinedGraph,vertex.label = NA,vertex.size = 5,
-#                           vertex.color = V(CombinedGraph)$VertColor,
-#                           edge.arrow.size= 0.1, edge.color = E(CombinedGraph)$color))
   
   CombinedGraph <- igraph::simplify(CombinedGraph,remove.multiple = TRUE,remove.loops = TRUE)
   
-# print(igraph::plot.igraph(CombinedGraph,vertex.label = NA,vertex.size = 5, 
-#                           vertex.color = V(CombinedGraph)$VertColor,
-#                           edge.arrow.size= 0.1, edge.color = E(CombinedGraph)$color))
-# print(igraph::plot.igraph(CombinedGraph,vertex.label = NA,vertex.size = 5, 
-#                           vertex.color = as.factor(as.numeric(V(CombinedGraph)$Group)),
-#                           edge.arrow.size= 0.1, edge.color = E(CombinedGraph)$color))
   ConductanceVal <- rep(0,dim(C)[2])
   for (i in 1:dim(C)[2]) {
     S <- V(CombinedGraph)$name[which(as.numeric(V(CombinedGraph)$Group) == i)]
@@ -481,7 +436,6 @@ EgoSplitConductance <- function(G,Fm , Hm, dir, delta , N , nc){
   WeightedMeanConductanceW <- MeanConductanceW*(N/(N - numNodesWoAssignment ))
   WeightedMeanConductanceWo <- MeanConductanceWo*(N/(N - numNodesWoAssignment ))
   
-  #ConductanceVal <- clustAnalytics::conductance(CombinedGraph, as.numeric(V(CombinedGraph)$Group))
  return(c(ConductanceVal, MeanConductanceW, MeanConductanceWo,WeightedMeanConductanceW, WeightedMeanConductanceWo))
 }
 
