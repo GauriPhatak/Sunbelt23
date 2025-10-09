@@ -304,7 +304,6 @@ RegSpectralClust <-  function(G, k, regularize = TRUE ){
   
 }
 
-
 CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "assortative", kmeansIter = 100, retAlpha =FALSE){
   
   # Step 1:
@@ -439,7 +438,6 @@ ICL <- function(logLik,WtMat,nc,N,E){
   return(BIC + (2*Ent))
 }
 
-
 ShortestPathGrph <- function(ct_sbst, hwy_grph, city_name, simple = TRUE){
   
   ## keeping all the edges from above. Checking if this would add more edges to the data
@@ -499,12 +497,7 @@ removeRandEdges <- function(graph, percent){
   return(list("graph" =  delete_edges(graph , to_be_removed),"ids"= to_be_removed))
 }
 
-#gbg <- removeRandEdges(cowNW, 10)
-#G <- gbg$graph
-#ids <- gbg$ids
-
 ## For all categories based on a percentage for each categories in it. MNAR
-
 removeCatedges <- function(graph, attr, fxn, percent, category){
   
   edges <- unlist(incident_edges(graph, which(fxn(vertex_attr(graph, attr), category))), recursive = FALSE, use.names = FALSE)
@@ -517,12 +510,7 @@ removeCatedges <- function(graph, attr, fxn, percent, category){
   return(list("graph" = ret_grph, "ids"= gsize(ret_grph)))
 }
 
-#gbg <- removeCatedges(cowNW, "gender", `==`,80, "2")
-#G <- gbg$graph
-#ids <- gbg$ids
-
 ## remove values in the attributes at random
-
 removeRandAtt <- function(attrs, percent){
   
   N <- length(attrs)
@@ -531,8 +519,6 @@ removeRandAtt <- function(attrs, percent){
   attrs[to_be_removed] <- NA
   return(attrs)
 }
-#G <- cowNW
-#V(G)$years <-  removeRandAtt(V(G)$years, 10)
 
 removeCatAtt <- function(attr, cat, fxn, percent){
   
@@ -544,27 +530,19 @@ removeCatAtt <- function(attr, cat, fxn, percent){
   return(attr)
 }
 
-#V(G)$gender <- removeCatAtt(V(G)$gender, "2", `==`, 20 )
-
-## Strategies for imputing the data
-
 ## Unconditional means. This includes just simple methods of imputations.
 ## for categorical variables impute based on the most frequent variable
 ## Most common value imputation
-
 imputeCatAtt <- function(attr){
   attr[is.na(attr)] <- which.max(table(attr))#as.matrix(as.data.frame(sort(table(attr), decreasing = TRUE ))$attr[1])
   return(attr)
 }
 
 #imputeCatAtt(att$status)
-
 imputeContAtt <- function(attr){
   attr[is.na(attr)] <- floor(mean(attr,na.rm = TRUE))
   return(attr)
 } 
-
-
 
 CatRegImp <- function(att, attr){
   
@@ -589,8 +567,6 @@ CatRegImp <- function(att, attr){
   return(att)
 }
 
-
-
 ## Required functions
 logit2prob <- function(coef) {
   odds <- exp(coef)
@@ -603,7 +579,6 @@ prob2logit <- function(x){
 }
 
 ## Create a basis network
-
 NetworkSim <- function(N, dir=FALSE, B, C,formula, coefs){
   
   #seed <- 42
@@ -626,8 +601,6 @@ NetworkSim <- function(N, dir=FALSE, B, C,formula, coefs){
   return(g.sim)
   
 }
-
-
 
 SimNW <- function(pC,k,N,B, formula){
   C = sample(1:k,N,replace = TRUE, prob = pC)
@@ -667,23 +640,11 @@ comdet <- function(g.sim, cat){
                                      type ="non-assortative")
   return(data.frame(origmem = origmem, origmemCov = origmemCov))
 }
-# 
-
-## Check correlation between the covariates and the community generated.
-# 
-# table(origmemCov, V(g.sim)$LOTR)
-# 
-# table(origmemCov, V(g.sim)$Cluster)
-# 
-# table(V(g.sim)$LOTR, V(g.sim)$Cluster)
-
-# create missingness in simulated networks
 
 ## Missingness created randomly.
 Mymode <- function(codes){
   names(which.max(table(codes)))
 }
-
 
 IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
   ## Based on notes from 8th
