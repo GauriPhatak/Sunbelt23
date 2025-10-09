@@ -1,0 +1,730 @@
+---
+title: "CoDA COVID Data implementation"
+output: pdf_document
+date: "2025-10-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(igraph)
+library(kableExtra)
+library(readxl)
+library(ggalluvial)
+library(ggpubr)
+```
+
+## Example using real data
+
+In simulated data environments, ground truth knowledge is known, as both network topology and covariate assignments are synthetically generated. This includes precise community structure and complete covariate values. However, in empirical applications, community assignments represent latent variables requiring unsupervised detection, as true cluster configurations are unobservable. We utilize wastewater pathogen surveillance data from Oregon State University's monitoring program, comprising multi-location measurements across Oregon. These empirical measurements serve as covariate inputs, while network structure is derived from Oregon's highway infrastructure spatial data.
+
+**Highway network creation.**
+
+The analysis utilizes spatial data representing the highway infrastructure within Oregon. Each city is conceptualized as a node within the network topology. Connectivity between nodes and highways is established based on a 50-kilometer buffer radius, wherein cities falling within this proximity threshold are considered adjacent to the highway corridor. Subsequently, a shortest-path network is constructed to model optimal connectivity pathways between all nodal pairs, resulting in a comprehensive inter-nodal connectivity framework.
+
+The network is as shown below
+
+```{r}
+## Plotting by idx
+## Read full graph
+G <- readRDS(paste0(getwd(),"/Code/G_FullGrph5.rds"))
+## Aggregate data from 7/11/25
+aggr <- readRDS(paste0(getwd(),"/Code/aggr_7_11.rds"))
+## Read full graph
+O_attr <- readRDS(paste0(getwd(),"/Code/O_attr.rds"))
+
+df <- as.data.frame(vertex_attr(G))
+eList <- as_edgelist(G)
+eList <- as.data.frame(cbind(eList, pair = c(1:nrow(eList)))) %>% 
+  pivot_longer(!pair, values_to = "name",names_to = "gbg") %>%
+  left_join(df %>% dplyr::select(name, X, Y))
+
+ggplot()+ 
+  geom_line(data = eList, aes(x = X, y = Y, group = pair), color = "grey80") +
+  geom_point(data = df, aes(x = X, y = Y, color = "darkblue"))+
+  geom_text(data = df, aes(label = name, x = X, y = Y),size =1.5, vjust = -0.5) + # vjust to position above points
+  theme(legend.position = "none", panel.background = element_blank()) 
+
+```
+
+<!-- Add the plot of network before and after shortest distance. -->
+
+This analysis examines a single week of aggregated weekly data comprising 45 distinct locations. Among these, 9 locations contain missing values, representing 20% of the dataset. We incorporate our community detection and missing data imputation method to address data completeness while preserving underlying structural relationships.
+
+## How do the covid levels change over time
+
+```{r}
+# What weeks do we get with these dates.
+aggr %>% 
+  group_by(Date) %>% 
+  summarise(meanlogCopies = max(logCopies, na.rm = TRUE)) %>%
+  dplyr::mutate(y = year(Date) ) %>%
+  ggplot() +
+  geom_line(aes(x = Date, y = meanlogCopies, color = factor(y))) +
+  theme(legend.position = "bottom", panel.background = element_blank()) 
+
+
+```
+
+## Variants data
+
+```{r, warning=FALSE}
+
+variants <- as.data.frame(readr::read_delim(paste0(getwd(),"/Data/VariantSummaryData.csv"),
+                                            delim = "\t",
+                                            col_types = cols(.default = col_character()),
+                                            locale = locale(encoding = "UTF-16")))
+
+colnames(variants) <- c("date", "lineage","numOfSeq","pct")
+var <- variants %>% as.data.frame() %>%
+  dplyr::mutate(pct = parse_number(pct)) %>%
+  dplyr::mutate(dt = mdy(date)) %>% 
+  filter(!lineage %in% c("No Data Available", "All other variants")) %>%
+  dplyr::mutate(lineage_main = str_extract(lineage , "^[^\\.]+")) %>%
+  group_by(lineage_main, dt) %>%
+  summarise(pct = sum(pct)) %>%
+  dplyr::mutate(yr = lubridate::year(dt), mnth = lubridate::month(dt, label = TRUE) ) %>%
+  ungroup() %>%
+  dplyr::mutate(weekno = as.numeric(dt - min(dt, na.rm = TRUE)),
+                weekno = (weekno %/% 7) + 1)
+
+var %>%
+  ggplot()+
+  geom_line(aes(x = dt, y = pct, color = lineage_main,group=lineage_main))+
+  scale_x_date( date_breaks = "1 month",date_labels = "%b\n%Y",expand = c(0, 0)) +
+  #facet_grid(~yr, space = "free_x", scales = "free_x", switch = "x") +
+  theme(legend.position = "none", panel.background = element_blank()) 
+
+var21_23 <- var %>% filter(dt >= "2021-11-07" & dt <= "2023-05-31")
+var21_23 %>%
+  ggplot()+
+  geom_line(aes(x = dt, y = pct, color = lineage_main,group=lineage_main))+
+  scale_x_date( date_breaks = "1 month",date_labels = "%b\n%Y",expand = c(0, 0)) +
+  #facet_grid(~yr, space = "free_x", scales = "free_x", switch = "x") +
+  theme(legend.position = "bottom", panel.background = element_blank()) 
+
+
+var_ba <- var21_23 %>% filter(lineage_main == "BA") 
+var_ba %>%
+  ggplot()+
+  geom_point(aes(x = dt, y = pct, color = lineage_main,group=lineage_main))+
+  scale_x_date( date_breaks = "2 month",date_labels = "%b\n%Y",expand = c(0, 0)) +
+  #facet_grid(~yr, space = "free_x", scales = "free_x", switch = "x") +
+  theme(legend.position = "none", panel.background = element_blank(),axis.text.x = element_text(angle = 45, vjust =0.5)) 
+
+## Date for the minimum value
+#which.min(var_ba$pct )
+
+## date for maximum value
+#which.max(var_ba$pct 
+## sort the values to find the minimum and maximum
+var_ba <- var_ba %>% arrange(pct,dt)
+## row id low: 1: "2021-11-07", 5: "2023-04-23"
+## row id high: 56: "2022-03-27", 63: "2022-09-11"
+
+var %>%
+  ggplot()+
+  geom_line(aes(x = dt, y = pct, color = lineage_main,group=lineage_main))+
+  scale_x_date(date_breaks = "2 month",date_labels = "%b%Y",expand = c(0, 0)) +
+  geom_vline(xintercept = as.Date(c("2021-11-07","2023-04-23")), linetype = "dashed", color = "darkred") +
+  geom_vline(xintercept = as.Date(c("2022-03-27", "2022-09-11")), linetype = "dashed", color = "darkblue") +
+  #facet_grid(~yr, space = "free_x", scales = "free_x", switch = "x") +
+  theme(legend.position = "none", panel.background = element_blank(),axis.text.x = element_text(angle = 45, vjust =0.5)) 
+
+
+```
+
+The problem with above is the low point of one variant is not the low point of the whole series.
+
+Plotting it against the average value on the other y axis.
+
+## plot the different variants covid levels to assess the best weeks for alluvial plots.
+
+```{r, warning = FALSE}
+Avgaggr <- aggr %>% 
+  group_by(weekno) %>%
+  dplyr::summarise(meanlogCopies = mean(logCopies, na.rm=TRUE)) 
+Avgaggr %>%
+  ggplot()+
+  geom_line(aes(x = weekno, y = meanlogCopies))
+
+scale_factor <- max(var$pct )/ max(Avgaggr$meanlogCopies)
+
+var <- left_join(var, Avgaggr, join_by(weekno == weekno))
+
+
+var %>%
+  ggplot()+
+  geom_line(aes(x = dt, y = pct, color = lineage_main,group=lineage_main))+
+  geom_line(aes(x = dt, y = meanlogCopies*scale_factor)) +
+  scale_x_date( date_breaks = "2 month",date_labels = "%b%Y",expand = c(0, 0)) +
+  geom_vline(xintercept = as.Date(c("2021-11-07","2023-04-23")), linetype = "dashed", color = "darkred") +
+  geom_vline(xintercept = as.Date(c("2022-03-27", "2022-09-11")), linetype = "dashed", color = "darkblue") +
+  scale_y_continuous(
+    name = "percentage per variant",
+    sec.axis = sec_axis(~ . / scale_factor, name = "meanlogCopies")
+  ) +
+  theme(legend.position = "none", panel.background = element_blank(),axis.text.x = element_text(angle = 45, vjust =0.5)) 
+
+
+
+```
+
+```{r, warning=FALSE}
+## subsetting august 2021 to august 2022. Low covid level to peak and then low again.
+Aug_21_22 <- var %>% filter(dt >= "2021-08-01" & dt <= "2022-08-01")
+Aug_21_22 %>%
+  ggplot()+
+  geom_point(aes(x = dt, y = pct, color = lineage_main,group=lineage_main))+
+  geom_point(aes(x = dt, y = meanlogCopies*scale_factor)) +
+  scale_x_date( date_breaks = "1 month",date_labels = "%b\n%Y",expand = c(0, 0)) +
+  geom_vline(xintercept = as.Date(c("2021-09-19","2022-07-10")), linetype = "dashed", color = "darkred") +
+  geom_vline(xintercept = as.Date(c("2021-12-26")), linetype = "dashed", color = "darkblue") +
+  scale_y_continuous(
+    name = "percentage per variant",
+    sec.axis = sec_axis(~ . / scale_factor, name = "meanlogCopies")
+  ) +
+  theme(legend.position = "none", panel.background = element_blank()) 
+
+Aug_21_22 <- Aug_21_22 %>% arrange(meanlogCopies)
+```
+
+## Assesing the groups in week 102 where we have the least number of missing data.
+
+```{r}
+week <- 102
+numFronts <- c(1)
+boxFolder <- "C:/Users/gauph/Box/SimulationOutput/CoDAOP/RealCOVIDdataW_metrics_AllWeeks/"
+df <- as.data.frame(readRDS(paste0(boxFolder,"realCOVID_DataOPLogcopies", week,".rds")))
+df[,1:6] <- apply(df[,1:6],2,as.numeric)
+
+Weekmetrics <- as.data.frame(cbind(readRDS(paste0(boxFolder,"MetricsPO",week,".rds")), week = week))
+Weekmetrics[,1:26] <- apply( Weekmetrics[,c(1:26)] , 2, as.numeric)
+df <- cbind(df[,1:6], Weekmetrics)
+
+##reading the community affiliation matrices
+finmem <- readRDS(paste0(boxFolder, "Fin_mem_Cov",week,".rds"))
+
+numCom <- readRDS(paste0(boxFolder,"realCOVID_NumberOfCommunitiesLogcopies",week,".rds"))
+names <- rownames(numCom)
+
+imputedV <- as.data.frame(readRDS(paste0(boxFolder,"ImputedValuesLogcopies",week,".rds")))
+X <-  as.data.frame(df) %>%
+  select(WeightedMeanConductanceW, WeightedDispersionScoreW ) %>% 
+  t()
+fronts <- ecr::doNondominatedSorting(X)
+df$front <- unlist(fronts$ranks)
+df %>% 
+  ggplot() +
+  geom_point(aes(x = WeightedMeanConductanceW, y =WeightedDispersionScoreW ,color = as.factor(nc))) +
+  geom_line(aes(x = WeightedMeanConductanceW, y =WeightedDispersionScoreW , 
+                group = front, color= as.factor(front)))+
+  theme(legend.position = "none", panel.background = element_blank())
+```
+
+```{r}
+sd_i <- apply(imputedV,1,sd)
+idx <- which(df$front %in% numFronts, arr.ind = TRUE)
+fr <- df$front[idx]
+## get the imputed value of the first three fronts.
+imp <- cbind(imputedV[, idx],names)
+imp$Missing <- !(sd_i == 0)
+colnames(imp) <- c(as.character(idx), "City","Missing")
+
+impF <- imp %>% 
+  pivot_longer(!c(City,Missing), names_to = "idx") %>%
+  left_join(as.data.frame(cbind(fr, idx = as.character(idx), 
+                                nc = df$nc[idx], 
+                                alpha = df$alpha[idx],
+                                lambda = df$lambda[idx], 
+                                penalty = df$penalty[idx])),
+            by = join_by(idx == idx) )
+
+```
+
+```{r}
+sub_aggr <- aggr %>% filter(weekno == 102) %>% ungroup()
+fg_attr <- O_attr[O_attr$included == "orangered3",]
+fg_attr <- fg_attr[fg_attr$name %in% unique(aggr$Location), ]
+fg_attr <- left_join(fg_attr,
+                     sub_aggr %>% select(logCopies, Location),  
+                     by = join_by(name == Location)) %>% distinct()
+
+G <- set_vertex_attr(G, name = "X", value = as.matrix(fg_attr$X ))
+G <- set_vertex_attr(G, name = "Y", value = as.matrix(fg_attr$Y ))
+
+G <- set_vertex_attr(G,name = "logCopies", value = fg_attr$logCopies )
+
+## setting colors
+colors <-  c("cornflowerblue", "coral2","chocolate3", "chartreuse4","blue4",
+             "darkorchid", "orangered","gold1","cyan2")
+
+CommunityGroups <- matrix(0, nrow = 0, ncol = 5)
+for(i in idx){
+  d <- impF %>% filter(idx == i)
+  nc <- as.numeric(d$nc[1])
+  Fin_mem <- cbind(as.data.frame(finmem[[as.numeric(i)]])  %>% 
+                     dplyr::mutate(u = ifelse(rowSums(.) == 0, TRUE, FALSE) ), 
+                   City = fg_attr$name, idx = i )   
+  attr <- cbind(as.data.frame(vertex_attr(G)), Fin_mem)
+  eList <- as_edgelist(G)
+  eList <- as.data.frame(cbind(eList, pair = c(1:nrow(eList)))) %>% 
+    pivot_longer(!pair, values_to = "name",names_to = "gbg") %>%
+    left_join(attr %>% select(name, X, Y))
+  attr$Available <- !is.na(attr$logCopies)
+  attr$imputedVal <- imputedV[,i]
+  Fin_mem$Available <- attr$Available
+  
+  q <- ggplot()+ 
+    geom_line(data = eList, aes(x = X, y = Y, group = pair), color = "grey80") +
+    geom_point(data = attr, aes(x = X, y = Y, color = Available, size = imputedVal)) +
+    scale_color_manual(values = c("#661100", "#CC6677")) +
+    ggnewscale::new_scale_color()
+  for(k in 1:nc){
+    q <- q + ggforce::geom_mark_hull(data = attr[attr[,letters[k]] == TRUE,],
+                                     aes(x = X, y = Y,fill = .data[[letters[k]]] ), 
+                                     concavity = 3, expand = unit(2, "mm"),
+                                     alpha = 0.1, fill = colors[k], color = colors[k])
+  }
+  q <- q+xlab("Latitude") + ylab("Longitude")+
+    theme(legend.position = "bottom", panel.background = element_blank()) 
+  print(q)
+  
+  ##Finding lists of locations in each group
+  CommunityGroups <- rbind(CommunityGroups , 
+                           as.data.frame(Fin_mem) %>% 
+                             mutate(imputed = imputedV[,i] ) %>%
+                             pivot_longer(!c(City, idx, Available, imputed)) %>% 
+                             filter(value == TRUE ))
+}
+
+
+```
+
+```{r, results='asis'}
+for (i in idx) {
+  nc <- df$nc[i]
+  com <- CommunityGroups %>% 
+    filter(idx == i) %>% 
+    select(City, name)  %>% 
+    pivot_wider(names_from = name, values_from = City, values_fn = list)
+  color <-  CommunityGroups %>% 
+    filter(idx == i) %>% 
+    select(City, Available)
+  gbg <- t(as.data.frame(do.call(rbind, com))) %>%
+    lapply(function(x) data.frame(value = x)) %>%
+    bind_rows(.id = "variable") %>%
+    group_by(variable) %>%
+    mutate(row_id = row_number()) %>%
+    pivot_wider(names_from = variable, values_from = value) %>%
+    mutate(across(everything(), ~replace(., is.na(.), ""))) %>%
+    select(!row_id)%>%
+    setNames(c(letters[1:nc], "unassigned"))
+  
+  # Create a named vector for faster lookup
+  color_lookup <- setNames(color$Available, color$City)
+  
+  print(gbg  %>%
+          mutate(across(everything(), ~ {
+            sapply(.x, function(cell_value) {
+              if (cell_value %in% names(color_lookup)) {
+                cell_color <- ifelse(color_lookup[cell_value], "blue", "green")
+                cell_spec(cell_value, color = cell_color)
+              } else {
+                cell_spec(cell_value, color = "gray")
+              }
+            })
+          })) %>%
+          kbl(caption = paste0("Communities detected w/ alpha ", 
+                               df$alpha[i], " lambda ", 
+                               df$lambda[i], " and ",
+                               df$penalty[i], " penalty"), 
+              escape = FALSE,
+              align = "c",
+              digits = 5) %>% 
+          kable_classic(full_width = FALSE))
+}
+
+```
+
+## comparing with the facetsheet data
+
+```{r, warning=FALSE, fig.height=7, fig.width=9}
+##Reading factsheet data
+
+factsheetbox <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FactSheetData/"
+
+svi <- as.data.frame(read_excel(paste0(factsheetbox, "Full_SVI.xlsx")))
+hospitals <- as.data.frame(read_excel(paste0(factsheetbox,"Hospitals within SS buffer.xls")))
+attr <- attr %>% left_join(hospitals %>% 
+                             select(WW_shed, Hospitals_Within_SS_10MI), 
+                           join_by(name == WW_shed))
+# COUNTY ,FIPS_Text_, FIPS,
+Svi_sbst <- svi %>% select(WW_shed,E_TOTPOP,E_POV150,
+                           E_UNINSUR,E_AGE65,E_DISABL,E_MUNIT,
+                           E_CROWD,E_GROUPQ) %>%
+  group_by(WW_shed)%>%
+  summarise_all(sum, na.rm =TRUE) %>% 
+  filter(!(WW_shed %in% c("Klamath Falls South Suburban District", "Fanno PS")))
+
+Svi_sbst <-  cbind( Svi_sbst , 
+                    as.data.frame(lapply(Svi_sbst[,3:9], function(x) x/Svi_sbst$E_TOTPOP )) %>%
+                      setNames(c("P_POV150","P_UNINSUR","P_AGE65","P_DISABL","P_MUNIT","P_CROWD","P_GROUPQ")))
+#WW_shed, E_DAYPOP,E_TOTPOP, E_HU, E_POV150, E_UNINSUR, E_AGE65, E_DISABL, E_MUNIT, E_CROWD, E_GROUPQ, SPL_THEMES,RPL_THEMES) %>%
+#E_DISABL Disabled population
+#E_AGE65 Population aged 65 and older
+#E_HU Housing units estimate
+#E_DAYPOP Adjunct variable - Estimated daytime population, LandScan 2021**
+#E_TOTPOP Total Population (Estimate & Margin of Error)
+#E_POV150 Population below 150% of the poverty line
+#E_UNINSUR Uninsured population
+#E_MUNIT Multi-unit housing
+#E_CROWD Households with crowding (more people than rooms)
+#E_GROUPQ Population in group quarters (e.g., nursing homes, prisons)
+#SPL_THEMES Sum of series themes
+```
+
+```{r, warning=FALSE, fig.height=6, fig.width=12}
+for(i in idx){
+  
+  print(CommunityGroups %>% 
+          filter(idx == i) %>% 
+          left_join(Svi_sbst, join_by(City == WW_shed)) %>% rename(Group = name) %>%
+          select(-c(City, idx, Available, value, E_POV150,E_UNINSUR,E_AGE65,E_DISABL,E_MUNIT,E_CROWD,E_GROUPQ)) %>%
+          pivot_longer(!c(Group)) %>%
+          ggplot() +
+          geom_boxplot(aes(y = value, x = Group, color = Group)) +
+          # geom_point(aes(y = value, x = Group, color = Group))+
+          facet_wrap(~name, scales = "free") +
+          theme(legend.position = "none", panel.background = element_blank()))
+}
+
+```
+## comparing the value of loggenecopies inside the groups
+```{r}
+
+```
+
+
+```{r}
+fg <- as.data.frame(vertex_attr(G))
+eList <- as_edgelist(G)
+eList <- as.data.frame(cbind(eList, pair = c(1:nrow(eList)))) %>% 
+  pivot_longer(!pair, values_to = "name",names_to = "gbg") %>%
+  left_join(fg %>% select(name, X, Y))
+fg$Available <- !is.na(attr$logCopies)
+fg <- left_join(fg, Svi_sbst, join_by(name == WW_shed))
+fg <- left_join(fg, hospitals %>% select(WW_shed, Hospitals_Within_SS_10MI), join_by(name == WW_shed))
+vals <- c("E_TOTPOP","P_POV150","P_UNINSUR","P_AGE65",
+          "P_DISABL","P_MUNIT","P_CROWD","P_GROUPQ",
+          "Hospitals_Within_SS_10MI")
+#"E_DAYPOP","E_TOTPOP","E_HU","E_POV150","E_UNINSUR","E_AGE65",
+#          "E_DISABL","E_MUNIT","E_CROWD","E_GROUPQ","SPL_THEMES","RPL_THEMES",
+#          "Hospitals_Within_SS_10MI"
+fg <- cbind(fg, Fin_mem[,1:5])
+fg[is.na(fg)] <- 0
+nc <- 4
+for(val in vals){
+  q <- ggplot()+ 
+    geom_line(data = eList, aes(x = X, y = Y, group = pair), color = "grey80") +
+    geom_point(data = fg, aes(x = X, y = Y, color = Available, size = .data[[val]])) +
+    scale_color_manual(values = c("#661100", "#CC6677")) +
+    ggnewscale::new_scale_color()
+  for(k in 1:nc){
+    q <- q + ggforce::geom_mark_hull(data = attr[attr[,letters[k]] == TRUE,],
+                                     aes(x = X, y = Y,fill = .data[[letters[k]]] ), 
+                                     concavity = 3, expand = unit(2, "mm"),
+                                     alpha = 0.1, fill = colors[k], color = colors[k])
+  }
+  q <- q+xlab("Latitude") + ylab("Longitude")+
+    theme(legend.position = "bottom", panel.background = element_blank()) 
+  print(q)
+}
+
+
+```
+
+
+## what are the important nodes within these communities
+
+## Trying alluvial plot between Week 81 ans 123 as the low points and week 95 as the highpoints
+
+```{r}
+## Read full graph
+G <- readRDS(paste0(getwd(),"/Code/G_FullGrph5.rds"))
+## Aggregate data from 7/11/25
+aggr <- readRDS(paste0(getwd(),"/Code/aggr_7_11.rds"))
+## Read full graph
+O_attr <- readRDS(paste0(getwd(),"/Code/O_attr.rds"))
+weeks <- 1:253#c(81,95,123)
+numFronts <- c(1)
+boxFolder <- "C:/Users/gauph/Box/SimulationOutput/CoDAOP/RealCOVIDDataW_metrics_AllWeeks/"
+df <- matrix(0, nrow = 0, ncol = 12)
+Weekmetrics <- matrix(0,nrow=0, ncol =32)
+finmem <- list()
+imputedV <- list()
+for(i in weeks) {
+  df <- rbind(df, readRDS(paste0(boxFolder,"realCOVID_DataOPLogcopies", i,".rds")))
+  
+  Weekmetrics <- rbind(Weekmetrics, cbind(readRDS(paste0(boxFolder,"MetricsPO",i,".rds")), week = i))
+  
+  ##reading the community affiliation matrices
+  finmem[[length(finmem)+1]] <-  readRDS(paste0(boxFolder, "Fin_mem_Cov",i,".rds"))
+  
+  ## reading imputed values
+  imputedV[[length(imputedV)+1]] <- as.data.frame(readRDS(paste0(boxFolder,"ImputedValuesLogcopies",i,".rds")))
+}
+names(imputedV) <- weeks
+df <- as.data.frame(df)
+df[,1:8] <- apply(df[,1:8],2,as.numeric)
+
+Weekmetrics <- as.data.frame(Weekmetrics)
+Weekmetrics[,1:26] <- apply( Weekmetrics[,c(1:26)] , 2, as.numeric)
+
+df <- cbind(df[,1:6], Weekmetrics)
+df$week <- as.numeric(df$week)
+numCom <- readRDS(paste0(boxFolder,"realCOVID_NumberOfCommunitiesLogcopies",i,".rds"))
+names <- rownames(numCom)
+names(finmem) <- weeks
+
+X <-  as.data.frame(df) %>% 
+  group_by(week) %>%
+  group_split()
+front <- c()
+for(i in 1:length(X)){
+  
+  x <- X[[i]] %>%
+    select(WeightedMeanConductanceW, WeightedDispersionScoreW ) %>% 
+    t()
+  fronts <- ecr::doNondominatedSorting(x)
+  front <- c(front,unlist(fronts$ranks))
+}
+df$front <- front
+df %>% 
+  ggplot() +
+  geom_point(aes(x = WeightedMeanConductanceW, y =WeightedDispersionScoreW ,color = as.factor(nc))) +
+  geom_line(aes(x = WeightedMeanConductanceW, y =WeightedDispersionScoreW , 
+                group = front, color= as.factor(front)))+
+  facet_wrap(~week) +
+  theme(legend.position = "none", panel.background = element_blank())
+
+ff <- df %>% group_by(week) %>% filter(front ==1)
+
+##getting the imputed data
+## creating dataframe for all weeks all imputed values for the choosen fronts
+imp_all <- matrix(0, nrow = 0, ncol = 10)
+Fin_all <- matrix(0,nrow = 0, ncol = 5)
+
+for(i in weeks){
+  sub_aggr <- aggr %>% filter(weekno == i) %>% ungroup()
+  
+  fg_attr <- O_attr[O_attr$included == "orangered3",]
+  fg_attr <- fg_attr[fg_attr$name %in% unique(aggr$Location), ]
+  fg_attr <- left_join(fg_attr,
+                       sub_aggr %>% select(logCopies, Location),  
+                       by = join_by(name == Location)) %>% distinct()
+  
+  G <- set_vertex_attr(G, name = "X", value = as.matrix(fg_attr$X ))
+  G <- set_vertex_attr(G, name = "Y", value = as.matrix(fg_attr$Y ))
+  
+  G <- set_vertex_attr(G,name = "logCopies", value = fg_attr$logCopies )
+  
+  sd_i <- apply(imputedV[[as.character(i)]],1,sd)
+  idx <- df %>% filter(week == i) %>% pull(front) %>% {which(. %in% numFronts)}
+  fr <- ff %>% filter(week == i) %>% pull(front)
+  
+  ## get the imputed value of the first three fronts.
+  imp <- as.data.frame(cbind(imputedV[[as.character(i)]][, idx],names))
+  imp$Missing <- !(sd_i == 0)
+  imp$Week <- i
+  colnames(imp) <- c(as.character(idx), "City","Missing", "Week")
+  df_week <- df %>% filter(week == i)
+  impF <- imp %>% 
+    pivot_longer(!c(City,Missing,Week), names_to = "idx", values_to = "logCopies") %>%
+    left_join(as.data.frame(cbind(fr, idx = as.character(idx), 
+                                  nc = df_week$nc[idx], 
+                                  alpha = df_week$alpha[idx],
+                                  lambda = df_week$lambda[idx], 
+                                  penalty = df_week$penalty[idx])),
+              by = join_by(idx == idx) )
+  
+  imp_all <- rbind(imp_all, impF)
+  
+  ## finding the groups for each week for each first front idx
+  for(j in idx){
+    Fin_mem <- cbind(as.data.frame(finmem[[as.character(i)]][[as.numeric(j)]])  %>% 
+                       dplyr::mutate(u = ifelse(rowSums(.) == 0, TRUE, FALSE) ), 
+                     City = fg_attr$name, idx = as.character(j) , Week = i)
+    
+    Fin_mem$Available <- !is.na(fg_attr$logCopies)
+    Fin_mem <- Fin_mem %>% pivot_longer(!c(City, idx,Week, Available), names_to = "groups", values_to = "belongs")
+    Fin_all <- rbind(Fin_all, Fin_mem)
+  }
+}
+
+
+CommunityGroups <- left_join(Fin_all, imp_all, by = c("idx","Week", "City")) 
+
+
+avail <- CommunityGroups %>% 
+  select(City, Week, Available) %>% 
+  distinct() %>% 
+  group_by(Week) %>% 
+  summarise(available = sum(Available))
+#CommunityGroups<- rename(CommunityGroups,  available=avaiable)
+CommunityGroups <- left_join( CommunityGroups, avail, join_by(Week == Week))
+saveRDS(CommunityGroups, "Community_groups.rds")
+```
+
+
+## Printing the groups for the different weeks
+
+```{r, results='asis'}
+Weeks <- c(81,95,123)
+comb <- CommunityGroups %>% filter(Week %in% Weeks) %>%distinct(idx, Week, nc, alpha, lambda, penalty, available)
+CommunityGroups <-  CommunityGroups %>% filter(Week %in% Weeks) %>%
+  filter(belongs == TRUE)
+for (i in 1:nrow(comb)){
+  nc <- as.numeric(comb$nc[i])
+  com <- CommunityGroups %>% 
+    filter(idx == comb$idx[i], Week == comb$Week[i]) %>% 
+    select(City, groups)  %>% 
+    pivot_wider(names_from = groups, values_from = City, values_fn = list)
+  color <-  CommunityGroups %>% 
+    filter(idx == comb$idx[i], Week == comb$Week[i]) %>% 
+    select(City, Available)
+  gbg <- t(as.data.frame(do.call(rbind, com))) %>%
+    lapply(function(x) data.frame(value = x)) %>%
+    bind_rows(.id = "variable") %>%
+    group_by(variable) %>%
+    mutate(row_id = row_number()) %>%
+    pivot_wider(names_from = variable, values_from = value) %>%
+    mutate(across(everything(), ~replace(., is.na(.), ""))) %>%
+    select(!row_id)%>%
+    setNames(c(letters[1:nc], "unassigned"))
+  
+  # Create a named vector for faster lookup
+  color_lookup <- setNames(color$Available, color$City)
+  
+  print(gbg  %>%
+          mutate(across(everything(), ~ {
+            sapply(.x, function(cell_value) {
+              if (cell_value %in% names(color_lookup)) {
+                cell_color <- ifelse(color_lookup[cell_value], "blue", "green")
+                cell_spec(cell_value, color = cell_color)
+              } else {
+                cell_spec(cell_value, color = "gray")
+              }
+            })
+          })) %>%
+          kbl(caption = paste0("Communities detected for week ",comb$Week[i]," w/ alpha ", 
+                               df$alpha[i], " lambda ", 
+                               df$lambda[i], " and ",
+                               df$penalty[i], " penalty"), 
+              escape = FALSE,
+              align = "c",
+              digits = 5) %>% 
+          kable_classic(full_width = FALSE))
+}
+
+```
+
+## creating Sankey plots
+
+```{r}
+# 81:10, 95:15, 123:28
+
+C_subst <- CommunityGroups %>% 
+  filter((Week == 81 & idx == 10) | (Week == 95 & idx == 15) |(Week == 123 & idx == 28)) %>%
+  mutate(nodeIds = paste(City, Week, groups,sep= "-"))
+
+
+
+```
+
+
+## Howmany combinations do we have in the first fronts for the different weeks
+
+```{r}
+CommunityGroups <- readRDS("Community_groups.rds")
+CommunityGroups[,c(2,3, 8:12)] <- apply(CommunityGroups[,c(2,3,8:12)],2,as.numeric)
+FF_comb <-  CommunityGroups %>% filter(Available == TRUE) %>%
+  select(Week, idx, nc, available, logCopies,alpha) %>% 
+  group_by(Week,idx,nc,available,alpha) %>% 
+  summarise(meanlogCopies = mean(logCopies), sdlogCopies = sd(logCopies) ) %>% ungroup()%>%
+  distinct() %>% select(-idx) %>%
+  count(Week,nc, available,meanlogCopies,alpha, sdlogCopies )
+FF_comb$avail <- FF_comb$available
+
+scale_factor <- max(FF_comb$nc )/ max(FF_comb$avail)
+FF_comb %>% ggplot()+
+  geom_jitter(aes(x = Week, y = nc, color = as.factor(alpha)), alpha =0.5, width =0, height=0.05)+
+   geom_line(aes(x = Week, y = avail*scale_factor), color = "darkblue", alpha =0.6) +
+  scale_y_continuous(
+    name = "Number of groups detected",
+    sec.axis = sec_axis(~ . / scale_factor, name = "Number of available locations")
+  )+theme(legend.position = "bottom", panel.background = element_blank())
+
+scale_factor <- max(FF_comb$nc )/ max(FF_comb$meanlogCopies)
+FF_comb %>% ggplot()+
+  geom_jitter(aes(x = Week, y = nc, color = as.factor(alpha)), alpha =0.5, width =0, height=0.05)+
+   geom_line(aes(x = Week, y = meanlogCopies*scale_factor), color = "darkblue", alpha =0.6) +
+     geom_line(aes(x = Week, y = (meanlogCopies+sdlogCopies )*scale_factor), color = "blue", alpha =0.6) +
+       geom_line(aes(x = Week, y = (meanlogCopies-sdlogCopies )*scale_factor), color = "blue", alpha =0.6) +
+  scale_y_continuous(
+    name = "Number of groups detected",
+    sec.axis = sec_axis(~ . / scale_factor, name = "Mean log copies per week")
+  )+theme(legend.position = "bottom", panel.background = element_blank())
+
+scale_factor <- max(FF_comb$meanlogCopies )/ max(FF_comb$avail)
+FF_comb %>% ggplot() +
+  geom_line(aes(x= Week, y = meanlogCopies, color = alpha), color = "darkred")+
+    geom_line(aes(x= Week, y = avail*scale_factor), color = "darkblue")+
+   scale_y_continuous(name = "mean logCopies",
+                      sec.axis = sec_axis(~ . / scale_factor, name = "Number of available locations"))+
+  theme(legend.position = "none", panel.background = element_blank())
+
+scale_factor <- max(FF_comb$nc )/ max(FF_comb$avail)
+FF_comb %>% group_by(Week) %>% summarise(max_nc = max(nc), avail = first(avail))%>%
+  ggplot()+
+  geom_point(aes(x = Week, y=max_nc),color = "darkred", alpha=0.5)+
+  geom_line(aes(x = Week, y = avail*scale_factor), color = "darkblue")+
+  scale_y_continuous(name = "max number of groups",
+                      sec.axis = sec_axis(~ . / scale_factor, name = "Number of available locations"))+
+    theme(legend.position = "none", panel.background = element_blank())
+
+scale_factor <- max(FF_comb$sdlogCopies )/ max(FF_comb$avail)
+FF_comb %>%
+  ggplot()+
+  geom_line(aes(x = Week, y= sdlogCopies ),color = "darkred", alpha=0.5)+
+  geom_line(aes(x = Week, y = avail*scale_factor), color = "darkblue")+
+  scale_y_continuous(name = "variance of logcopies",
+                      sec.axis = sec_axis(~ . / scale_factor, name = "Number of available locations"))+
+    theme(legend.position = "none", panel.background = element_blank())
+
+FF_comb %>% ggplot() +
+  geom_point(aes(x = avail, y = sdlogCopies))+
+      theme(legend.position = "none", panel.background = element_blank())
+
+## find the number of nodes that are overlapping per week per idx
+OL <- CommunityGroups %>% 
+  select(idx, Week,groups,City, belongs) %>% 
+  pivot_wider( names_from = groups, values_from = belongs) %>% 
+  mutate(Overlap =rowSums(select(., matches("^[A-Za-z]$")), na.rm = TRUE)) %>%
+  select(Week, idx,Overlap)
+
+OL %>% group_by(Week) %>% summarise(maxOL = max(Overlap)) %>% ggplot() + geom_point(aes(x = Week, y = maxOL))
+
+OL %>% group_by(Week) %>% count(Overlap) %>% #filter(Overlap > 1) %>% 
+  ggplot() + 
+  geom_point(aes(x = Week, y = Overlap, size = n), alpha = 0.5)+    
+  theme(legend.position = "none", panel.background = element_blank())
+
+```
+
+looks like if there is more missing data,
+
+
+## Do the health regions correspond to the communities detected?
+
+## within the groups located which ones are the important locations and why?
