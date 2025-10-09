@@ -7,7 +7,7 @@ date: "2025-07-25"
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 #library(terra)
-#library(sf)
+library(sf)
 library(tidyverse)
 library(dplyr)
 #library(mapview)
@@ -49,7 +49,24 @@ library(nsga2R)
 hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
 #rgdal::ogrListLayers(hwpath)
 ct <- st_read(hwpath, layer = "City_Limits__2016_")
+ct <- st_transform(ct, 2994)
 
+sunriver <- st_read("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Data/SunriverShapefile/Sunriver.shp")
+sunriver<-  st_transform(sunriver, crs = 2994)
+sunriver <- rename(sunriver, city_name = id)
+sunriver$city_name[1] <- "Sunriver"
+sunriver <- rename(sunriver, shape = geometry)
+sunriver <- st_cast(sunriver, "MULTIPOLYGON")
+
+## adding rock creek shapefile
+Rockcreek <- st_read("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Data/RockcreekShapefile/Rockcreek.shp")
+Rockcreek <-  st_transform(Rockcreek, crs = 2994)
+Rockcreek <- rename(Rockcreek, city_name = id)
+Rockcreek$city_name[1] <- "Rock Creek"
+Rockcreek <- rename(Rockcreek, shape = geometry)
+Rockcreek <- st_cast(Rockcreek, "MULTIPOLYGON")
+
+ct <- bind_rows(ct, sunriver,Rockcreek)
 ## reading the 2024 city limits using terra library
 #citylim_path <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/City_Limits_2022/City_Limits.shp"
 #ct <- sf::st_read(citylim_path)
@@ -57,8 +74,6 @@ ct <- st_read(hwpath, layer = "City_Limits__2016_")
 ## Loading covid levels data
 WD <- paste0(fs::path_home(), "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/7.11.25/Combined_all_data_2025-07-11.xlsx")
 dat <- readxl::read_excel(WD,sheet = "COVID", guess_max = 10000)
-
-
 ## cities present in ct and wastewater data
 ct_sbst <- ct$city_name[ct$city_name %in% unique(dat$Location)]
 
@@ -86,32 +101,31 @@ gbg <- data.frame(table(df_OHA$Location, df_OHA$County))
 gbg <- gbg[gbg$Freq > 0,]
 
 ## Removing gilliam county
-
 df_OHA <- df_OHA[!(df_OHA$County == "Gilliam County"),]
 
 #gbg <- df_OHA[df_OHA$Location == "Corvallis",]
 ## remove columns that we wont use
 
 df_OHA <- df_OHA %>%
-  mutate(Date = lubridate::mdy(Date)) %>%
+  dplyr::mutate(Date = lubridate::mdy(Date)) %>%
   dplyr::mutate(year = lubridate::year(Date), 
                 month = lubridate::month(Date), 
                 day = lubridate::day(Date))
 
 df_OHA <- df_OHA %>%
   dplyr::mutate(Month_Yr = format(as.Date(Date),"%Y-%m")) %>% 
-  mutate(weekno = as.numeric(Date - min(Date, na.rm = TRUE)),
+  dplyr::mutate(weekno = as.numeric(Date - min(Date, na.rm = TRUE)),
          weekno = (weekno %/% 7) + 1) %>%
   group_by(weekno) %>% 
   arrange(desc(CopiesPerul)) %>%
-  mutate(
+  dplyr::mutate(
     maxByVal = if_else(row_number() == 1, "1", "0")
   ) %>%
   arrange(weekno)%>%
   ungroup()
 
 df_OHA <- df_OHA %>% 
-  select(c(CopiesPerul,Date,Location,MasterID,logCopies,County,weekno,Month_Yr,
+  dplyr::select(c(CopiesPerul,Date,Location,MasterID,logCopies,County,weekno,Month_Yr,
            maxByVal,year,month,day )) %>%
   distinct()
 
@@ -119,7 +133,9 @@ df_OHA <- df_OHA %>%
 aggr <- df_OHA %>%
   group_by(weekno, Location) %>%
   filter(CopiesPerul == max(CopiesPerul, na.rm = TRUE)) %>%
-  mutate(yy = substr(year, 3,4))
+  dplyr::mutate(yy = substr(year, 3,4))
+
+saveRDS(aggr, "aggr_7_11.rds")
 
 # colors <-  c("cornflowerblue", "coral2","chocolate3", "chartreuse4","brown4","blue4",
 #              "darkorchid", "orangered","gold1","cyan2","slateblue3","salmon4",
@@ -161,8 +177,8 @@ aggr <- df_OHA %>%
 ## Find the total number missing values per week.
 
 ```{r}
-length(unique(aggr$Location))
-unique(aggr$Location)
+#length(unique(aggr$Location))
+#unique(aggr$Location)
 unique_count <- as.data.frame(table(aggr$weekno))
 unique_loc <- as.data.frame(table(aggr$Location ))
 ggplot(unique_count)+ geom_line(aes(x = as.numeric(Var1), y = Freq ))
@@ -194,7 +210,7 @@ city_cntr <- ct %>%
   st_coordinates()
 
 O_attr <- as.data.frame(cbind(as.data.frame(vertex_attr(directGrph)), city_cntr))
-
+saveRDS(O_attr,"O_attr.rds")
 plot.igraph(directGrph, vertex.label = NA, vertex.size = 1,
             vertex.color = V(directGrph)$included, 
             vertex.frame.color = V(directGrph)$included, 
@@ -203,7 +219,7 @@ plot.igraph(directGrph, vertex.label = NA, vertex.size = 1,
 
 
 attr <- O_attr[O_attr$name %in% aggr_102$Location,]
-attr <- left_join(attr, aggr_102 %>% select(Location, CopiesPerul), by=join_by(name == Location))
+attr <- left_join(attr, aggr_102 %>% dplyr::select(Location, CopiesPerul), by=join_by(name == Location))
 
 G_subGrph <- induced_subgraph(directGrph, vids = attr$name)
 plot.igraph(G_subGrph, vertex.label = NA, vertex.size = 1,
@@ -235,22 +251,22 @@ plot.igraph(G_FullGrph, vertex.label = NA, vertex.size = 1,
 ```
 
 ```{r}
-as.data.frame(vertex_attr(G_FullGrph))
+df <- as.data.frame(vertex_attr(G_FullGrph))
 
 ## joining the data and creating na's for where there is no data
 fg_attr <- left_join(fg_attr,aggr_102 %>% 
-                       select(CopiesPerul, Location), 
+                       dplyr::select(CopiesPerul, Location), 
                      by = join_by(name == Location))
 
 G_FullGrph <- set_vertex_attr(G_FullGrph,name = "CopiesPerul", value = fg_attr$CopiesPerul )
 G_FullGrph <- set_vertex_attr(G_FullGrph, name = "X", value = as.matrix(fg_attr$X ))
 G_FullGrph <- set_vertex_attr(G_FullGrph, name = "Y", value = as.matrix(fg_attr$Y ))
-
+#G <- readRDS("G_FullGrph.rds")
 saveRDS(G_FullGrph, "G_FullGrph5.rds")
 ```
 
 
-## running BIC for different values of K for COVID data
+## Assessing output from the method
 
 ```{r, fig.height=9,fig.width=14}
 ## Alpha: learning rate
@@ -282,13 +298,13 @@ degV <- data.frame(cbind(City = names(degV), Value = as.numeric(degV)))
 degV$Value <- as.numeric(degV$Value)
 
 
-test_nc <- c(2,3,4,5,6,7,8) ## Can change
+test_nc <- c(2,3,4,5,6) ## Can change
 N <- vcount(G_FullGrph)
 thresh  <- 0.00005
 nitermax <- 30000
 dir <- "undirected"
 alphaLL <- 0.001
-alphaOpt <- c(0.00001, 0.0001, 0.001)
+alphaOpt <- c(0.00001, 0.0001)
 test = FALSE
 missing <- NULL
 alphaLin <- 0.001
@@ -318,21 +334,25 @@ for(node in V(G_FullGrph)){
 degV$neigh <- allneigh
 Nnodes <- vcount(G_FullGrph)
 Nedges <- ecount(G_FullGrph)
-boxFolder <- "C:/Users/gauph/Box/SimulationOutput/CoDAOP/RealCOVIDData_102_metrics/"
+boxFolder <- "C:/Users/gauph/Box/SimulationOutput/CoDAOP/RealCOVIDDataW_metrics_AllWeeks/"
 files <- list.files(boxFolder)
-NumWeeks <- c(102)
-test_nc <- rep(c(2,3,4,5,6,7,8), each = 3*3*3*1 )
+NumWeeks <- 1:253
 finOP <- matrix(0, nrow = 0, ncol = 16 )
 numCom <- readRDS(paste0(boxFolder,"realCOVID_NumberOfCommunitiesLogcopies","102",".rds"))
 names <- rownames(numCom)
-imputedVals <- matrix(0, ncol = 7, nrow = 0)
+imputedVals <- matrix(0, ncol = 5, nrow = 0)
+Weekmetrics <- matrix(0,nrow=0, ncol = 32)
+
+## get the first date of the work week
+
+
 for(i in NumWeeks){
   df <- readRDS(paste0(boxFolder,"realCOVID_DataOPLogcopies", i,".rds"))
   finOP_i <- as.data.frame(cbind(df, test_nc, i)) 
   finOP_i[,c(1:8, 11:14)] <- as.data.frame(apply(finOP_i[,c(1:8, 11:14)],2,as.numeric))
-  finOP_i <- finOP_i %>% 
-    dplyr::mutate(BICnet = BIC(LLTot, test_nc, Nedges, Nnodes), 
-                  BICReg = BICReg(LLTot, test_nc, Nedges, Nnodes))
+  #finOP_i <- finOP_i %>% 
+  #  dplyr::mutate(BICnet = BIC(LLTot, test_nc, Nedges, Nnodes), 
+  #                BICReg = BICReg(LLTot, test_nc, Nedges, Nnodes))
   finOP <- rbind(finOP, finOP_i)
   
   ## reading imputed values. Mean, Stddev, minBIcnet and minBIcReg
@@ -342,15 +362,17 @@ for(i in NumWeeks){
   sd_i <- apply(imputedV,1,sd)
   minBICnet_i <- imputedV[,which.min(finOP_i$BICnet)]
   minBICreg_i <- imputedV[,which.min(finOP_i$BICReg)]
-  imputedVals <- rbind(imputedVals, cbind(mean_i, median_i, sd_i, minBICnet_i,minBICreg_i,i,names))
+  imputedVals <- rbind(imputedVals, cbind(mean_i, median_i, sd_i, i,names))
   
   ## reading metrics values 
-  Weekmetrics <- as.data.frame(cbind( readRDS(paste0(boxFolder,"MetricsPO",i,".rds")), paramGrid ))
+  Weekmetrics <- rbind(Weekmetrics , cbind(readRDS(paste0(boxFolder,"MetricsPO",i,".rds")), i = i))
+  #Weekmetrics <- as.data.frame(cbind( Weekmetrics, paramGrid ))
 }
 
+Weekmetrics <- as.data.frame(Weekmetrics)
 ## Dataframe of imputed values
 imputedVals <- as.data.frame(imputedVals)
-imputedVals[,1:6] <- apply(imputedVals[,1:6], 2, as.numeric)
+imputedVals[,1:4] <- apply(imputedVals[,1:4], 2, as.numeric)
 imputedVals$Missing <- !(imputedVals$sd_i == 0)
 
 ```
@@ -415,27 +437,48 @@ Weeklymin <- imputedVals %>%
 
 ```{r}
 ## finding the pareto front for the week using the conductance and variance metrics
-Weekmetrics[,c(1:25,27,30) ] <- apply( Weekmetrics[,c(1:25,27,30)] , 2, as.numeric)
-Weekmetrics$BICnet <- finOP$BICnet
-Weekmetrics$BICreg <- finOP$BICReg
-X <-  Weekmetrics %>%
+Weekmetrics[,c(1:26) ] <- apply( Weekmetrics[,c(1:26)] , 2, as.numeric)
+#Weekmetrics$BICnet <- finOP$BICnet
+#Weekmetrics$BICreg <- finOP$BICReg
+df <- Weekmetrics %>%
+group_by(i) %>%
+  group_split() 
+fr <- c()
+for(i in 1:length(df)){
+  X <-  df[[i]] %>%
     select(WeightedMeanConductanceW, WeightedDispersionScoreW ) %>% 
     t()
 fronts <- doNondominatedSorting(X)
 
-Weekmetrics$front <-  fronts$ranks
-  
+fr <- c(fr, fronts$ranks)
+
+}
+FrontTotal <- bind_rows(df) 
+FrontTotal$fronts <- fr
+
+FirstFront <- FrontTotal %>% filter(fronts %in% c(1)) %>% arrange(as.numeric(i))
+FirstFront$i <- as.numeric(FirstFront$i)
+saveRDS(FirstFront, "FirstFront_COVID.rds")
+#FirstFront_covid <- readRDS("FirstFront_COVID.rds")
   ## plotting the conductance vs avg dispersion linking by pareto front
-Weekmetrics %>%
+FrontTotal %>% filter(i %in% 100: 104)%>%
           ggplot +
-          geom_point(aes(x = WeightedMeanConductanceW, y =WeightedDispersionScoreW ), color = "darkblue") +
-          geom_line(aes(x = WeightedMeanConductanceW, y =WeightedDispersionScoreW , group = front, color= as.factor(front)))+
-          theme(legend.position = "none", panel.background = element_blank())
+          geom_point(aes(x = WeightedMeanConductanceW, y =WeightedDispersionScoreW ,color= as.factor(nc))) +
+          geom_line(aes(x = WeightedMeanConductanceW, y =WeightedDispersionScoreW , group = fronts, color= as.factor(alpha)))+
+  facet_wrap(~i)+
+          theme(legend.position = "bottom", panel.background = element_blank())
 
 
-FirstTwoFronts <- Weekmetrics %>% filter(front %in% c(1,2))
+#FirstTwoFronts <- Weekmetrics %>% filter(front %in% c(1))
 ```
 
+```{r}
+FrontTotal %>% 
+  filter(i == "102") %>% 
+  ggplot() +
+  geom_point(aes(x = WeightedMeanConductanceW, y = BICnet, color = as.factor(nc)))+
+  facet_wrap(~penalty)
+```
 
 
 ```{r}
