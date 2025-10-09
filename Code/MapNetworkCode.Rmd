@@ -34,14 +34,34 @@ library(png)
 ## Downloading the relevant data for city network and highway network.
 
 ```{r, warning=FALSE}
-##Loading city data
-hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
-#rgdal::ogrListLayers(hwpath)
-ct <- st_read(hwpath, layer = "City_Limits__2016_")
+##Loading city data 20
+citylim = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
+#rgdal::ogrListLayers(citylim)
+ct <- st_read(citylim, layer = "City_Limits__2016_")
+ct <- st_transform(ct, 2994)
+
+## Adding sunriver shapefile
+sunriver <- st_read("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Data/SunriverShapefile/Sunriver.shp")
+sunriver<-  st_transform(sunriver, crs = 2994)
+sunriver <- rename(sunriver, city_name = id)
+sunriver$city_name[1] <- "Sunriver"
+sunriver <- rename(sunriver, shape = geometry)
+sunriver <- st_cast(sunriver, "MULTIPOLYGON")
+
+## adding rock creek shapefile
+Rockcreek <- st_read("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Data/RockcreekShapefile/Rockcreek.shp")
+Rockcreek <-  st_transform(Rockcreek, crs = 2994)
+Rockcreek <- rename(Rockcreek, city_name = id)
+Rockcreek$city_name[1] <- "Rock Creek"
+Rockcreek <- rename(Rockcreek, shape = geometry)
+Rockcreek <- st_cast(Rockcreek, "MULTIPOLYGON")
+
+ct <- bind_rows(ct, sunriver,Rockcreek)
 
 ## Loading highway data
 hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/HighwayDat/data.gdb"
 hwd <- st_read(hwpath, layer="Highway_Network__2015_")
+hwd <- st_transform(hwd, 2994)
 hwd <- st_zm(hwd)
 id <- unique(hwd$st_hwy_idx)
 ```
@@ -190,7 +210,7 @@ city_cntr <- st_coordinates(st_centroid(ct))
 
 hwy_grph <- graph_from_data_frame(d = edges,vertices = ct$city_name, directed = FALSE)
 #coords <- layout_(hwy_grph, city_cntr)
-plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, edge.color = edges$hwy_id, edge.width = 3, layout = city_cntr)
+plot.igraph(hwy_grph, vertex.size = 1, edge.color = edges$hwy_id, edge.width = 3, layout = city_cntr)
 
 ```
 
@@ -300,7 +320,7 @@ ggplot()+
   geom_sf(data = cent, aes(geometry = geometry), color = "red", size =1)+
   #geom_sf(data = centOld, aes(geometry = geometry), color = "green", size =1)+
   geom_sf(data = hwd, aes(geometry = shape), color = "black")
-
+ggsave("HighwayOrig.pdf")
 #centOld <- cent
 ```
 
@@ -424,11 +444,12 @@ plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.color  = 
 
 ```{r}
 
-
 ct_hull <- st_convex_hull(ct)
 ct_hull_buff10 <- st_buffer(ct_hull, dist  = 10000)
 ct_hull_buff20 <- st_buffer(ct_hull, dist  = 20000)
 ct_hull_buff30 <- st_buffer(ct_hull, dist  = 30000)
+ct_hull_buff40 <- st_buffer(ct_hull, dist  = 40000)
+ct_hull_buff50 <- st_buffer(ct_hull, dist  = 50000)
 
 
 ## find which highways intersect with the convex hull buffers
@@ -443,6 +464,8 @@ ct_hull_buff30 <- st_buffer(ct_hull, dist  = 30000)
 edges_hull10 <- findEdges(ct_hull_buff10, hwd, id, "10")
 edges_hull20 <- findEdges(ct_hull_buff20, hwd, id, "20")
 edges_hull30 <- findEdges(ct_hull_buff30, hwd, id, "30")
+edges_hull40 <- findEdges(ct_hull_buff40, hwd, id, "40")
+edges_hull50 <- findEdges(ct_hull_buff50, hwd, id, "50")
 
 ```
 
@@ -451,9 +474,11 @@ edges_hull30 <- findEdges(ct_hull_buff30, hwd, id, "30")
 
 ggplot()+
   geom_sf(data = hwd, aes(geometry = shape))+
-  geom_sf(data = ct_hull_buff30, aes(geometry = shape), color = "green")+
-  geom_sf(data = ct_hull_buff20, aes(geometry = shape), color = "blue")+
-  geom_sf(data = ct_hull_buff10, aes(geometry = shape), color = "red")+
+  geom_sf(data = ct_hull_buff50, aes(geometry = shape), color = "pink4") +
+  geom_sf(data = ct_hull_buff40, aes(geometry = shape), color = "yellow") +
+  geom_sf(data = ct_hull_buff30, aes(geometry = shape), color = "green") +
+  geom_sf(data = ct_hull_buff20, aes(geometry = shape), color = "blue") +
+  geom_sf(data = ct_hull_buff10, aes(geometry = shape), color = "red") +
     geom_sf(data = ct_hull, aes(geometry = shape), color = "purple")
 
 
@@ -474,7 +499,15 @@ hwy_grph <- graph_from_data_frame(d = edges_hull30,vertices = ct$city_name, dire
 #coords <- layout_(hwy_grph, city_cntr)
 plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.width  = 0, vertex.color = "black",edge.color = edges_hull30$hwy_id, edge.width = 1, layout = city_cntr)
 
+## Highway graph for circle around data of 40 kms
+hwy_grph <- graph_from_data_frame(d = edges_hull40,vertices = ct$city_name, directed = FALSE)
+#coords <- layout_(hwy_grph, city_cntr)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.width  = 0, vertex.color = "black",edge.color = edges_hull40$hwy_id, edge.width = 1, layout = city_cntr)
 
+## Highway graph for circle around data of 50 kms
+hwy_grph <- graph_from_data_frame(d = edges_hull50,vertices = ct$city_name, directed = FALSE)
+#coords <- layout_(hwy_grph, city_cntr)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.width  = 0, vertex.color = "black",edge.color = edges_hull50$hwy_id, edge.width = 1, layout = city_cntr)
 ```
 
 
@@ -483,6 +516,8 @@ plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.width  = 
 ```{r, fig.width = 6, fig.height=6}
 ggplot()+
   geom_sf(data = hwd, aes(geometry = shape))+
+  geom_sf(data = ct_hull_buff50, aes(geometry = shape), color = "pink4")+
+  geom_sf(data = ct_hull_buff40, aes(geometry = shape), color = "yellow")+
   geom_sf(data = ct_hull_buff30, aes(geometry = shape), color = "green")+
   geom_sf(data = ct_hull_buff20, aes(geometry = shape), color = "blue")+
   geom_sf(data = ct_hull_buff10, aes(geometry = shape), color = "red")+
@@ -508,6 +543,16 @@ hwy_grph <- graph_from_adjacency_matrix(hull_edges, mode = "undirected")
 hwy_grph <- simplify(hwy_grph)
 plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, edge.width = 1, vertex.frame.width  = 0 ,edge.color = "black",layout = city_cntr)
 
+hull_edges <- st_intersects(ct_hull_buff40, sparse = FALSE)
+hwy_grph <- graph_from_adjacency_matrix(hull_edges, mode = "undirected")
+hwy_grph <- simplify(hwy_grph)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, edge.width = 1, vertex.frame.width  = 0 ,edge.color = "black",layout = city_cntr)
+
+hull_edges <- st_intersects(ct_hull_buff50, sparse = FALSE)
+hwy_grph <- graph_from_adjacency_matrix(hull_edges, mode = "undirected")
+hwy_grph <- simplify(hwy_grph)
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, edge.width = 1, vertex.frame.width  = 0 ,edge.color = "black",layout = city_cntr)
+
 
 ```
 
@@ -518,18 +563,18 @@ plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, edge.width = 1, vertex
 ```{r, fig.width=8, fig.height=8}
 
 options(dplyr.summarise.inform = FALSE)
-edgesfull <- rbind(edges_hull10, edges_hull20, edges_hull30)
+edgesfull <- rbind(edges_hull10, edges_hull20, edges_hull30, edges_hull40, edges_hull50)
 hwy_grph <- graph_from_data_frame(d = edgesfull ,vertices = ct$city_name, directed = FALSE)
 
-plot.igraph(hwy_grph,vertex.label = NA, vertex.size = 1, edge.color = edgesfull$type,
+plot.igraph(hwy_grph,vertex.label = NA, vertex.size = 1, edge.color = factor(edgesfull$type),
             edge.width = 1, layout = city_cntr)
 
 
-common3 <- edgesfull %>% group_by(to,from, hwy_id) %>% dplyr::summarise( n = n(), .group = "keep") %>% ungroup()
-common3$n <- as.factor(common3$n)
-ecols <- c("red", "blue","green")[common3$n]
-common3$ecols <- ecols
-hwy_grph <- graph_from_data_frame(d = common3 ,vertices = ct$city_name, directed = FALSE)
+common5 <- edgesfull %>% group_by(to,from, hwy_id) %>% dplyr::summarise( n = n(), .group = "keep") %>% ungroup()
+common5$n <- as.factor(common5$n)
+ecols <- c("red", "blue","green","yellow","pink4")[common5$n]
+common5$ecols <- ecols
+hwy_grph <- graph_from_data_frame(d = common5 ,vertices = ct$city_name, directed = FALSE)
 
 plot.igraph(hwy_grph,vertex.label = NA, vertex.size = 1, edge.color = ecols,
             edge.width = 1, layout = city_cntr)
@@ -546,9 +591,11 @@ plot.igraph(mults, vertex.label = NA, vertex.size = 1,
 hwy_grph <- graph_from_data_frame(d = edgesfull ,vertices = ct$city_name, directed = FALSE)
 
 mults <- simplify_and_colorize(hwy_grph)#which_multiple(hwy_grph)
+pdf(file= "HighWayGraph5.pdf")
+par(mar=c(0,0.2,0,0.2)+.55)
 plot.igraph(mults, vertex.label = NA, vertex.size = 1, 
             edge.width = 1, layout = city_cntr)
-
+dev.off()
 ```
 
 
@@ -558,14 +605,20 @@ plot.igraph(mults, vertex.label = NA, vertex.size = 1,
 
 ```{r}
 
-WD <- "C:\\Users\\gauph\\Box\\Preliminary Results Coronavirus Sewer Surveillance\\Data files\\covid data files\\TestingSandbox\\RScripts"
-dat <- readRDS(paste(WD, "\\..\\COVID_Data_ROutput\\ProcessedCOVIDDataInfo.rds", sep= ""))
-df <- do.call(rbind.data.frame, sapply(dat, '[', 3))
-df$Date <- as.Date(as.integer(df$Date), origin = "1970-01-01")
+WD <- paste0(fs::path_home(), "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/7.11.25/Combined_all_data_2025-07-11.xlsx")
+  #"C:\\Users\\gauph\\Box\\Preliminary Results Coronavirus Sewer Surveillance\\Data files\\covid data files\\TestingSandbox\\RScripts"
+dat <- readxl::read_excel(WD,sheet = "COVID", guess_max = 10000)
+#dat <- readRDS(paste(WD, "\\..\\COVID_Data_ROutput\\ProcessedCOVIDDataInfo.rds", sep= ""))
+#df <- do.call(rbind.data.frame, sapply(dat, '[', 3))
+#df$Date <- as.Date(as.integer(df$Date), origin = "1970-01-01")
 ## cities present in ct and wastewater data
-ct_sbst <- ct$city_name[ct$city_name %in% unique(df$Location)]
+ct_sbst <- ct$city_name[ct$city_name %in% unique(dat$Location)]
 
-df_sbst <- df[df$Location %in% ct_sbst, ]
+## Which locations are not there in the ct database
+no_ct_dat <-  unique(dat$Location)[!(unique(dat$Location) %in% ct_sbst)]
+no_ct_dat
+
+df_sbst <- dat[dat$Location %in% ct_sbst, ]
 
 ```
 
@@ -577,13 +630,13 @@ df_sbst <- df[df$Location %in% ct_sbst, ]
 ## Using the 30 km hull - roadway intersection network to create the visualizations.
 
 ## Highway graph for circle around data of 30 kms
-hwy_grph <- graph_from_data_frame(d = edges_hull30,vertices = ct$city_name, directed = FALSE)
+hwy_grph <- graph_from_data_frame(d = edges_hull50,vertices = ct$city_name, directed = FALSE)
 #coords <- layout_(hwy_grph, city_cntr)
 #plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,vertex.color = "black", edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
 
 incl <- V(hwy_grph)$name %in% ct_sbst
 V(hwy_grph)$included <- ifelse(incl == TRUE, "orangered3", "grey37")
-E(hwy_grph)$weight <- edges_hull30$distance
+E(hwy_grph)$weight <- edges_hull50$distance
 #hwy_grph<- simplify(hwy_grph)
 
 plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,vertex.color = V(hwy_grph)$included, vertex.frame.color = V(hwy_grph)$included, edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
@@ -594,13 +647,36 @@ start at some arbitrary city. find all the paths to red cities.
 
 for each path check if the path goes through a red city.
   if it does, save the list and path to the closest red city.
+  
+## Creating graph from full edges
 
+```{r, fig.width=7, fig.height =7}
+#Coloring based on the cities considered for measurement. 
+## Using the 30 km hull - roadway intersection network to create the visualizations.
+
+## Highway graph for circle around data of 30 kms
+#common5 <- edgesfull %>% group_by(to,from, hwy_id) %>% dplyr::summarise( n = n(), .group = "keep") %>% ungroup()
+#common5$n <- as.factor(common5$n)
+#ecols <- c("red", "blue","green","yellow","pink4")[common5$n]
+#common5$ecols <- ecols
+hwy_grph <- graph_from_data_frame(d = edgesfull ,vertices = ct$city_name, directed = FALSE)
+#coords <- layout_(hwy_grph, city_cntr)
+#plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,vertex.color = "black", edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
+
+incl <- V(hwy_grph)$name %in% ct_sbst
+V(hwy_grph)$included <- ifelse(incl == TRUE, "orangered3", "grey37")
+E(hwy_grph)$weight <- edgesfull$distance
+#hwy_grph<- simplify(hwy_grph)
+
+plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,vertex.color = V(hwy_grph)$included, vertex.frame.color = V(hwy_grph)$included, edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
+
+```
 
 ```{r, fig.height=6, fig.height=6}
 #hwy_grph <- simplify(hwy_grph)
-savePath = list()
-saveDirEdges <-  data.frame(matrix(ncol = 3, nrow = 0))
-colnames(saveDirEdges) <- c("to","from", "length")
+#savePath = list()
+#saveDirEdges <-  data.frame(matrix(ncol = 3, nrow = 0))
+#colnames(saveDirEdges) <- c("to","from", "length")
 
 # for (i in 1:length(ct_sbst)) {
 #   trav <- list()
@@ -652,13 +728,140 @@ for (i in 1:length(ct_sbst)) {
 
 DirectGrph <- graph_from_data_frame(d = saveDirEdges, vertices = ct$city_name, directed = FALSE)
 V(DirectGrph)$included <- ifelse(incl == TRUE, "orangered3", "grey37")
+plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
+            vertex.color = V(DirectGrph)$included,
+            vertex.frame.color = V(DirectGrph)$included,
+            edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
 DirectGrph <- simplify(DirectGrph)
 plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
             vertex.color = V(DirectGrph)$included,
             vertex.frame.color = V(DirectGrph)$included,
             edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
+## Save the graph for use
+saveRDS(DirectGrph, "ShortestPathGrph5.rds")
+```
+
+## Creating a geographical database of different variables for the cities under consideration
+
+```{r}
+
+## Locations under consideration
+ct_names <- unique(dat$Location)
+ct_names <- ct_names[!is.na(ct_names)]
+
+### Add code to remove other Locations that are not of interest.
+####****************#######
+####*
+geo_df <- data.frame(matrix(0, nrow = 0, ncol = length(ct_names)))
+colnames(geo_df) <- ct_names
+
+## Setting the variables of interest as the row names 
+## Variables of interest added here. Tracking two lists. One of full name and 2nd of variable name for easier coding.
+## Named list
+
+names <- c("Rural/Urban/Suburban", "Number of primary schools",
+           "Number of 2ndry schools","Number of highschools", 
+           "Number of Colleges/Universities","Number of tourists per year",
+           "Geographical distinctions","One of 9 different regions",
+           "Prone to a particular natural disaster","Number of rivers ",
+           "Coastal region?")
+
+## Variables name
+geo_df_rowNames <- c() 
 
 ```
+
+From Spatial dataset website:
+
+Levee data:
+https://spatialdata.oregonexplorer.info/geoportal/details;id=c448ffe2e1dc4ca78506e64d83285a76
+
+Tsunami protection data:
+https://spatialdata.oregonexplorer.info/geoportal/details;id=67ed182d110d4100adbbdd99bf4b2e92
+
+Pacific Northwest Quantitative Wildfire Risk Assessment (Oregon Data) - 2018
+https://spatialdata.oregonexplorer.info/geoportal/details;id=d437b41e36254af4a97ceda3a0392632
+
+Communities at Risk: Hazard Rating
+https://spatialdata.oregonexplorer.info/geoportal/details;id=8f9280aaa51844408e79dfe471dcbce8
+
+Communities at Risk: Hazard: Elevation
+https://spatialdata.oregonexplorer.info/geoportal/details;id=450e30809aef4c1aad3f6e74d2ecbd43
+
+Oregon Conservation Strategy Ecoregions - 2016
+https://spatialdata.oregonexplorer.info/geoportal/details;id=3c7862c4ae664993ad1531907b1e413e
+
+Water rights:
+https://geohub.oregon.gov/maps/21ac9a9431a14be4804badbec0cdf529/about
+
+state park boundaries:
+https://geohub.oregon.gov/maps/c1d937bae66e41068721f4474a8811a6
+
+Exterprise Zones:
+https://geohub.oregon.gov/datasets/oregon-geo::enterprise-zones-2024/about
+
+Structural fire districts
+https://geohub.oregon.gov/datasets/6e98f7ca2bb4424d9c6372f74cd47ecf_68/explore?location=44.034180%2C-120.785050%2C7.41
+
+Watershed council boundaries:
+https://geohub.oregon.gov/datasets/83f9e6d8966c45cc969a236f6baa2a0a_0/explore?location=44.054641%2C-120.574533%2C7.45
+
+Landslide Information database:
+https://geohub.oregon.gov/maps/2052a56a76c54c1ab261edb04a5d05bb/about
+
+Soil and water conservatin zone:
+https://geohub.oregon.gov/datasets/cfbd557debe54ce0956646fde6b68705_0/explore?location=44.054663%2C-120.515050%2C7.45
+
+Hazardous material storage sites:
+https://geohub.oregon.gov/datasets/f9d7eb16f6374e5f934a07acb1adaebf_0/explore?location=44.044037%2C-120.612500%2C6.47
+
+Oregon wetland database:
+https://geohub.oregon.gov/maps/c2f5f74b4e6a4d4f86b4e2bd9f6fe872/about
+
+Electric transmission lines:
+https://geohub.oregon.gov/datasets/765796b44c0d4bff8356a5e752cb68cf_0/explore?location=43.973849%2C-120.542187%2C7.27
+
+National forest boundaries:
+https://geohub.oregon.gov/datasets/b479e4bd7d70439a87e0230c99bddce5_0/explore?location=34.117737%2C-107.853800%2C4.02
+
+Acute care hospitals in Oregon:
+https://geohub.oregon.gov/datasets/3f55dc8837fd438a991c0e1e6ba98731_0/explore?location=44.372219%2C-120.305121%2C7.28
+
+Law enforcement facilities:
+https://geohub.oregon.gov/datasets/f6c921f7183e4f32b39a45f8c7c5610c_0/explore?location=44.029996%2C-120.773600%2C7.44
+
+Oregon Ecoregions:
+https://geohub.oregon.gov/datasets/c03cb0885c8c41219f9810c8a45b38e1_0/explore?location=44.053681%2C-120.514713%2C7.45
+
+Building footprints:
+https://geohub.oregon.gov/datasets/d8f8d8317615462698a1d811caa3a43a_0/explore?location=44.519547%2C-123.295485%2C11.07
+
+Rail tracks:
+https://geohub.oregon.gov/datasets/49ab3092bff64bbfab7b048c8608bb55_143/explore?location=43.978286%2C-120.584850%2C7.38
+
+Census tracts:
+https://geohub.oregon.gov/datasets/d589210147204f0286289d1636aa86ed_0/explore?location=44.083694%2C-120.583402%2C7.43
+
+Dam facilities:
+https://geohub.oregon.gov/datasets/bc0fa0f7c58a46fba44648f914f6b5b6_0/explore?location=44.362451%2C-120.605794%2C7.23
+
+Urban boundaries:
+https://geohub.oregon.gov/datasets/a020f978338647b59b9bb19590c82497_0/explore?location=44.053832%2C-120.728027%2C7.47
+
+
+
+```{r}
+## Inspecting leevee data
+getwd()
+df <- st_read("../Data/EstuarineLeveeProtectedLandsOCMP2011/EstuarineLeveeProtectedLandsOCMP2011.shp")
+
+ggplot() + 
+  geom_sf(data = df, size = 1.5, color = "black", fill = "cyan1") + 
+  ggtitle("Leevee data") + 
+  coord_sf()
+
+```
+
 
 
 ```{r, fig.height=10, fig.width=14}
