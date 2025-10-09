@@ -34,13 +34,12 @@ library(png)
 ## Downloading the relevant data for city network and highway network.
 
 ```{r, warning=FALSE}
-##Loading city data 20
-citylim = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
-#rgdal::ogrListLayers(citylim)
-ct <- st_read(citylim, layer = "City_Limits__2016_")
+##Loading city limits data 
+hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
+#rgdal::ogrListLayers(hwpath)
+ct <- st_read(hwpath, layer = "City_Limits__2016_")
 ct <- st_transform(ct, 2994)
 
-## Adding sunriver shapefile
 sunriver <- st_read("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Data/SunriverShapefile/Sunriver.shp")
 sunriver<-  st_transform(sunriver, crs = 2994)
 sunriver <- rename(sunriver, city_name = id)
@@ -56,7 +55,79 @@ Rockcreek$city_name[1] <- "Rock Creek"
 Rockcreek <- rename(Rockcreek, shape = geometry)
 Rockcreek <- st_cast(Rockcreek, "MULTIPOLYGON")
 
-ct <- bind_rows(ct, sunriver,Rockcreek)
+## Adding warmsprings shapefile
+WarmSprings <- st_read("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Data/WarmSpringsShapefile/WarmSprings.shp")
+WarmSprings <-  st_transform(WarmSprings, crs = 2994)
+WarmSprings <- rename(WarmSprings, city_name = id)
+WarmSprings$city_name[1] <- "Warm Springs"
+WarmSprings <- rename(WarmSprings, shape = geometry)
+WarmSprings <- st_cast(WarmSprings, "MULTIPOLYGON")
+
+ct <- bind_rows(ct, sunriver,Rockcreek, WarmSprings)
+## reading the 2024 city limits using terra library
+#citylim_path <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/City_Limits_2022/City_Limits.shp"
+#ct <- sf::st_read(citylim_path)
+
+## Loading covid levels data
+getwd()
+WD <- paste0(getwd(),"/Combined_aggregated_OHA_normalized_2025-10-07.xlsx")
+#"/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/7.11.25/Combined_all_data_2025-07-11.xlsx")
+
+dat <- readxl::read_excel(WD,sheet = "COVID", guess_max = 10000)
+
+## removing KF S Suburban, Portland Tryon Creek, Ontario prison, Warm Spring SSL,
+df <- dat %>% filter(!(Location %in%c("KF S Suburban", "Portland Tryon Creek", "Ontario-Prison", "Warm Springs-SSL", "Siletz Tribe") ))
+
+## cities present in ct and wastewater data
+ct_sbst <- ct$city_name[ct$city_name %in% unique(df$Location)]
+
+unique_loc <- unique(df$Location)
+
+## Can include data in sample type "Influent" , "Sewerage" , "Pump Station" , "Stormwater"
+#df <- df[df$SampleType %in% c("Influent" , "Sewerage" , "Pump Station" , "Stormwater"),]
+#df_OHA <- df_OHA[df_OHA$QualCall == "Negative",]
+
+df <- df[!(is.na(df$Location)),]
+
+gbg <- data.frame(table(df$Location, df$County))
+gbg <- gbg[gbg$Freq > 0,]
+
+## Removing gilliam county
+df <- df[!(df$County == "Gilliam County"),]
+
+#gbg <- df_OHA[df_OHA$Location == "Corvallis",]
+## remove columns that we wont use
+df <- df %>%
+  dplyr::mutate(Date = lubridate::ymd(Sample_Date )) %>%
+  dplyr::mutate(year = lubridate::year(Date), 
+                month = lubridate::month(Date), 
+                day = lubridate::day(Date))
+
+df <- df %>%
+  dplyr::mutate(Yr_Mth = format(as.Date(Date),"%Y-%m")) %>% 
+  dplyr::mutate(weekno = as.numeric(Date - min(Date, na.rm = TRUE)),
+         weekno = (weekno %/% 7) + 1) %>%
+  group_by(weekno) %>% 
+  arrange(desc(LogCopiesPerL)) %>%
+  dplyr::mutate(
+    maxByVal = if_else(row_number() == 1, "1", "0")
+  ) %>%
+  arrange(weekno)%>%
+  ungroup()
+
+df <- df %>% 
+  dplyr::select(c(LogCopiesPerL ,Date,Location,MasterID,County,weekno,Yr_Mth,
+           maxByVal,year,month,day )) %>%
+  distinct()
+
+
+aggr <- df %>%
+  group_by(weekno,County, Location) %>%
+  dplyr::summarise(meanLogCopiesPerL = mean(LogCopiesPerL, na.rm = TRUE),
+                   across(everything() ,first)) %>% 
+  dplyr::select(-c(LogCopiesPerL))
+
+saveRDS(aggr, "aggr_10_7.rds")
 
 ## Loading highway data
 hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/HighwayDat/data.gdb"
@@ -320,7 +391,7 @@ ggplot()+
   geom_sf(data = cent, aes(geometry = geometry), color = "red", size =1)+
   #geom_sf(data = centOld, aes(geometry = geometry), color = "green", size =1)+
   geom_sf(data = hwd, aes(geometry = shape), color = "black")
-ggsave("HighwayOrig.pdf")
+ggsave("HighwayOrig_WS_SR_RC.pdf")
 #centOld <- cent
 ```
 
@@ -557,7 +628,7 @@ plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, edge.width = 1, vertex
 ```
 
 
-# Combining the three networks and color code them.
+# Combining the 5 networks and color code them.
 
 
 ```{r, fig.width=8, fig.height=8}
@@ -591,7 +662,7 @@ plot.igraph(mults, vertex.label = NA, vertex.size = 1,
 hwy_grph <- graph_from_data_frame(d = edgesfull ,vertices = ct$city_name, directed = FALSE)
 
 mults <- simplify_and_colorize(hwy_grph)#which_multiple(hwy_grph)
-pdf(file= "HighWayGraph5.pdf")
+pdf(file= "HighWayGraph5_WS_SR_RC.pdf")
 par(mar=c(0,0.2,0,0.2)+.55)
 plot.igraph(mults, vertex.label = NA, vertex.size = 1, 
             edge.width = 1, layout = city_cntr)
@@ -605,18 +676,15 @@ dev.off()
 
 ```{r}
 
-WD <- paste0(fs::path_home(), "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/7.11.25/Combined_all_data_2025-07-11.xlsx")
+#WD <- paste0(fs::path_home(), "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/7.11.25/Combined_all_data_2025-07-11.xlsx")
   #"C:\\Users\\gauph\\Box\\Preliminary Results Coronavirus Sewer Surveillance\\Data files\\covid data files\\TestingSandbox\\RScripts"
-dat <- readxl::read_excel(WD,sheet = "COVID", guess_max = 10000)
+dat <- readRDS("aggr_10_7.rds")
+#readxl::read_excel(WD,sheet = "COVID", guess_max = 10000)
 #dat <- readRDS(paste(WD, "\\..\\COVID_Data_ROutput\\ProcessedCOVIDDataInfo.rds", sep= ""))
 #df <- do.call(rbind.data.frame, sapply(dat, '[', 3))
 #df$Date <- as.Date(as.integer(df$Date), origin = "1970-01-01")
 ## cities present in ct and wastewater data
 ct_sbst <- ct$city_name[ct$city_name %in% unique(dat$Location)]
-
-## Which locations are not there in the ct database
-no_ct_dat <-  unique(dat$Location)[!(unique(dat$Location) %in% ct_sbst)]
-no_ct_dat
 
 df_sbst <- dat[dat$Location %in% ct_sbst, ]
 
@@ -627,9 +695,9 @@ df_sbst <- dat[dat$Location %in% ct_sbst, ]
 
 ```{r, fig.width=7, fig.height =7}
 #Coloring based on the cities considered for measurement. 
-## Using the 30 km hull - roadway intersection network to create the visualizations.
+## Using the 50 km hull - roadway intersection network to create the visualizations.
 
-## Highway graph for circle around data of 30 kms
+## Highway graph for circle around data of 50 kms
 hwy_grph <- graph_from_data_frame(d = edges_hull50,vertices = ct$city_name, directed = FALSE)
 #coords <- layout_(hwy_grph, city_cntr)
 #plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,vertex.color = "black", edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
@@ -673,35 +741,6 @@ plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,vertex.color = V(hwy_gr
 ```
 
 ```{r, fig.height=6, fig.height=6}
-#hwy_grph <- simplify(hwy_grph)
-#savePath = list()
-#saveDirEdges <-  data.frame(matrix(ncol = 3, nrow = 0))
-#colnames(saveDirEdges) <- c("to","from", "length")
-
-# for (i in 1:length(ct_sbst)) {
-#   trav <- list()
-#   path <- shortest_paths(hwy_grph, ct_sbst[i], 
-#                          ct_sbst, output = "both" , 
-#                          weights = round(as.numeric(E(hwy_grph)$distance)))
-#   for( j in 1:48){
-#     if(sum(names(unlist(path$vpath[[j]])) %in% ct_sbst) == 2){
-#       curPath <- names(path$vpath[[j]])
-#       savePath <- append(savePath, list(curPath))
-#       saveDirEdges[nrow(saveDirEdges)+1, ] <- list(curPath[1] ,curPath[length(curPath)], length(curPath))
-#     }
-#   }
-# }
-
-## Creating edges from the paths that we generate using shortest path algorithm. 
-## Coloring based on the weight of the edge i.e. the number of nodes between the two nodes of interest.
-
-# DirectGrph <- graph_from_data_frame(d = saveDirEdges, vertices = ct$city_name, directed = FALSE)
-# V(DirectGrph)$included <- ifelse(incl == TRUE, "orangered3", "grey37")
-# DirectGrph <- simplify(DirectGrph)
-# plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
-#             vertex.color = V(DirectGrph)$included,
-#             vertex.frame.color = V(DirectGrph)$included,
-#             edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
 
 ## keeping all the edges from above. Checking if this would add more edges to the data
 saveDirEdges <-  data.frame(matrix(ncol = 2, nrow = 0))
@@ -738,7 +777,72 @@ plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
             vertex.frame.color = V(DirectGrph)$included,
             edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
 ## Save the graph for use
-saveRDS(DirectGrph, "ShortestPathGrph5.rds")
+saveRDS(DirectGrph, "ShortestPathGrph5_WS_SR_RC.rds")
+```
+
+```{r}
+city_cntr <- ct %>% 
+  st_as_sf() %>% 
+  st_centroid() %>% 
+  st_cast("POINT") %>% 
+  st_transform(4326) %>% 
+  st_coordinates()
+
+O_attr <- as.data.frame(cbind(as.data.frame(vertex_attr(directGrph)), city_cntr))
+saveRDS(O_attr,"O_attr_WS_SR_RC.rds")
+
+plot.igraph(directGrph, vertex.label = NA, vertex.size = 1,
+            vertex.color = V(directGrph)$included, 
+            vertex.frame.color = V(directGrph)$included, 
+            edge.color = "darkgrey", edge.width = 1, 
+            layout = city_cntr)
+
+
+attr <- O_attr[O_attr$name %in% aggr_102$Location,]
+attr <- left_join(attr, aggr_102 %>% dplyr::select(Location, meanLogCopiesPerL), by=join_by(name == Location))
+
+G_subGrph <- induced_subgraph(directGrph, vids = attr$name)
+plot.igraph(G_subGrph, vertex.label = NA, vertex.size = 1,
+            vertex.color = V(G_subGrph)$included, 
+            vertex.frame.color = V(G_subGrph)$included, 
+            edge.color = "darkgrey", edge.width = 1, 
+            layout = as.matrix(attr[,3:4]))
+```
+
+
+```{r}
+G_FullGrph <- delete_vertices(directGrph, V(directGrph)[included == "grey37"])
+fg_attr <- O_attr[O_attr$included == "orangered3",]
+fg_attr <- fg_attr[fg_attr$name %in% unique(aggr$Location), ]
+plot.igraph(G_FullGrph, vertex.label = NA, vertex.size = 1,
+            vertex.color = V(G_FullGrph)$included, 
+            vertex.frame.color = V(G_FullGrph)$included, 
+            edge.color = "darkgrey", edge.width = 1, 
+            layout = city_cntr[V(directGrph)[included != "grey37"], ])
+G_FullGrph <- induced_subgraph(G_FullGrph,vids = fg_attr$name)
+plot.igraph(G_FullGrph, vertex.label = NA, vertex.size = 1,
+            vertex.color = V(G_FullGrph)$included, 
+            vertex.frame.color = V(G_FullGrph)$included, 
+            edge.color = "darkgrey", edge.width = 1, 
+            layout = city_cntr[O_attr$name %in% fg_attr$name, ])
+```
+
+
+```{r}
+
+df <- as.data.frame(vertex_attr(G_FullGrph))
+
+## joining the data and creating na's for where there is no data
+fg_attr <- left_join(fg_attr,aggr_102 %>% 
+                       dplyr::select(meanLogCopiesPerL, Location), 
+                     by = join_by(name == Location))
+
+G_FullGrph <- set_vertex_attr(G_FullGrph,name = "meanLogCopiesPerL", value = fg_attr$meanLogCopiesPerL )
+G_FullGrph <- set_vertex_attr(G_FullGrph, name = "X", value = as.matrix(fg_attr$X ))
+G_FullGrph <- set_vertex_attr(G_FullGrph, name = "Y", value = as.matrix(fg_attr$Y ))
+#G <- readRDS("G_FullGrph.rds")
+saveRDS(G_FullGrph, "G_FullGrph5_WS_SR_RC.rds")
+
 ```
 
 ## Creating a geographical database of different variables for the cities under consideration
