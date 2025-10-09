@@ -1,0 +1,460 @@
+---
+title: "Network community detection assessment metrics"
+output: 
+  pdf_document:
+    extra_dependencies: ["amsmath", "graphicx"]
+geometry: margin=1.5cm
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(igraph)
+library(kableExtra)
+library(readxl)
+library(ggalluvial)
+```
+
+# Average similarity (Weighted)
+
+For each cluster $k =1,..,K$, for each attribute $a = 1,...,j$, calculate the cosine similarity $S_k$.
+
+We need to normalize the cluster similarity score by the size of cluster so we can compare the values.
+
+Compute the normalized cluster similarity for each cluster:
+$$\text{S}_{k, norm} = \frac{S_k \cdot n_k}{N}$$
+
+Where $\text{S}_{k,norm}$ can be interpreted as the weighed similarity of a cluster, $n_k$ is number of nodes in the cluster. $N$ is the total number of nodes.
+
+Cosine similarity can only be used for continuous variables. 
+
+Other similarity measures to use:
+
+1. Euclidean distance (Continuous)
+2. Manhattan distance (Continuous)
+3. Jaccard Similarity (Binary)
+4. Gowers distance (Mixed type data)
+
+# Variance and Dispersion score (Weighted)
+
+This is the workhorse metric for this task. It's fast, easy to understand, and directly relates to the assumptions of many algorithms like K-Means.
+
+For a single attribute in a single cluster:
+Calculate the cluster's mean for that attribute, $\mu_c$.
+
+Within-Cluster Sum of Squares (WCSS) for the attribute:
+$$\textbf{WCSS}_{a, c} = \sum_{i=1}^{n_c} (x_{i, a} - \mu_c)^2$$
+where $n_c$ is the number of nodes in cluster $c$.
+
+This is proportional to the variance. You can use the variance directly: $\text{Var}_{a, c} = \frac{\text{WCSS}_{a, c}}{n_c}$
+
+To get a single score for all clusters and all attributes:
+
+Normalize the WCSS or variance for each attribute by its global variance across the entire dataset.
+$$\textbf{NormVar}_{a, c} = \frac{\text{Var}_{a, c}}{\text{Var}_{a, \text{global}}}$$
+
+Calculate the average variance,
+$$\textbf{AvgVar}_c = \frac{1}{j} \sum_{a=1}^{j} \text{Var}_{a, c}$$
+
+"Is the spread of this attribute inside the cluster tighter than its spread in the whole population?" A value of 0.1 means the attribute is 10 times more concentrated in the cluster.
+
+Average across attributes for the cluster:
+$$\textbf{ClusterScore}_c = \frac{1}{j} \sum_{a=1}^{j} \text{NormVar}_{a, c}$$
+
+To calculate The dispersion score for clustering
+$$\textbf{Average Attribute Dispersion} = \sum_{c=1}^{K} \left( \frac{n_c}{N} \cdot \text{ClusterScore}_c \right)$$
+
+To calculate the average variance for clustering
+$$\textbf{Average variance} = \sum_{c=1}^{K} \left( \frac{n_c}{N} \cdot \text{AvgVar}_c \right)$$
+
+where $N$ is the total number of nodes. This ensures larger clusters have a greater impact on the score. Goal is to Minimize the "Total Attribute Dispersion" and "Average Variance" score.
+
+# Mean Ego Split Conductance (Weighted)
+
+## Conductance in the Hard Clustering Setting
+
+For a directed graph $G = (V, E)$ with a vertex subset $S \subseteq V$, 
+the directed conductance is defined as
+\[
+\Phi_G(S) = \frac{a(S,\bar{S})}{\min(\mathrm{Vol}(S), \mathrm{Vol}(\bar{S}))}.
+\]
+
+- **Numerator:** $a(S,\bar{S})$ denotes the number of edges 
+that start from a node in $S$ and end at a node in the complement set $\bar{S}$.
+- **Denominator:** The denominator is the minimum of 
+the total number of edges originating from nodes in $S$ 
+and the total number of edges originating from nodes in $\bar{S}$.
+
+The conductance of the entire graph, $\Phi_G$, is given by the average of $\Phi_G(S)$ 
+over all non-empty subsets $S \subset V$.
+
+## Extension to Overlapping Clustering
+
+In the case of overlapping community detection, an edge cannot be 
+unambiguously assigned to a single cluster. To address this, one may 
+apply an *ego-splitting* procedure, where each node is duplicated 
+into multiple "ego-nodes," one for each community it belongs to.
+
+For example, if a node $a$ belongs to clusters $1,2,3$, we create three 
+ego-nodes, $a_1, a_2, a_3$. These ego-nodes are treated as independent 
+entities, and edges are introduced among them. In directed graphs, edges 
+are placed in both directions between ego-nodes.
+
+This construction produces an ego-split network with hard (non-overlapping) 
+community assignments, enabling the conductance to be computed in the 
+standard manner. Analogous to the hard clustering case, the conductance value lies in the 
+interval $[0,1]$. A value of $0$ signifies the absence of inter-cluster 
+connectivity, whereas a value of $1$ corresponds to maximal inter-cluster 
+connectivity, indicating the strongest possible flow of edges between clusters. For improved clustering quality, the objective is to minimize the conductance value. Accordingly, the optimal set of hyperparameters is chosen as the one that yields the lowest ESC score.
+
+# Internal density 
+# Silhouette score
+# Triangle participation ratio
+# Adding weight based on unassigned nodes
+
+A subset of nodes may fail to accumulate sufficient weight to be assigned to any cluster, resulting in their classification as unassigned. Despite this, the cluster structure formed by the successfully assigned nodes may still yield a validation metric score that falls within an acceptable range.
+
+While the presence of unassigned nodes is methodologically justifiable, as it reflects genuine lack of affiliation, one can impose a threshold on the proportion of unassigned nodes per simulation. Parameter combinations that generate an excessively high rate of unassigned nodes can thus be rejected on the grounds of producing an incomplete partition of the graph.
+
+Alternatively, the validation metric can be modified to incorporate a penalty term weighted by the proportion of unassigned nodes. This approach allows for the inclusion of simulations with some level of unassigned, while simultaneously penalizing the metric score to account for the model's failure to provide a comprehensive classification.
+
+# Merging or dropping smaller communities
+
+A further complication in model selection using these metrics arises when assessing the optimal number of clusters. Specifically, when a model is fit with a number of clusters ($k$) that exceeds the appropriate value for the network topology, it can result in over-partitioning. This manifests as the emergence of degenerate clusters containing a trivial number of nodes or clusters that receive no nodal assignments whatsoever. Critically, such over-fit models can still produce favorable validation metric scores and Omega index values, misleading the selection process.
+
+To mitigate this issue, a post-processing step can be implemented to consolidate spurious clusters. Smaller clusters falling below a predefined size threshold can be merged into a designated background component or dissolved entirely. Nodes from dissolved clusters can be reassigned based on secondary affiliation strengths or treated as unassigned. This procedure enforces a minimum cluster size, effectively yielding a minimum descriptive number of non-trivial clusters. Consequently, even when the algorithm searches over a range of potential $k$ values, this method promotes the consistent and robust identification of the appropriate, effective number of clusters within the network.
+
+# Recommended Workflow for Method Application and Result Evaluation
+
+We recommend the following step-by-step workflow for effectively applying the method and evaluating its outcomes:
+
+## Method Capabilities
+
+- **Network Types:** Supports both directed and undirected networks.
+- **Covariate Types:** Compatible with both binary and continuous covariates.
+- **Imputation:** Enables missing data imputation by leveraging network structure and observed covariates.
+
+## Understanding the Data
+
+A comprehensive understanding of the input data is critical before method application. In this context, the dataset consists of a network with nodes associated with covariates that provide additional information.
+
+**Key Diagnostic Metrics:**
+
+- **Clustering Coefficient:** Indicates the level of local connectivity within the network. A higher clustering coefficient typically implies stronger community structures and suggests that the network is suitable for community detection.
+- **Connected Components:** The number of connected components can serve as a lower bound for the expected number of communities.
+- **Covariate Grouping Behavior:** Use visual tools such as histograms and scatter plots to evaluate the relationships between covariates. Identifying correlation among covariates can inform feature selection, potentially improving the quality of community detection.
+
+## Hyperparameter Selection Workflow
+
+The method requires tuning of several hyperparameters to achieve optimal performance. As different types of networks and objectives require tailored evaluation criteria, we propose the following structured workflow:
+
+### Network Assessment
+
+- **Directionality:** Determine whether the network is directed or undirected, and incorporate edge directionality accordingly.
+- **Covariate Evaluation:** Assess whether covariates exhibit inherent clustering tendencies. Use visualizations and correlation matrices for insight.
+- **Covariate Types:** Confirm that covariates are either binary or continuous, as both types are supported by the method.
+
+### Assess Network Suitability
+
+- **Clustering Coefficient:** High values suggest that the network has strong community structures.
+- **Connected Components:** Useful for estimating the minimum number of clusters or communities.
+- **Burt's Constraint:** Measures the redundancy within an individual node's ego network. It provides a node-level metric indicating the extent of dense, mutually reinforcing connections versus structural holes. Instead of averaging Burt's constraint across the network, assess the proportion of nodes with high constraint values to infer network suitability for community detection.
+
+In highly clustered networks (tight communities with dense connections), nodes tend to have high constraint, because their neighbors are also connected to each other.
+
+In low-cluster or bridging positions (nodes connecting otherwise separate communities), constraint is low, because the node spans structural holes.
+
+So, constraint can serve as a node-level indicator of clustering structure:
+
+- High constraint → node is embedded inside a dense cluster.
+- Low constraint → node bridges across clusters (brokerage role).
+
+- **Covariate Group Structure:** Visualizations and statistical summaries (e.g., correlation matrices) can help identify natural grouping tendencies in covariates.
+
+### Define Analysis Objectives
+
+Clearly articulate the objectives of the analysis before running the method:
+
+- Is the primary goal *community detection*, *missing data imputation*, or a combination of both?
+- Is there missing data in the covariates that needs to be imputed?
+- What is the acceptable threshold for unassigned or ambiguously clustered nodes?
+- Are overlapping communities expected or known a priori?
+- What domain-specific knowledge or expert guidance can support interpretation?
+
+### Hyperparameter Grid Search
+
+Execute the method over a grid of hyperparameter combinations. For each run, evaluate the results using the following metrics:
+
+- **Ego-Split Conductance:** Assess the structural grouping of the network
+- **Dispersion Score:** Assess the within cluster spread for each continuous covariate.
+- **Jaccard Index:** Assess the within cluster similarity for each binary covariate.
+
+Filter out hyperparameter configurations that result in a high proportion of unassigned nodes. Utilize subject-matter expertise to interpret the viability and coherence of the detected communities.
+
+### Pareto Front Optimization
+
+To avoid over-optimizing for a single evaluation metric, use a *Non-Dominated Sorting Algorithm* to identify a Pareto front of candidate hyperparameter configurations.
+
+**Selection Criteria:**
+
+- If the focus is on predictive accuracy, prioritize configurations with lower dispersion scores.
+- If the goal is to identify cohesive clusters, prioritize configurations with higher conductance values.
+
+**Validation Methods:**
+
+- *Expert Review:* Use domain expertise to assess the practical relevance of detected communities.
+- *External Metadata:* Validate results using node-level information that was not included in the model.
+
+### Sanity Checks and Post-processing
+
+Perform final evaluations and adjustments:
+
+**Cluster Size Distribution:** Examine the size of each detected community. 
+
+- Clusters that are too small may be merged into background clusters or dropped.
+- If multiple clusters are highly similar, inspect covariate distributions and consider merging.
+
+**Handling Dropped Clusters:** For nodes belonging to clusters that are dropped:
+
+- Reassign them to overlapping communities (if applicable).
+- Alternatively, assign them to a background category based on covariate similarity and analytical goals.
+
+
+## Example using simulated data
+
+To show the working of the method and steps to assess the results from the method we will go through an example with simulated data.
+
+Let the network be denoted as $G(V, E)$ where $V$ is the number of nodes and $E$ is the number of edges.
+
+The network was generated with 200 nodes using the equation below:
+
+$$p(u,v) = 1 - \prod_{c \in C_{u,v}} (1-p_c)$$
+
+Here, $p_c$ is the probability of connection between nodes belonging to community $c$.As the number of groups two nodes have in common increases, the probability of connection between them also increases. Hence, the density of connection between nodes common between multiple groups is higher.
+
+<!-- sIdx = 20 i =2 dir = directed ol = 2GrpOL bigN =1 penalty = Ridge lambda =1e-04 acceptable unassigned  = 16 unassigned post cd = 4 Pct missing = 10 nc =4  Numnodes =200 num edges =590 -->
+
+```{r}
+filePath <- "C:/Users/gauph/Box/SimulationOutput/CoDAOP/4ClutserBICtest_big6_miss/NW_4CTmissFTT20.rds"
+df <- readRDS(filePath)
+G <- df[[3]][[1]]
+d <- df[[1]][[2]]
+
+Gcovs <- as.data.frame(vertex_attr(G))
+par(mar = c(0.1, 0.1, 0.1, 0.1))  # Zero margins
+igraph::plot.igraph(G,vertex.label = NA,vertex.size = 3,
+                    vertex.color = as.factor(V(G)$Cluster),
+                    edge.arrow.size = 0.1, edge.color = "grey28",
+                    margin = -0.07)
+igraph::plot.igraph(G,vertex.label = NA,vertex.size = 3,
+                    edge.arrow.size = 0.1, edge.color = "grey28",
+                    margin =-0.07)
+
+as.data.frame(df[[7]][[1]]) %>%
+  select(V1,V2,V3) %>%
+  set_names(c("Var1", "Var2", "Var3")) %>%
+  pivot_longer(everything()) %>%
+  ggplot() +
+  geom_histogram(aes(value), bins =200)+
+  facet_wrap(~name, scales="free")+
+  ggtitle(paste("A 200-node, 590-edge network with 4 overlapping groups, 3 continuous covariates, and 20% random missing data."))+
+  theme(legend.position = "bottom", 
+        panel.background = element_blank(),
+        plot.title = element_text(size = 9))
+
+as.data.frame(d$Zout_cov ) %>%
+  select(cvout1,cvout2, cvout3)%>%
+  set_names(c("Var1", "Var2", "Var3")) %>%
+  pivot_longer(everything()) %>%
+  ggplot() +
+  geom_histogram(aes(value), bins =200)+
+  facet_wrap(~name, scales="free")+
+  ggtitle(paste("A 200-node, 590-edge network with 4 overlapping groups, 3 continuous covariates, and 20% random missing data."))+
+  theme(legend.position = "bottom", 
+        panel.background = element_blank(),
+        plot.title = element_text(size = 9))
+
+
+cc <- igraph::transitivity(G, type = "globalundirected")
+
+# Cycle transitivity (A→B, B→C, C→A)
+triads <- triad_census(G)  # 030T in triad census
+total_possible <- choose(vcount(G), 3)
+dir_transitivity <- triads / total_possible
+
+```
+
+Visual inspection of the uncolored network topology does not readily reveal distinct community structure, as the network was generated with overlapping clusters. Nodes belonging to multiple clusters exhibit elevated connection density due to increased inter-cluster linkage probability. Covariate distribution histograms demonstrate inherent nodal grouping patterns, though the synthetic example presented here exhibits more pronounced separation than typically encountered in empirical networks.
+
+Graph connectivity can be quantified using transitivity metrics, which range from 0 to 1. Values approaching 0 indicate sparse connectivity or densely connected components, while values near 1 suggest numerous interconnected cliques. The computed transitivity value of `r cc` suggests limited community structure potential within the network. However, it is important to note that the igraph transitivity function computes a global average after converting the network to an undirected representation.
+
+Analysis of local (node-level) transitivity distributions provides additional insight, though this metric may still offer sub-optimal assessment for directed networks due to the inherent limitations of applying undirected clustering measures to directed graph structures.
+
+```{r}
+hist(igraph::transitivity(G, type = "local"))
+```
+
+Directed network topology can be characterized using the David and Leinhardt triad census framework. Calculating transitivity values for each triad classification permits evaluation of local clustering behavior. Analysis of these triad-specific transitivity metrics informs determinations regarding the network's appropriateness for clustering algorithms. 
+
+<!-- The resulting transitivity values for the current network are tabulated below.Add table to comapre triangle types and transitivity for each type -->
+
+Node-level Burt's constraint values are visualized in the subsequent histogram, enabling analysis of constraint heterogeneity across the network topology.
+
+```{r}
+burts_constraint <- constraint(G)
+hist(burts_constraint)
+burts_constraint[is.nan(burts_constraint)] <- 0 
+par(mar = c(0.1, 0.1, 0.1, 0.1))  # Zero margins
+igraph::plot.igraph(G,vertex.label = NA,vertex.size =  burts_constraint * 15,
+                    vertex.color = burts_constraint*30,
+                    edge.arrow.size = 0.1, edge.color = "grey28",
+                    margin = -0.07)
+```
+
+The mean Burt's constraint value, calculated as `r mean(burts_constraint)`, provides additional insight into network structure. Elevated constraint values indicate densely connected, cohesive clusters with strong internal ties, while diminished values suggest increased inter-cluster connectivity and brokerage opportunities. The distribution of constraint values indicates the extent of network overlap, with sparsely connected nodes typically exhibiting higher constraint values and predominantly belonging to singular communities.
+
+```{r}
+Gcovs %>% select(any_of(letters)) %>%
+  abs() %>% dplyr::mutate(Overlap = as.factor(rowSums(., na.rm = TRUE)),
+                          burts_constraint = burts_constraint) %>%
+  ggplot() +
+  geom_point(aes(x = burts_constraint, y = Overlap)) +
+  theme(legend.position = "bottom", 
+        panel.background = element_blank(),
+        plot.title = element_text(size = 9))
+
+
+```
+
+The plotted relationship demonstrates an inverse correlation between node overlap frequency and Burt's constraint metric. Lower constraint values characterize brokerage positions, indicating nodes that bridge multiple network communities. Burt's constraint is mathematically undefined for isolated nodes (degree zero); for visualization purposes, these undefined values have been assigned zero to facilitate graphical representation.
+
+## Setting up the parameter grid for assessment.
+
+We establish a comprehensive hyperparameter grid for the graphical model, encompassing learning rate parameters, cluster cardinality, regularization types, and penalty coefficients.
+
+**Alpha**: This parameter governs the learning rate within the coordinate descent algorithm for community weight estimation. The evaluated values comprise $\alpha \in {0.00001, 0.0001, 0.001}$.
+
+**Number of Clusters**: The methodology accommodates varying cluster cardinalities. Although the synthetic network was generated with four ground-truth communities, we evaluate configurations with $K \in {2, 3, 4, 5, 6}$ clusters to assess robustness to misspecification.
+
+**Penalty Method**: Covariate fitting employs regularized regression, with options for LASSO (L1), Ridge (L2), or ElasticNet penalties. The selected regularization approach facilitates missing covariate imputation through predictive modeling.
+
+**Lambda**: The regularization strength parameter controls coefficient shrinkage within the penalty framework. We examine $\lambda \in {0.00001, 0.0001, 0.001}$.
+
+This parameter space yields 135 distinct hyperparameter combinations. As demonstrated in the results section, the regularization strength ($\lambda$) and penalty type exhibit minimal influence on community detection outcomes.
+
+## Defined the goals and acceptable modelfit
+
+The methodological objectives comprise missing data imputation and optimal model identification. We establish the acceptable threshold for unassigned nodes as the total count of nodes with degree $\leq$ 1, specifically including isolated nodes (degree 0) and pendant nodes (degree 1). In the current network topology, this corresponds to 4 isolated nodes and 12 pendant nodes, yielding an acceptable unassignment threshold of fewer than 16 nodes.
+
+### Assessing results from the community detection missing data imputation method
+
+We now present the results obtained from evaluating multiple hyperparameter configurations.
+
+```{r}
+cov_op_miss  <- readRDS(paste0(getwd(),"/Code/SimDatMets_6_miss.rds"))
+metricsCov_miss <- readRDS(paste0(getwd(),"/Code/metricsCov_6_miss.rds"))
+
+
+met_1 <- metricsCov_miss %>% filter(bigN == 1, dir == "directed", OL == "2GrpOL1", pctMiss == 10)
+df_1 <- cov_op_miss %>% 
+  filter(bigN == 1, Dir == "directed", OL == "2GrpOL1", PctMiss == 10) %>% 
+  #filter(nodesWoAssignment < 16 )  %>% 
+  rowwise() %>% 
+  mutate(
+    min_MSE = min(c_across(MSE1:MSE3), na.rm = TRUE),
+    max_MSE = max(c_across(MSE1:MSE3), na.rm = TRUE)
+  ) %>%   
+  ungroup() %>%
+  filter(MSEavg < quantile(MSEavg, 0.80, na.rm = TRUE))
+
+
+df_1 %>% ggplot(aes(x = newOI, y = MSEavg)) +
+  geom_pointrange(aes(ymin = min_MSE, ymax = max_MSE, color = as.factor(alpha)),alpha=0.5) +
+  xlab("Omega Index")+ylab("Average Mean Sq Error")+
+  guides(color = guide_legend(title = "Alpha"))+
+  theme(legend.position = "bottom",
+        panel.background = element_blank(),
+        plot.title = element_text(size = 9))
+
+```
+
+Each point in the preceding plot represents the output from a distinct parameter configuration in the fitting algorithm ensemble. To enhance visualization clarity, results exceeding the 90th quantile of average mean squared error (MSE) have been filtered. This visualization illustrates the relationship between clustering accuracy, quantified by the Omega Index on the x-axis, and average MSE on the y-axis. It is important to note that in empirical applications, ground truth data required for Omega Index computation is typically unavailable.
+
+We proceed to examination of Mean Conductance and Mean Dispersion Score metrics. These unsupervised validation measures enable assessment of parameter combinations without requiring ground truth knowledge, facilitating optimal parameter selection in practical applications.
+
+```{r}
+
+metricsCov_miss %>%   
+  filter(bigN == 1, dir == "directed", OL == "2GrpOL1", pctMiss == 10, unassigned < 16) %>% 
+  ggplot() +
+  geom_point(aes(x = WeightedMeanConductanceW, y = WeightedDispersionScoreW, color = as.factor(alpha)), alpha =0.5) +
+  xlab("Weighted Mean Conductance") + ylab("Weighted Dispersion Score") +
+  guides(color = guide_legend(title = "Alpha")) +
+  facet_wrap(~nc)+
+  theme(legend.position = "bottom",
+        panel.background = element_blank(),
+        plot.title = element_text(size = 9))
+
+
+```
+
+To contextualize Omega Index performance, comparative analysis can be conducted through bivariate plots depicting Omega Index values against relevant evaluation metrics. These visualizations enable direct assessment of the relationship between community detection accuracy and alternative performance measures.
+
+```{r}
+
+metricsCov_miss %>%   
+  filter(bigN == 1, dir == "directed", OL == "2GrpOL1", pctMiss == 10, unassigned < 16) %>% 
+  ggplot() +
+  geom_point(aes(x = OI , y = WeightedDispersionScoreW, color = as.factor(alpha)), alpha =0.5) +
+  xlab("Omega Index") + ylab("Weighted Dispersion Score") +
+  guides(color = guide_legend(title = "Alpha")) +
+  facet_wrap(~nc)+
+  theme(legend.position = "bottom",
+        panel.background = element_blank(),
+        plot.title = element_text(size = 9))
+
+metricsCov_miss %>%   
+  filter(bigN == 1, dir == "directed", OL == "2GrpOL1", pctMiss == 10, unassigned < 16) %>% 
+  ggplot() +
+  geom_point(aes(x = OI , y = WeightedMeanConductanceW , color = as.factor(alpha)), alpha =0.5) +
+  xlab("Omega Index") + ylab("Weighted Mean Conductance") +
+  guides(color = guide_legend(title = "Alpha")) +
+  facet_wrap(~nc)+
+  theme(legend.position = "bottom",
+        panel.background = element_blank(),
+        plot.title = element_text(size = 9))
+
+
+```
+
+The plots demonstrate an inverse correlation between Omega Index values and both mean conductance and mean dispersion scores. The optimization objective seeks parameter configurations that simultaneously minimize both conductance and dispersion metrics. To achieve this multi-objective optimization, we implement the Non-Dominated Sorting algorithm, which generates Pareto fronts representing optimal trade-off solutions that provide superior community detection performance while maintaining minimal dispersion.
+
+```{r}
+fronts <- readRDS(paste0(getwd(),"/Code/FrontTotal_miss.rds"))
+front_1 <- fronts %>% filter(bigN == 1, dir == "directed", OL == "2GrpOL1", pctMiss == 10)
+
+front_1 %>% 
+  select(WeightedMeanConductanceW, WeightedDispersionScoreW,MSEavg, OI,nc, alpha, lambda, front, penalty) %>%
+  arrange(front)%>%
+  filter(front <= 10) %>%
+  kbl(col.names = c("Mean Conductance", "Dispersion Score","avg MSE", "OI","nc", "alpha", "lambda", "NDS front", "penalty"),
+      caption = "Non Dominated Sorting Fronts (NDS)", 
+      align = "c",
+      digits = 5) %>% 
+  kable_classic(full_width = FALSE)
+
+```
+
+The Non-Dominated Sorting (NDS) algorithm categorizes observations into hierarchical Pareto fronts. Table X presents the first ten fronts generated by this procedure, along with their corresponding parameter configurations that yield these non-dominated solutions.
+
+**Imputed values from the first front of NDS**
+
+```{r}
+
+Z <- cbind(d$Zout_cov, df[[7]][[1]], Gcovs)
+
+```
+
+The parameter selection process, as summarized in Table X, yields an optimal configuration with regularization parameter $\alpha = 0.0001$ and community count $k = 4$. This parameter combination produces a substantially higher Omega Index relative to alternative configurations. The congruence between the detected four communities and the simulated ground truth of four communities provides compelling evidence for methodological validity.
+
+Thus, the sequential optimization procedure detailed previously facilitates robust parameter selection.
