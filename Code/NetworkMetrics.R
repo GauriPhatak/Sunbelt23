@@ -509,7 +509,7 @@ AverageDissimilarityScore <- function(d,epsilon){
   delta <- getDelta(N, epsilon)
   C <- memOverlapCalc(Fm, Hm, delta, N, nc)
   ##Create a new community of background nodes that as unassigned
-  NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
+  NodesWoAssignment <- (rowSums(C) == 0)
   C[,nc+1] <- as.numeric(NodesWoAssignment)
   
   numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
