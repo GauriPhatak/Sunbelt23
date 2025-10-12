@@ -17,6 +17,39 @@ library(ggraph)
 #library(caret)
 library(ggnet)
 library(stringr)
+
+
+findEdges <- function(geom, hwd, id, type){
+  edges <- data.frame(matrix(ncol = 4, nrow=0))
+  
+  for(hwy_id in id) {
+    dist<- c()
+    sbst <- hwd[hwd$st_hwy_idx == hwy_id,]
+    int <- st_intersection(sbst, geom)
+    sortedV <- int %>% 
+      group_by(city_name) %>%
+      dplyr::summarise(m = median(beg_mp_no)) %>%
+      arrange(m)
+    #Subset of cities in the data
+    sortedV$city_nameConn <- c(sortedV$city_name[-1], 0)
+    
+    sortedCT <- as.matrix(cbind(sortedV$city_name, sortedV$city_nameConn), ncol =2 )
+    
+    for (i in 1:dim(sortedV)[1]-1) {
+      dist <- c(dist, distMat[sortedCT[i,1], sortedCT[i,2]])
+    }
+    ##Cannot use the milepost numbers as distance metric... it's different for different highways
+    edges <- rbind(edges,cbind(sortedV$city_name, sortedV$city_nameConn,
+                               rep(hwy_id,length(sortedV$city_name)),
+                               dist)[1:length(sortedV$city_name)-1,])
+  }
+  edges <- cbind(edges, type)
+  colnames(edges) <- c("to","from","hwy_id","distance","type")
+  return(edges)
+}
+
+
+
 f <- function(x, n){
   #set.seed(42)
   sample(c(x,x,sample(x, n-2*length(x), replace=TRUE)))
