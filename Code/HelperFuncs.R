@@ -1,22 +1,23 @@
 ## This file to keep all the functions used in testing.
 library(igraph)
 library(tidyverse)
-#library(ITNr)
-#library(data.table)
 library(expm)
 library(wordspace)
 library(stats)
-#library(tidyverse)
-#library(ergm)
-#library(fs)
-#library(network)
-#library(intergraph)
 library(tidygraph)
 library(ggraph)
-#library(statnet)
-#library(caret)
 library(ggnet)
 library(stringr)
+
+## Helper, error and accuracy calculations
+## Set the values to be between range 0 and 1 
+range01 <- function(x){
+  if(!all(x == x[1])){
+    (x-min(x))/(max(x)-min(x))
+  }else{
+    x
+  }
+}
 
 
 findEdges <- function(geom, hwd, id, type){
