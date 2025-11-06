@@ -1,26 +1,12 @@
 library(tidyverse)
 library(dplyr)
 library(igraph)
-#library(network)
-#library(intergraph)
-#library(ergm)
 library(glmnet)
-#library(gglasso)
 library(RColorBrewer)
-#library(clustAnalytics)
 
 source(paste0(getwd(),"/Code/NetworkMetrics.R"))
 source(paste0(getwd(),"/Code/HelperFuncs.R"))
 
-## Helper, error and accuracy calculations
-## Set the values to be between range 0 and 1 
-range01 <- function(x){
-  if(!all(x == x[1])){
-    (x-min(x))/(max(x)-min(x))
-  }else{
-    x
-  }
-}
 
 getNWcov <- function(G,CovNamesLinin, CovNamesLinout,CovNamesLPin,CovNamesLPout,
                      k_in, k_out, o_in, o_out ){
@@ -124,10 +110,8 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
     for(i in 1:dim(X_out)[2]){
       if(dir == "undirected"){
         mod <- glm(X_out[,i] ~ Fm,family = "binomial")
-        #glm(X_out[,i] ~ Fm[,1]+Fm[,2]+Fm[,3],family = "binomial")
       } else{
         mod <- glm(X_out[,i] ~ Fm + Hm,family = "binomial")
-        #Fm[,1]+Fm[,2]+Fm[,3]+Hm[,1]+Hm[,2]+Hm[,3],family = "binomial")
       }
       binLL <- binLL + as.numeric(logLik(mod))
       Wout[i,] <- coef(mod)
@@ -142,9 +126,9 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
     betaout <- matrix(0, nrow = o_out, ncol = (ncoef)+1 )
     for(i in 1:dim(Z_out)[2]){
       if(dir =="undirected"){
-        mod <- lm(Z_out[,i] ~ Fm)#Fm[,1]+Fm[,2]+Fm[,3])
+        mod <- lm(Z_out[,i] ~ Fm)
       }else{
-        mod <- lm(Z_out[,i] ~ Fm + Hm )#Fm[,1]+Fm[,2]+Fm[,3]+Hm[,1]+Hm[,2]+Hm[,3])
+        mod <- lm(Z_out[,i] ~ Fm + Hm )
       }
       
       betaout[i,] <- coef(mod)
@@ -376,7 +360,6 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
         fin <- c(fin, com)
         idx <- sample(com , size = length(com) * pClustOL[j], replace = FALSE)
         Cnew[idx, c[j, ]] <- 1
-        #l <- l + 1
       }
     }
   }
@@ -423,7 +406,7 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
     F_u[Cnew > 0] <- rbeta(sum(Cnew > 0),a,b)
     H_u[Cnew < 0] <- rbeta(sum(Cnew < 0),a,b)
   }else {
-    F_u[Cnew > 0] <- 0.4#rbeta(sum(Cnew > 0),a,b)
+    F_u[Cnew > 0] <- 0.4
     H_u <- F_u
   }
   
@@ -434,7 +417,7 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
       ## probability of edge from node u to v
       p_uv <- 1 - exp(-1 * sum(F_u[i, ] * H_u[j, ])) + epsilon
       Apuv[i, j] <- p_uv
-      A[i, j] <- rbinom(1,1,p_uv)#median(rbinom(25,1,p_uv))#purrr::rbernoulli(1, p_uv)
+      A[i, j] <- rbinom(1,1,p_uv)
     }
   }
   
@@ -590,27 +573,6 @@ CmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
   
 }
 
-
-## future implementation
-objective_f <- function(W1_u,W2_u,W2_neigh, W2_sum, beta, Z, lambda, penalty){
-  ## Graph section of loglikelihood
-  ##part one
-  a <- exp(-1 * (W1_u %*% t(W2_neigh)))
-  p1 <- sum(log(1 - a))
-  
-  ##part 2
-  p2 <- W1_u %*% as.matrix(W2_sum - t(W2_u) - as.matrix(colSums(W2_neigh)))
-  
-  ## regression part of loglikelihood
-  S <- S_tmp <- 0
-  for (j in 1:dim(beta)[1]) {
-    S_tmp <- ( Z[,j]  - (c(1,W1_u,W2_u) %*% beta[j, ])) ^ 2
-    S <- S - (S_tmp) - lambda * penLL(penalty , beta[j,])
-  }
-  return(p1 + p2 + S)
-}
-
-
 ## Graph Community Weight updates
 GraphComntyWtUpdt <- function(W1_u,W2_u,W2_neigh, W2_sum){
   ## First part of log likelihood of G based on the structure of the network
@@ -633,11 +595,7 @@ GraphComntyWtUpdt <- function(W1_u,W2_u,W2_neigh, W2_sum){
 
 ## Binary covariates community weight
 BincovCmntyWtUpdt <- function(nc, f_u,h_u, W, X_u, dir){
-  # if(dir == "directed"){
-  #   ncoef <- (nc*2)+1
-  # }else{
-  #   ncoef <- nc+1
-  # }
+ 
   llX <- rep(0, nc)
   if (length(W) > 0) {
     ## Updating the logistic regression weights
@@ -664,7 +622,7 @@ ContcovCmntyWtUpdt <- function(nc, Z_u, beta, W1_u,W2_u, sigmaSq, dir){
   }
   if (length(beta) > 0) {
     ## Adding the gradient based on continuous covariates
-    llZ <- 1 * ((Z_u - t(beta %*% t(WW))) %*% beta[,2:(nc+1)])#/sigmaSq
+    llZ <- 1 * ((Z_u - t(beta %*% t(WW))) %*% beta[,2:(nc+1)])
   }
   return(llZ)
 }
@@ -907,8 +865,6 @@ LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir,
       # Don't penalize intercept
       for (g in 2:(ncol(Fmat)+1)) {
         ind <- c(g, g+3)
-        #for (g in seq_along(group_indices)) {
-        # ind <- group_indices[[g]] + 1  # +1 because of intercept
         group_norm <- sqrt(sum(beta_temp[ind]^2))
         if (group_norm <= lambda * alpha) {
           beta_new[ind] <- 0
@@ -918,12 +874,6 @@ LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir,
       }
       ## update the beta
       beta[idx, ] <- beta_new
-      
-      
-      # Transform coefficients back to original scale
-      #intercept <- beta_new[1] + mean(Z[,idx]) - sum(beta_new[-1] * X_means / X_sds)
-      #scaled_coef <- beta_new[-1] / X_sds
-      #beta[idx,] <- c(intercept, scaled_coef)
       
     }else{
       print("Please provide the penalty method")
@@ -1036,16 +986,14 @@ Lz_cal <- function(beta,N,Z,Fmat, Hmat,sigmaSq,dir,lambda,missVals, penalty, alp
   S <- 0
   
   if (!is.null(beta)) {
-    sigmaSq <- rep(1, dim(beta)[1])#c(1,1,1)
+    sigmaSq <- rep(1, dim(beta)[1])
     
     for (j in 1:dim(beta)[1]) {
       df <- sum(beta[j,] != 0)  
       
       RSS <- sum(( Z[,j]  - (Fin %*% beta[j, ])) ^ 2)
       S <- S - RSS/2
-      #N/2 * (log(2*pi) + log(RSS/N) + 1)
-      #- ((N/2)*(log((2*pi*RSS)/(N-df))+1) + (N-df)/2)
-      #(N*log(2*pi*sigmaSq[j])/2) - (S_tmp / (2 * sigmaSq[j])) - lambda * penLL(penalty , beta[j,])
+      
     }
   }
   return(S)
@@ -1053,7 +1001,6 @@ Lz_cal <- function(beta,N,Z,Fmat, Hmat,sigmaSq,dir,lambda,missVals, penalty, alp
 
 Lg_cal <- function(G, Ftot, Htot,Eneg,epsilon, dir, E){
   scale <- 1
-  #E <- as_edgelist(G)
   Fv <- Ftot[E[, 1], ]
   Hv <- Htot[E[, 2], ]
   N <-  gorder(G)
@@ -1102,7 +1049,7 @@ findLLDir <- function(G,  Ftot, Htot, Win = NA, Wout = NA, X_in = NA,X_out = NA,
   S3_out <- Lz_cal(beta = betaout,N = N,Z = Z_out,
                    Fmat = Ftot, Hmat = Htot,
                    sigmaSq = sigmaSqout,dir,lambda, missVals, penalty, alphaLin)
-  S3 <- LinLL#S3_in + S3_out
+  S3 <- LinLL
   
   ## Calculating the final log likelihood
   ll <- (S1 +  (S2 + S3))
@@ -1125,11 +1072,7 @@ initCov <- function(covtmp, CovNames) {
 
 initWtmat <- function(G, mode, N, nc, seed,specOP,epsilon){
   set.seed(seed)
-  
-  #colwts <- igraph::degree(G, mode = mode) / sum(igraph::degree(G, mode = mode))
-  #Wtmat <- replicate(nc, colwts) + matrix(nrow = N, ncol = nc, runif(nc * N, 0.0001,0.001))
-  Wtmat <- matrix(nrow = N, ncol = nc,runif(nc * N, 0.0001,0.0005))#getDelta(N,epsilon))
-  #matrix(nrow = N, ncol = nc, 0.0001)#matrix(nrow = N, ncol = nc, runif(nc * N, 0.0001,0.001))
+  Wtmat <- matrix(nrow = N, ncol = nc,runif(nc * N, 0.0001,0.0005))
   rownames(Wtmat) <- names(igraph::degree(G, mode = mode))
   return(Wtmat)
 }
@@ -1418,9 +1361,6 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda, thresh,
     LLold <- LLnew
     lllst <- rbind(lllst, LLvec)
     iter <- iter + 1
-    #if(dir == "directed"){
-    #  corMat <- rbind(corMat, findCor(Ftot,Htot,"directed"))
-    #}
     
     ## Randomize the community weights update
     s <- randomizeIdx(N, randomize)
