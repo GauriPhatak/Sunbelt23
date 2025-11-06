@@ -52,7 +52,6 @@ findEdges <- function(geom, hwd, id, type){
 
 
 f <- function(x, n){
-  #set.seed(42)
   sample(c(x,x,sample(x, n-2*length(x), replace=TRUE)))
 }
 
@@ -112,13 +111,11 @@ SBMrepeat <-  function(g,l,n,prevll,maxIter, thresh,FUN){
        
       }
     }
-    #print("test1")
     maxVal <- max(Mat, na.rm = TRUE)
     ind <- which(Mat == maxVal, arr.ind = TRUE)
     pg <- which(Mat[ind[1,1],] == -Inf, arr.ind = TRUE)
     iter  <-  iter +1
     k <- (prevll - maxVal)
-    #print("test2")
     opdf <- opdf %>% 
       add_row(iterNum = iter, 
               MaxVal= maxVal, 
@@ -128,15 +125,12 @@ SBMrepeat <-  function(g,l,n,prevll,maxIter, thresh,FUN){
               LTprev = k)
     a <- as.data.frame(cbind(degree(gtmp,as.numeric(as_ids(neighbors(gtmp,ind[1,1])))),
                              V(gtmp)$group[as.numeric(as_ids(neighbors(gtmp,ind[1,1])))]))
-    #print("test3")
-    
+
     a <- subset(a,a[,2] == as.numeric(pg))
     b <- as.list(a$V1)
     names(b) <-  rownames(a)
-    #print("test4")
     degrees <- c(degrees, list(b))
     if( iter < maxIter){
-      #print(iter)
       if((maxVal > prevll)) {
         V(g)$group[ind[1,1]] <- ind[1,2]
         prevll <-  maxVal
@@ -157,8 +151,6 @@ SBMrepeat <-  function(g,l,n,prevll,maxIter, thresh,FUN){
       }
     }
     else{
-      #print(V(g)$group)
-      #flush.console()
       opdf <- data.table(opdf)
       opdf$degrees <- degrees
       return(list(FinAsgn  = V(g)$group ,FinalLLMat =  Mat, Sequence = opdf))
@@ -175,7 +167,6 @@ lazySBM <- function(g,n,type, thresh,maxIter){
   
   ## setting vriables for the group sizes and total nodes
   l <-  length(V(g))
-  #print(l)
   prevll <- NA
   k <- 0
   
@@ -253,8 +244,6 @@ FindGraphLaplacian <- function(G, dir, nc){
   if(dir == "directed"){
     G <- convertToUndir(G, nc)
     
-    # Assuming A is your (possibly directed) adjacency matrix
-    #A_sym <- (A + t(A)) / 2
   }
   N <- length(V(G))
   A <- as.matrix(as_adjacency_matrix(G))
@@ -266,28 +255,6 @@ FindGraphLaplacian <- function(G, dir, nc){
     # Eigenvalues
     eigvals <- sort(eigen(L, only.values = TRUE)$values)
     
-    # Plot to find the "eigengap"
-    #plot(eigvals, type = "b", main = "Laplacian Eigenvalues")
-    
-    # Manually inspect for largest gap
-      # Gives the best guess for number of clusters (k)
-  
-  ## In case of self loops
-  #tau = mean(igraph::degree(G))
-  #D <- diag(igraph::degree(G)+tau+0.5, nrow = length(V(G)))
-  
-  ## Graph Laplacian
-  #Lt <- diag(1, N) - solve(sqrtm(D)) %*% A %*% solve(sqrtm(D))
-  
-  #X <-  eigen(Lt)
-  #plot(sort(X[[1]]), type = "b", main = "Laplacian Eigenvalues")
-  
- # plot(1:N, X[[1]])
-  #X_d <- diff(X[[1]])
-  
-  ## Where does the difference in clusters becomes 0. Indicates number of clusters
-  #nClust <- which.max(X_d)[1] - 1
-  
   diffs <- diff(eigvals)
   nClust <- which.max(diffs)
   val <- max(diffs)
@@ -319,10 +286,6 @@ RegSpectralClust <-  function(G, k, regularize = TRUE ){
   ## Fnd the eigen values and vectors of the Lt matrix
   
   X <-  eigen(Lt)
-  
-  ## print the difference between the eigen values 
- # print(X$values - lead(X$values))
- # flush.console()
 
 # Step 3:
   
@@ -383,10 +346,6 @@ CovAssistedSpecClust <- function(G, X, k, alpha, Regularize = TRUE, type = "asso
   
   X_L <- eigen(L_alpha)
   
-  ## print the difference between the eigen values 
-  #print(X$values - lead(X$values))
-  #flush.console()
-  
   # Step 3:
   
   #3 Normalize each row of the matrix to have unit length
@@ -430,15 +389,12 @@ findEdges <- function(geom, hwd, id, type){
     #ct$city_name[ct$city_name %in% unique(int$city_name)]
     sortedV$city_nameConn <- c(sortedV$city_name[-1], 0)
     
-    sortedCT <- as.matrix(cbind(sortedV$city_name, sortedV$city_nameConn), ncol =2 )#[1: length(sortedV$city_name)-1,]
-    #print(hwy_id)
-    #print(sortedCT)
-    
+    sortedCT <- as.matrix(cbind(sortedV$city_name, sortedV$city_nameConn), ncol =2 )
+
     for (i in 1:dim(sortedV)[1]-1) {
       dist <- c(dist, distMat[sortedCT[i,1], sortedCT[i,2]])
     }
     ##Cannot use the milepost numbers as distance metric... it's different for different highways
-    #dist <- c(sortedV$m[-1],0) - sortedV$m
     edges <- rbind(edges,cbind(sortedV$city_name, sortedV$city_nameConn,
                                rep(hwy_id,length(sortedV$city_name)),
                                dist)[1:length(sortedV$city_name)-1,])
@@ -527,7 +483,7 @@ removeRandEdges <- function(graph, percent){
   
   N <- gsize(graph)
   numE <- floor((N * percent)/100)
-  to_be_removed <- get.edgelist(graph)[sample(1:N, numE),] #sample(1:N, numE, replace = FALSE)
+  to_be_removed <- get.edgelist(graph)[sample(1:N, numE),] 
   return(list("graph" =  delete_edges(graph , to_be_removed),"ids"= to_be_removed))
 }
 
@@ -568,11 +524,10 @@ removeCatAtt <- function(attr, cat, fxn, percent){
 ## for categorical variables impute based on the most frequent variable
 ## Most common value imputation
 imputeCatAtt <- function(attr){
-  attr[is.na(attr)] <- which.max(table(attr))#as.matrix(as.data.frame(sort(table(attr), decreasing = TRUE ))$attr[1])
+  attr[is.na(attr)] <- which.max(table(attr))
   return(attr)
 }
 
-#imputeCatAtt(att$status)
 imputeContAtt <- function(attr){
   attr[is.na(attr)] <- floor(mean(attr,na.rm = TRUE))
   return(attr)
@@ -615,21 +570,16 @@ prob2logit <- function(x){
 ## Create a basis network
 NetworkSim <- function(N, dir=FALSE, B, C,formula, coefs){
   
-  #seed <- 42
   net <- network(N, directed = dir, density= 0 )
   net %v% 'Cluster' <- C
   
-  #coefs = c(prob2logit(B))
-  
   if(!is.null(formula)){
     g.sim <- simulate(as.formula(paste0("net~nodemix('Cluster',levels = TRUE,levels2 = TRUE)+", formula)), 
-                      coef = coefs)#,
-                      #seed = seed)  
+                      coef = coefs)
   }
   else{
     g.sim <- simulate(as.formula(paste0("net~nodemix('Cluster',levels = TRUE,levels2 = TRUE)")), 
-                      coef = coefs)#,
-                      #seed = seed)
+                      coef = coefs)
   }
   
   return(g.sim)
@@ -685,7 +635,7 @@ IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
   g <- g.sim
   vtxat <- as.data.frame(vertex.attributes(g))
   ## start with randomly assigned covariate values
-  Midx <- list()#matrix(nrow = dim(covMsng)[1],ncol =1)
+  Midx <- list()
   for (i in 1:dim(covMsng)[1]) {
     Midx[[i]] <- sample(1:N,ceiling(covMsng$p[i] *N/100))
     ## setting random initial values to vertices 
@@ -705,7 +655,7 @@ IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
   for (i in 1:niter){
     
     ## Run community detection 
-    X <- as.matrix(vertex_attr(g, covMsng$name))#as.matrix(V(g)$LOTR)
+    X <- as.matrix(vertex_attr(g, covMsng$name))
     Xdum <- as.matrix(data.frame(predict(dummyVars("~.", data = X ),newdata <- X)))
     com <- CovAssistedSpecClust(G = g, Xdum, 3,
                                 Regularize =TRUE, alpha =NA, 
@@ -761,7 +711,6 @@ IterativeImpute <- function(g.sim,N,coms,niter, k,covMsng){
   op$iteration <- as.numeric(op$iteration)
   op$MissingId <- as.numeric(op$MissingId)
   op$alpha <- alpha
-  #op <- op[with(op,order(op[,2],op[,1])),]
   return(list(op, g))
 }
 
