@@ -87,6 +87,12 @@ MSEop <- function(Ftot, Htot, covOrig, betaout,N, dir, o_in,o_out, missValsout){
   return(list(c(mse_outMD) , c(mseouttot)))
 }
 
+## Logistic covariates parameter updates
+sigmoid <- function(W, Ftotn) {
+  Q <- 1 / (1 + exp(-1 * (W %*% t(Ftotn))))
+  return(Q)
+}
+
 accuCalc <- function(k,W,Wtm1,Wtm2,X, dir){
   if(printFlg == TRUE){
     print("In accuCalc Func")
@@ -101,7 +107,7 @@ accuCalc <- function(k,W,Wtm1,Wtm2,X, dir){
     predLR <- apply(sigmoid(W, cbind(1, Wtm)) > 0.5, 1, as.numeric)
     acc <- rep(0, k)
     for (i in 1:k) {
-      cm <-  confusionMatrix(factor(predLR[, i], levels = c(0, 1)), factor(X[, i]))
+      cm <-  caret::confusionMatrix(factor(predLR[, i], levels = c(0, 1)), factor(X[, i]))
       acc[i] <- round(cm$overall[1], 2)
     }
     accuracy <- rbind(accuracy,acc)
@@ -144,59 +150,10 @@ memOverlapCalc <- function(Fm, Hm, delta, N, nc){
   return(ol)
 }
 
-OmegaIdx_ <- function(OrigVal, memoverlap,nc,N){
-  ## Original values of community assignment
-  ol <- list()
-  for(i in 1:dim(OrigVal)[2]){
-    ol[[i]] <- which(OrigVal[,i] == 1)
-  }
-  posCom <- matrix(0, nrow = 0, ncol = dim(OrigVal)[2])
-  for(i in 1:dim(OrigVal)[2]){
-    posCom <- rbind(posCom, expand.grid(ol[[i]], ol[[i]]))
-  }
-  
-  posCom <- paste0(posCom[,1],"-",posCom[,2])
-  valuesOrig <- as.data.frame(table(posCom))
-  
-  ## Detected value of memory assignment
-  ol <- list()
-  for(i in 1:nc){
-    ol[[i]] <- which(memoverlap[,i] == 1)
-  }
-  posCom <- matrix(0, nrow = 0, ncol = nc)
-  for(i in 1:nc){
-    posCom <- rbind(posCom, expand.grid(ol[[i]], ol[[i]]))
-  }
-  
-  posCom <- paste0(posCom[,1],"-",posCom[,2])
-  valuesMem <- as.data.frame(table(posCom))
-  ## Joining original and detected values
-  values <- full_join(valuesOrig, valuesMem, by = "posCom")
-  tot <- expand.grid(1:N, 1:N)
-  tot <- as.data.frame( paste0(tot[,1],"-",tot[,2]))
-  colnames(tot) <- c("posCom")
-  gbg <- left_join(tot,values, by = "posCom")
-  gbg[is.na(gbg)] <- 0
-  gbg$matched <- gbg$Freq.x == gbg$Freq.y
-  oi <- sum(gbg$matched)
-  
-  oi <- oi / (N ^ 2)
-  
-  return(oi)
-}
-
-OmegaIdx <- function(G, Fm, Hm, N, delta, nc, nc_sim) {
-  # A_mat, B_mat: binary membership matrices, same number of rows (items)
-  A_mat <- as.matrix(memOverlapCalc(Fm, Hm, delta,N, nc))
-  B_mat <- as.data.frame(vertex_attr(G)) %>% 
-    dplyr::select(any_of(c(letters[1:nc_sim]))) %>% 
-    abs() %>% 
-    as.matrix()
+OmegaIdx_ <- function(A_mat, B_mat,N){
   # columns = clusters of each clustering (they can be different number of clusters)
-  
   N <- nrow(A_mat)
   P <- choose(N, 2)
-  
   
   coA <- A_mat %*% t(A_mat)  # NxN matrix, integer counts
   coA <- coA[upper.tri(coA)]
@@ -220,7 +177,18 @@ OmegaIdx <- function(G, Fm, Hm, N, delta, nc, nc_sim) {
   O <- O/P
   E <- E/P^2
   OI <- (O-E)/(1-E)
+  
+  return(OI)
+}
 
+OmegaIdx <- function(G, Fm, Hm, N, delta, nc, nc_sim) {
+  # A_mat, B_mat: binary membership matrices, same number of rows (items)
+  A_mat <- as.matrix(memOverlapCalc(Fm, Hm, delta,N, nc))
+  B_mat <- as.data.frame(vertex_attr(G)) %>% 
+    dplyr::select(any_of(c(letters[1:nc_sim]))) %>% 
+    abs() %>% 
+    as.matrix()
+  OI <- OmegaIdx_(A_mat,B_mat,N)
   return(OI)
 }
 
@@ -830,7 +798,7 @@ Feature_struct_decomp <- function(G, nc, N, delta, noCov, FullM, covNames){
 }
 
 ## null models: Randomize feature labels -> if performance drops features matter
-null_models <- function(G, nc, k, o, N, alpha,lambda, thresh, nitermax, orig, randomize,
+null_models <- function(G, nc, k, o, N, alpha,lambda_lin, lambda_bin, thresh, nitermax, orig, randomize,
                         CovNamesLinin, CovNamesLinout, CovNamesLPin, CovNamesLPout, dir,
                         alphaLL, test, missing, covOrig,epsilon, impType, alphaLin, 
                         penalty, seed, covInit, specOP){
@@ -851,7 +819,7 @@ null_models <- function(G, nc, k, o, N, alpha,lambda, thresh, nitermax, orig, ra
   tryCatch({
     ## Algorithm with covariates + possible missing data
     start <- Sys.time()
-    opf_RegcovRand <- CoDA(G, nc, k, o, N, alpha,lambda, thresh, nitermax, orig, randomize,
+    opf_RegcovRand <- CoDA(G, nc, k, o, N, alpha, lambda_lin, lambda_bin, thresh, nitermax, orig, randomize,
                            CovNamesLinin, CovNamesLinout, CovNamesLPin, CovNamesLPout, dir,
                            alphaLL, test = FALSE, missing, covOrig,epsilon, impType, alphaLin, 
                            penalty, seed, covInit, specOP )
