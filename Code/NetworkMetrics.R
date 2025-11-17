@@ -490,7 +490,7 @@ AverageDissimilarityScore <- function(d,epsilon){
   numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
   ## Set column names to communities
   colnames(C) <- letters[1:dim(C)[2]]
-  ## number of communities
+  ## number of covariates
   n_cov <- dim(Z)[2]
   ##Creating variance matrix
   vm <- matrix(0, nrow = dim(C)[2], ncol = n_cov)
@@ -558,38 +558,74 @@ BinaryDispersionScore <- function(X, Fm, Hm, epsilon){
   
   ## Set column names to communities
   colnames(C) <- letters[1:dim(C)[2]]
-  ## number of communities
+  ## number of covariates
   n_cov <- dim(X)[2]
   
   ##Number of nodes per cluster
   num_perClust <- colSums(C)
   
-  ## Calculating the Within cluster dispersion for each feature for each cluster
-  ##For pure feature the dispersion value will be low.
-  disp_within <- matrix(0, ncol = n_cov, nrow = ncol(C))
-  for(i in 1:ncol(C)){
-    idx <- which(C[,i] == 1)
-    for(j in 1:n_cov){
-      p_ji <-  sum(X[idx,j])/sum(X[,j])
-      disp_within[i, j] <- p_ji*(1-p_ji)
+  ##Creating probability matrix
+  pm <- matrix(0, nrow = dim(C)[2], ncol = n_cov)
+  pmNorm <- matrix(0, nrow =  dim(C)[2], ncol = n_cov)
+  
+  gm <- matrix(0, nrow = 1, ncol = n_cov)
+  n <- colSums(C)
+  for(i in 1:n_cov){
+    ##Whole covariate variance
+    p <- sum(X[,i])/N
+    gm[1,i] <- p*(1-p)   #sum((Z[,i] - mean(Z[,i]))^2) / N
+    for(j in 1:dim(C)[2]){
+      ## for each attribute a find the variance in cluster C
+      idx <- which(C[,j] == 1)
+      p_cov <- sum(X[idx,i])/length(idx)
+      pm[j, i] <- p_cov*(1-p_cov) #sum((Z[idx, i] - mean(Z[idx,i]))^2) / length(idx)
+      pmNorm[j,i] <- pm[j,i]/gm[1,i] ##Normalized variance per covariate per cluster. Gives dispersion score
     }
   }
   
-  ##Average over the number of values percluster and then over the number of clusters
-  AvgDispersionWithinCluster <- mean(rowSums(disp_within)/num_perClust, na.rm = TRUE)
+  AvgBinarySpreadW <- sum((rowSums(pm)/n_cov) * (n), na.rm =  TRUE)/N
+  BinaryDispersionScoreW <- sum((rowSums(pmNorm)/n_cov) * (n), na.rm = TRUE)/N
   
-  ##Weighted by the number of unassigned nodes
-  WeightedAvgDispersionWithinClusterW <- AvgDispersionWithinCluster * (N/(N - numNodesWoAssignment ))
-  
-  ##Calculating the between cluster dispersion
-  ##Have not included this yet in assessment
-  p_k <- colSums(C)/N
-  disp_bet <- rep(0, n_cov)
-  for(i in 1:n_cov){
-    disp_bet[i] <- sum(num_perClust * (disp_within[,i] - p_k)^2)
+  ## Average variance and dispersion score without taking the unassigned nodes into consideration
+  if(ncol(pm) >1){
+    AvgBinarySpreadWo <- sum((rowSums(pm[1:nc, ])/n_cov) * (n[1:nc]))/N
+    BinaryDispersionScoreWo <- sum((rowSums(pmNorm[1:nc, ])/n_cov) * (n[1:nc]))/N
+  }else{
+    AvgBinarySpreadWo <- sum((pm[1:nc, ]/n_cov) * (n[1:nc]))/N
+    BinaryDispersionScoreWo <- sum((pmNorm[1:nc, ]/n_cov) * (n[1:nc]))/N
   }
   
-  return(c(AvgDispersionWithinCluster, WeightedAvgDispersionWithinClusterW))
+  
+  ## Punish the value of variance and dispersion if there are nodes that have not been assigned
+  WeightedAvgBinarySpreadW <- AvgBinarySpreadW * (N/(N - numNodesWoAssignment ))
+  WeightedBinaryDispersionScoreW <- BinaryDispersionScoreW * (N/(N - numNodesWoAssignment ))
+  
+  # ## Calculating the Within cluster dispersion for each feature for each cluster
+  # ##For pure feature the dispersion value will be low.
+  # disp_within <- matrix(0, ncol = n_cov, nrow = ncol(C))
+  # for(i in 1:ncol(C)){
+  #   idx <- which(C[,i] == 1)
+  #   for(j in 1:n_cov){
+  #     p_ji <-  sum(X[idx,j])/sum(X[,j])
+  #     disp_within[i, j] <- p_ji*(1-p_ji)
+  #   }
+  # }
+  # 
+  # ##Average over the number of values percluster and then over the number of clusters
+  # AvgDispersionWithinCluster <- mean(rowSums(disp_within)/num_perClust, na.rm = TRUE)
+  # 
+  # ##Weighted by the number of unassigned nodes
+  # WeightedAvgDispersionWithinClusterW <- AvgDispersionWithinCluster * (N/(N - numNodesWoAssignment ))
+  # 
+  # ##Calculating the between cluster dispersion
+  # ##Have not included this yet in assessment
+  # p_k <- colSums(C)/N
+  # disp_bet <- rep(0, n_cov)
+  # for(i in 1:n_cov){
+  #   disp_bet[i] <- sum(num_perClust * (disp_within[,i] - p_k)^2)
+  # }
+  
+  return(c(AvgBinarySpreadW,BinaryDispersionScoreW,WeightedAvgBinarySpreadW, WeightedBinaryDispersionScoreW))
 }
 
 
