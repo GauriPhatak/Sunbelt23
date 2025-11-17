@@ -193,10 +193,13 @@ OmegaIdx <- function(G, Fm, Hm, N, delta, nc, nc_sim) {
 }
 
 ## Calculating the silhouette score based on covariate values
-SilhouetteScore <- function(C, Z){
+SilhouetteScore <- function(C, Z, DistMeasure = "Euclidean"){
   nc <- ncol(C)
-  
-  A <- as.matrix(dist(apply(Z, 2, scales::rescale, to = c(0,1))))
+  if(DistMeasure == "Euclidean"){
+    A <- as.matrix(dist(apply(Z, 2, scales::rescale, to = c(0,1)),method = "euclidean"))
+  }else if(DistMeasure == "Jaccard"){
+    A <- as.matrix(dist(apply(Z, 2, scales::rescale, to = c(0,1)), method = "binary"))
+  }
 
   NodesWoAssignment <- (rowSums(C) == 0)
   if(sum(NodesWoAssignment) > 0){
@@ -465,38 +468,44 @@ InternalDensity <- function(G, d, epsilon, dir){
 ## Dissimilarity score or distance measure. Have to minimize.
 ## also includes non normalized variance. Does not take scales of the attributes into consideration
 AverageDissimilarityScore <- function(d,epsilon){
-  
+  ##reading the covariates (cont.)
   Z <- as.data.frame(d$Zout_cov) 
   
+  ## reading the community weight matrices
   Fm <- d$Ffin
   Hm <- d$Hfin
   
+  ## Number of nodes and communities
   N <- dim(Fm)[1]
   nc <- dim(Fm)[2]
   
+  ##Decide the community affiliations
   delta <- getDelta(N, epsilon)
   C <- memOverlapCalc(Fm, Hm, delta, N, nc)
+  
   ##Create a new community of background nodes that as unassigned
   NodesWoAssignment <- (rowSums(C) == 0)
   C[,nc+1] <- as.numeric(NodesWoAssignment)
-  
+  ## find number of nodes wihtout assignment
   numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
-  
+  ## Set column names to communities
   colnames(C) <- letters[1:dim(C)[2]]
-  
+  ## number of communities
   n_cov <- dim(Z)[2]
+  ##Creating variance matrix
   vm <- matrix(0, nrow = dim(C)[2], ncol = n_cov)
   vmNorm <- matrix(0, nrow =  dim(C)[2], ncol = n_cov)
   
   gm <- matrix(0, nrow = 1, ncol = n_cov)
   n <- colSums(C)
   for(i in 1:n_cov){
+    ##Whole covariate variance
     gm[1,i] <- sum((Z[,i] - mean(Z[,i]))^2) / N
     for(j in 1:dim(C)[2]){
       ## for each attribute a find the variance in cluster C
       idx <- which(C[,j] == 1)
       vm[j, i] <- sum((Z[idx, i] - mean(Z[idx,i]))^2) / length(idx)
-      vmNorm[j,i] <- vm[j,i]/gm[1,i]
+      vmNorm[j,i] <- vm[j,i]/gm[1,i] ##Normalized variance per covariate per cluster. Gives dispersion score
     }
   }
   
@@ -520,13 +529,77 @@ AverageDissimilarityScore <- function(d,epsilon){
   return(c(AvgVarianceW, DispersionScoreW,AvgVarianceWo, DispersionScoreWo,WeightedAvgVarianceW,WeightedDispersionScoreW))
 }
 
+
+##Binary covariate dispersion score
+##Understanding cohesiveness within and between clusters 
+BinaryDispersionScore <- function(X, Fm, Hm, epsilon){
+  # ##reading the covariates (cont.)
+  # Z <- as.data.frame(d$Xout_cov) 
+  # 
+  # ## reading the community weight matrices
+  # Fm <- d$Ffin
+  # Hm <- d$Hfin
+  
+  ## Number of nodes and communities
+  N <- dim(Fm)[1]
+  nc <- dim(Fm)[2]
+  
+  ##Decide the community affiliations
+  delta <- getDelta(N, epsilon)
+  C <- memOverlapCalc(Fm, Hm, delta, N, nc)
+  
+  
+  ##Create a new community of background nodes that as unassigned
+  NodesWoAssignment <- (rowSums(C) == 0)
+  C[,nc+1] <- as.numeric(NodesWoAssignment)
+  
+  ## find number of nodes wihtout assignment
+  numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
+  
+  ## Set column names to communities
+  colnames(C) <- letters[1:dim(C)[2]]
+  ## number of communities
+  n_cov <- dim(X)[2]
+  
+  ##Number of nodes per cluster
+  num_perClust <- colSums(C)
+  
+  ## Calculating the Within cluster dispersion for each feature for each cluster
+  ##For pure feature the dispersion value will be low.
+  disp_within <- matrix(0, ncol = n_cov, nrow = ncol(C))
+  for(i in 1:ncol(C)){
+    idx <- which(C[,i] == 1)
+    for(j in 1:n_cov){
+      p_ji <-  sum(X[idx,j])/sum(X[,j])
+      disp_within[i, j] <- p_ji*(1-p_ji)
+    }
+  }
+  
+  ##Average over the number of values percluster and then over the number of clusters
+  AvgDispersionWithinCluster <- mean(rowSums(disp_within)/num_perClust, na.rm = TRUE)
+  
+  ##Weighted by the number of unassigned nodes
+  WeightedAvgDispersionWithinClusterW <- AvgDispersionWithinCluster * (N/(N - numNodesWoAssignment ))
+  
+  ##Calculating the between cluster dispersion
+  ##Have not included this yet in assessment
+  p_k <- colSums(C)/N
+  disp_bet <- rep(0, n_cov)
+  for(i in 1:n_cov){
+    disp_bet[i] <- sum(num_perClust * (disp_within[,i] - p_k)^2)
+  }
+  
+  return(c(AvgDispersionWithinCluster, WeightedAvgDispersionWithinClusterW))
+}
+
+
+
 ## similarity within each cluster
 # Have to maximizehigher the better
 ## Need to implement Jaccard similarity for categorical variables
 AverageSimilarityScore <- function(d, epsilon){
   
   Z <- as.data.frame(d$Zout_cov) 
-  
   
   Fm <- d$Ffin
   Hm <- d$Hfin
