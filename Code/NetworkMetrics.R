@@ -41,7 +41,7 @@ ARIop <- function(Ftot,Htot,orig,nc,N){
   mem <- rep(NA, N)
   
   for (i in 1:N) {
-    m <- data.frame(com = rep(letters[1:nc], times = 2),
+    m <- data.frame(com = rep(make_letter_names(nc) , times = 2),
                     val = c(Ftot[i,], Htot[i,]))
     
     if(!(length(which.max(m$val)) > 0)){
@@ -185,7 +185,7 @@ OmegaIdx <- function(G, Fm, Hm, N, delta, nc, nc_sim) {
   # A_mat, B_mat: binary membership matrices, same number of rows (items)
   A_mat <- as.matrix(memOverlapCalc(Fm, Hm, delta,N, nc))
   B_mat <- as.data.frame(vertex_attr(G)) %>% 
-    dplyr::select(any_of(c(letters[1:nc_sim]))) %>% 
+    dplyr::select(any_of(c(make_letter_names(nc_sim)))) %>% 
     abs() %>% 
     as.matrix()
   OI <- OmegaIdx_(A_mat,B_mat,N)
@@ -242,7 +242,7 @@ SilhouetteScore <- function(C, Z, DistMeasure = "Euclidean"){
     S[j] <- ( b_i[j] - a_i[j] ) / max(a_i[j], b_i[j]) 
   }
   
-  return(mean(S, na.rm = FALSE))
+  return(mean(S, na.rm = TRUE))
 }
 
 ## Community wise average triangle participation ratio
@@ -349,7 +349,6 @@ EgoSplitConductance <- function(G,Fm , Hm, dir, delta , N , nc){
   
   }
   
-  
   Vatt <- as.data.frame(vertex_attr(CombinedGraph)) %>% 
     select(c(Origname, name, Group)) %>%
     group_by(Origname) %>%
@@ -387,12 +386,12 @@ EgoSplitConductance <- function(G,Fm , Hm, dir, delta , N , nc){
         cut_edges <- cut_edges + 1
       }
     }
-    
     # Calculate volume of S
     vol_S <- sum(igraph::degree(CombinedGraph)[which(as.numeric(V(CombinedGraph)$Group) == i)])
     vol_Sc <- sum(igraph::degree(CombinedGraph)[which(as.numeric(V(CombinedGraph)$Group) != i)])
-    
-    ConductanceVal[i] <- cut_edges / min(vol_S, vol_Sc)
+    if(min(vol_S, vol_Sc) > 0){
+      ConductanceVal[i] <- cut_edges / min(vol_S, vol_Sc)
+    }
   }
   ##punish internal density if nodes have no assignment
   numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
@@ -489,7 +488,8 @@ AverageDissimilarityScore <- function(d,epsilon){
   ## find number of nodes wihtout assignment
   numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
   ## Set column names to communities
-  colnames(C) <- letters[1:dim(C)[2]]
+  ColNames <- make_letter_names(dim(C)[2])
+  colnames(C) <- ColNames#letters[1:dim(C)[2]]
   ## number of covariates
   n_cov <- dim(Z)[2]
   ##Creating variance matrix
@@ -514,11 +514,11 @@ AverageDissimilarityScore <- function(d,epsilon){
   
   ## Average variance and dispersion score without taking the unassigned nodes into consideration
   if(ncol(vm) >1){
-    AvgVarianceWo <- sum((rowSums(vm[1:nc, ])/n_cov) * (n[1:nc]))/N
-    DispersionScoreWo <- sum((rowSums(vmNorm[1:nc, ])/n_cov) * (n[1:nc]))/N
+    AvgVarianceWo <- sum((rowSums(vm[1:nc, ])/n_cov) * (n[1:nc]), na.rm = TRUE)/N
+    DispersionScoreWo <- sum((rowSums(vmNorm[1:nc, ])/n_cov) * (n[1:nc]), na.rm = TRUE)/N
   }else{
-    AvgVarianceWo <- sum((vm[1:nc, ]/n_cov) * (n[1:nc]))/N
-    DispersionScoreWo <- sum((vmNorm[1:nc, ]/n_cov) * (n[1:nc]))/N
+    AvgVarianceWo <- sum((vm[1:nc, ]/n_cov) * (n[1:nc]), na.rm = TRUE)/N
+    DispersionScoreWo <- sum((vmNorm[1:nc, ]/n_cov) * (n[1:nc]), na.rm = TRUE)/N
   }
  
   
@@ -557,7 +557,7 @@ BinaryDispersionScore <- function(X, Fm, Hm, epsilon){
   numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
   
   ## Set column names to communities
-  colnames(C) <- letters[1:dim(C)[2]]
+  colnames(C) <- make_letter_names(dim(C)[2]) #letters[1:dim(C)[2]]
   ## number of covariates
   n_cov <- dim(X)[2]
   
@@ -628,8 +628,6 @@ BinaryDispersionScore <- function(X, Fm, Hm, epsilon){
   return(c(AvgBinarySpreadW,BinaryDispersionScoreW,WeightedAvgBinarySpreadW, WeightedBinaryDispersionScoreW))
 }
 
-
-
 ## similarity within each cluster
 # Have to maximizehigher the better
 ## Need to implement Jaccard similarity for categorical variables
@@ -652,7 +650,7 @@ AverageSimilarityScore <- function(d, epsilon){
   
   numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
   
-  colnames(C) <- letters[1:dim(C)[2]]
+  colnames(C) <- make_letter_names(dim(C)[2]) #letters[1:dim(C)[2]]
   
   n_cov <- dim(Z)[2]
   sim <- rep(0,dim(C)[2])
@@ -670,7 +668,7 @@ AverageSimilarityScore <- function(d, epsilon){
   AvgIntraClusterSimilarityW <- sum(sim * numClust,na.rm =TRUE)/N
   
   ##Global average intracluster similarity Without assigned nodes
-  AvgIntraClusterSimilarityWo <- sum(sim[1:nc] * numClust[1:nc])/N
+  AvgIntraClusterSimilarityWo <- sum(sim[1:nc] * numClust[1:nc], na.rm=TRUE)/N
   
   ## Punish the score for number of nodes not assigned
   WeightedAvgIntraClusterSimilarityW <- AvgIntraClusterSimilarityW * (N-numNodesWoAssignment)/N
@@ -718,6 +716,43 @@ conductance <- function(graph, communities, ground_truth) {
     totCond <- totCond + (boundary / min(vol_S, vol_notS))  
   }
   return(totCond)
+}
+
+## Non dominated sorting used for selecting hyperparameters
+HyperParameterSelection <- function(metricsCov, cols_to_select){
+  metricsCov$front <- 0
+  df_list <- metricsCov %>% 
+    #filter(unassigned <= degree01) %>%
+    group_by(bigN, OL, dir, pctMiss) %>%
+    group_split() 
+  fronts_list <- list()
+  for(i in 1:length(df_list)){
+    if(length(cols_to_select) > 1 ){
+      X <-  df_list[[i]] %>%
+        dplyr::select(!!!rlang::syms(cols_to_select)) %>% #WeightedMeanConductanceW, WeightedDispersionScoreW, WeightedBinaryDispersionScoreW) %>% 
+        t()
+      if(any(is.na(X))){
+        print("Stop here")
+      }else{
+        fronts <- ecr::doNondominatedSorting(X)
+        df_list[[i]]$front <-  fronts$ranks
+      }
+    }else{
+      X <-  df_list[[i]] %>%
+        dplyr::select(!!rlang::sym(cols_to_select)) %>% #WeightedMeanConductanceW, WeightedDispersionScoreW, WeightedBinaryDispersionScoreW) %>% 
+        t() 
+      fronts <- rank(X, ties.method = "first") #ecr::doNondominatedSorting(X)
+      df_list[[i]]$front <-  fronts
+      
+    }
+
+  }
+  
+  FrontTotal <- bind_rows(df_list) %>% ungroup()
+  #FirstFront <- bind_rows(df_list) %>% filter(front %in% c(1)) %>% arrange(bigN, dir, OL, pctMiss)
+  #FirstTwoFronts <- bind_rows(df_list) %>% filter(front %in% c(1,2)) %>% arrange(bigN, dir, OL, pctMiss, front)
+  
+  return(FrontTotal)
 }
 
 partition_density <- function(graph, communities) {
@@ -898,7 +933,7 @@ Feature_struct_decomp <- function(G, nc, N, delta, noCov, FullM, covNames){
   
   ## Compare covariate only to ground truth
   OrigVal <-  as.data.frame(vertex_attr(G)) %>%
-    dplyr::select(any_of(c(letters[1:nc]))) %>%
+    dplyr::select(any_of(c(make_letter_names(nc) ))) %>%
     abs()
   oi_cov <- OmegaIdx_(OrigVal, cov, nc, N)
   

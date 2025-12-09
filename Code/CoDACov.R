@@ -61,11 +61,12 @@ getNWcov <- function(G,CovNamesLinin, CovNamesLinout,CovNamesLPin,CovNamesLPout,
 
 convertToUndir <- function(G, nc){
   G <- igraph::as_undirected(G, mode = "collapse")
+  ColNames <- make_letter_names(nc)
   comAff <- as.data.frame(vertex_attr(G)) %>%
-    dplyr::select(any_of(letters[1:nc]))
+    dplyr::select(any_of(ColNames))
   for(i in 1:dim(comAff)[2]){
     comAff[ !(comAff[,i] == 0) ,i] <- 1
-    G <- set_vertex_attr(G, letters[i], index = V(G), comAff[,i])
+    G <- set_vertex_attr(G, ColNames[i], index = V(G), comAff[,i])
   }
   return(G)
 }
@@ -76,8 +77,9 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
                      orig_Cov, Fm, Hm){
   
   ## Trying to use beta distribution instead of hardcoding the probability of connection
+  ColNames <- make_letter_names(nc)
   comAff <-  as.data.frame(vertex_attr(G)) %>%
-    dplyr::select(any_of(letters[1:nc]))
+    dplyr::select(any_of(ColNames))
   
   b <- getNWcov(G, CovNamesLinin, CovNamesLinout, 
                 CovNamesLPin, CovNamesLPout, 
@@ -160,7 +162,7 @@ NWSimBin <- function(nc, k,  pC, N, pClust, B, o, dist,dir,
   C <- 0
   while (length(table(C)) < nc) {
     C <- sample(
-      x = letters[1:nc],
+      x = make_letter_names(nc),#letters[1:nc],
       size = N,
       replace = TRUE,
       prob = pClust
@@ -309,6 +311,21 @@ SetContinuousCov <- function(G,o, N,nc, o_start, C, connType,
   
 }
 
+make_letter_names <- function(n) {
+  # Convert number to base-26 alphabetic (Excel style)
+  to_letters <- function(x) {
+    out <- c()
+    while (x > 0) {
+      x <- x - 1
+      out <- c((x %% 26) + 1, out)
+      x <- x %/% 26
+    }
+    paste0(letters[out], collapse = "")
+  }
+  
+  sapply(1:n, to_letters)
+}
+
 genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
                          CovNamesLPin,CovNamesLPout,CovNamesLinin,CovNamesLinout,
                          pConn,dir,dirPct,epsilon,missing,a,b,Type,pClustOL,
@@ -317,23 +334,25 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   
   set.seed(seed)
   C <- 0
+  ## make column names
+  ColNames <- make_letter_names(nc)
   while (length(table(C)) < nc) {
     C <- sample(
-      x = letters[1:nc],
+      x = ColNames, #letters[1:nc],
       size = N,
       replace = TRUE,
       prob = pClust[1:nc]
     )
   }
   op <- model.matrix( ~ C - 1)
-  colnames(op) <- letters[1:nc]
+  colnames(op) <- ColNames #letters[1:nc]
   
   ## overlapping various combinations of communities.
   Cnew <- data.frame(op)
   fin <- c()
   #3 Right now just set this to do 2 group overlap . need to add 3 group and higher later.
   for (i in 2) {
-    c <- t(combn(letters[1:nc], i))
+    c <- t(combn(ColNames, i))
     if(Type == "Nested"){ ## For nested network currently only 3 communities are supported.
       l <- 1
       for(j in 1:dim(c)[1]){
@@ -382,7 +401,7 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   Cold <- Cnew
   if (dir == "directed") {
     if(Type == "2-Mode"){
-      c <- t(combn(letters[1:nc], 2))
+      c <- t(combn(ColNames, 2))
       idx <- which(Cnew[,c[1,1]] == 1 & Cnew[,c[1,2]] == 1)
       Cnew[idx, c[1,1]] <- -1
       sampOut <- sample( which(Cnew[,c[1,2]] == 1 ) ,
@@ -409,6 +428,7 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   ## calculate the weight matrices
   F_u <- matrix(0,nrow = N, ncol = nc)
   H_u <- matrix(0,nrow = N, ncol = nc)
+  print(sum(Cnew > 0))
   if( dir == "directed" ){
     F_u[Cnew > 0] <- rbeta(sum(Cnew > 0),a,b)
     H_u[Cnew < 0] <- rbeta(sum(Cnew < 0),a,b)
@@ -432,13 +452,14 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   g.sim <- graph_from_adjacency_matrix(A, mode = "directed")
   for (i in 1:nc) {
     g.sim <- g.sim %>%
-      set_vertex_attr(name = letters[i], 
+      set_vertex_attr(name = ColNames[i],#letters[i], 
                       value = c(Cnew[, i]))
   }
   
   ## Setting covariates in the network
   covVal_orig <- 0
-  
+  covVal_orig_bin<-0
+  covVal_orig_cont <- 0
   ## Creating binary covariates in the network.
   if (c("binary") %in% covTypes) {
     if (length(CovNamesLPin) > 0) {
