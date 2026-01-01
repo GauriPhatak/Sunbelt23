@@ -3,9 +3,26 @@ library(aricode)  # For NMI
 library(linkprediction)  # For partition density (install via devtools::install_github("arc85/LinkPrediction"))
 library(stringr)
 library(tidyverse)
+library(gmp)
 #library(DirectedClustering)
 #library(poweRlaw)
 library(e1071)
+
+make_letter_names <- function(n) {
+  # Convert number to base-26 alphabetic (Excel style)
+  to_letters <- function(x) {
+    out <- c()
+    while (x > 0) {
+      x <- x - 1
+      out <- c((x %% 26) + 1, out)
+      x <- x %/% 26
+    }
+    paste0(letters[out], collapse = "")
+  }
+  
+  sapply(1:n, to_letters)
+}
+
 
 ## Part of log likelihood contributed by the penalty term
 penLL <- function(penalty, beta){
@@ -155,28 +172,27 @@ OmegaIdx_ <- function(A_mat, B_mat,N){
   N <- nrow(A_mat)
   P <- choose(N, 2)
   
-  coA <- A_mat %*% t(A_mat)  # NxN matrix, integer counts
+  coA <- A_mat %*% t(A_mat)  # The observed matrix
   coA <- coA[upper.tri(coA)]
-  coB <- B_mat %*% t(B_mat)
+  coB <- B_mat %*% t(B_mat) # The expected matrix
   coB <- coB[upper.tri(coB)]
-  
   
   J <- max(coA)
   K <- max(coB)
   UL <- min(J,K)
   O <- E <- 0
   for(j in 0:UL){
-    N_j1 <- (coA == j)
-    N_j2 <- (coB == j)
-    M <- (N_j1 == TRUE) &  (N_j2 == TRUE)
-    A_j  <- sum(M)
+    N_j1 <- (coA == j) ## the number of observed values equal to j  
+    N_j2 <- (coB == j) ## the number of expected values equal to j
+    M <- (N_j1 == TRUE) &  (N_j2 == TRUE) ## Observed and expected values in agreement
+    A_j  <- sum(M) ## Total in agreement for j
     O <- O + A_j
-    
-    E <- E + (sum(N_j1)*sum(N_j2))
+    E <-sum.bigz(E, mul.bigz(as.bigz(sum(N_j1)), as.bigz(sum(N_j2))))
   }
   O <- O/P
-  E <- E/P^2
-  OI <- (O-E)/(1-E)
+  E <- as.numeric(E/as.bigz(P)^2)
+  OI <- (O-E) / (1-E)
+  ##OI <- as.double(div.bigz(sub.bigz(as.bigz(O), E), sub.bigz(1, E)))
   
   return(OI)
 }
@@ -254,8 +270,11 @@ Comm_TPR <- function(G, Fm, Hm, delta, N, nc, dir){
   ##Create a new community of background nodes that as unassigned
   NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
   numNodesWoAssignment <- sum(NodesWoAssignment)
+  if(sum(NodesWoAssignment) > 0){
+    
+ 
   C[,nc+1] <- as.numeric(NodesWoAssignment)
-
+}
   for(i in 1:dim(C)[2]){
     idx <- which(C[,i] == 1)
     iG <- induced_subgraph(G,idx)
@@ -305,8 +324,9 @@ EgoSplitConductance <- function(G,Fm , Hm, dir, delta , N , nc){
   G <- set_vertex_attr(G, "name", value = 1:vcount(G))
   ##Create a new community of background nodes that as unassigned
   NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
-  C[,nc+1] <- as.numeric(NodesWoAssignment)
-  
+  if(sum(NodesWoAssignment) > 0){
+    C[,nc+1] <- as.numeric(NodesWoAssignment)
+  }
   ## Get original graph edges
   edge_orig <- as_edgelist(G)
   colnames(edge_orig) <- c("from","to")
@@ -423,8 +443,10 @@ InternalDensity <- function(G, d, epsilon, dir){
   C <- memOverlapCalc(Fm, Hm, delta, N, nc)
   ##Create a new community of background nodes that as unassigned
   NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
-  C[,nc+1] <- as.numeric(NodesWoAssignment)
-  
+  if(sum(NodesWoAssignment) > 0){
+    
+   C[,nc+1] <- as.numeric(NodesWoAssignment)
+}
   InternalDensityVal <- rep(0,dim(C)[2])
   n <- rep(0,dim(C)[2])
   for(i in 1:dim(C)[2]){
@@ -468,7 +490,7 @@ InternalDensity <- function(G, d, epsilon, dir){
 ## also includes non normalized variance. Does not take scales of the attributes into consideration
 AverageDissimilarityScore <- function(d,epsilon){
   ##reading the covariates (cont.)
-  Z <- as.data.frame(d$Zout_cov) 
+  Z <- as.data.frame(d$Zout_cov)#as.data.frame(scale(d$Zout_cov)) 
   
   ## reading the community weight matrices
   Fm <- d$Ffin
@@ -484,7 +506,9 @@ AverageDissimilarityScore <- function(d,epsilon){
   
   ##Create a new community of background nodes that as unassigned
   NodesWoAssignment <- (rowSums(C) == 0)
-  C[,nc+1] <- as.numeric(NodesWoAssignment)
+  if(sum(NodesWoAssignment) > 0){
+    C[,nc+1] <- as.numeric(NodesWoAssignment)
+  }
   ## find number of nodes wihtout assignment
   numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
   ## Set column names to communities
@@ -500,11 +524,11 @@ AverageDissimilarityScore <- function(d,epsilon){
   n <- colSums(C)
   for(i in 1:n_cov){
     ##Whole covariate variance
-    gm[1,i] <- sum((Z[,i] - mean(Z[,i]))^2) / N
+    gm[1,i] <- var(Z[,i])#sum((Z[,i] - mean(Z[,i]))^2) / N
     for(j in 1:dim(C)[2]){
       ## for each attribute a find the variance in cluster C
       idx <- which(C[,j] == 1)
-      vm[j, i] <- sum((Z[idx, i] - mean(Z[idx,i]))^2) / length(idx)
+      vm[j, i] <- var(Z[idx, i])#sum((Z[idx, i] - mean(Z[idx,i]))^2) / length(idx)
       vmNorm[j,i] <- vm[j,i]/gm[1,i] ##Normalized variance per covariate per cluster. Gives dispersion score
     }
   }
@@ -520,8 +544,7 @@ AverageDissimilarityScore <- function(d,epsilon){
     AvgVarianceWo <- sum((vm[1:nc, ]/n_cov) * (n[1:nc]), na.rm = TRUE)/N
     DispersionScoreWo <- sum((vmNorm[1:nc, ]/n_cov) * (n[1:nc]), na.rm = TRUE)/N
   }
- 
-  
+
   ## Punish the value of variance and dispersion if there are nodes that have not been assigned
   WeightedAvgVarianceW <- AvgVarianceW * (N/(N - numNodesWoAssignment ))
   WeightedDispersionScoreW <- DispersionScoreW * (N/(N - numNodesWoAssignment ))
@@ -529,6 +552,66 @@ AverageDissimilarityScore <- function(d,epsilon){
   return(c(AvgVarianceW, DispersionScoreW,AvgVarianceWo, DispersionScoreWo,WeightedAvgVarianceW,WeightedDispersionScoreW))
 }
 
+## Calculating trace to determine the within cluster variance
+WeightedTrace <- function(d, epsilon){
+  Z <-  as.data.frame(d$Zout_cov)#as.data.frame(scale(d$Zout_cov))
+  
+  ## reading the community weight matrices
+  Fm <- d$Ffin
+  Hm <- d$Hfin
+  
+  ## Number of nodes and communities
+  N <- dim(Fm)[1]
+  nc <- dim(Fm)[2]
+  
+  ##Decide the community affiliations
+  delta <- getDelta(N, epsilon)
+  C <- memOverlapCalc(Fm, Hm, delta, N, nc)
+  
+  ##Create a new community of background nodes that as unassigned
+  NodesWoAssignment <- (rowSums(C) == 0)
+  if(sum(NodesWoAssignment) > 0){
+    C[,nc+1] <- as.numeric(NodesWoAssignment)
+  }
+  ## find number of nodes wihtout assignment
+  numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
+  ## Set column names to communities
+  ColNames <- make_letter_names(dim(C)[2])
+  colnames(C) <- ColNames#letters[1:dim(C)[2]]
+  ## number of covariates
+  n_cov <- dim(Z)[2]
+  
+  ## within cluster trace
+  tr_i <- rep(0, dim(C)[2])
+  
+  ## pooled within cluster trace
+  W <- matrix(0, ncol = ncol(Z), nrow = ncol(Z))
+  
+  ##Calculate trace per cluster
+  for(i in 1:dim(C)[2]){
+    idx <- which(C[,i] == 1)
+    nk <- length(idx)
+    if(nk > 1){
+      Zk <- Z[idx, ]
+      cov_i <- cov(Zk)
+      tr_i[i] <- sum(diag(cov_i), na.rm =T)*nk/N
+      W <- W + (nk - 1) * cov_i
+    }
+  }
+  
+  W <- W / (N - dim(C)[2])
+  Pooled_within_cluster_trace <- sum(diag(W))
+  Trace <- sum(tr_i)
+  
+  ##Proportion of variance explained
+  TotalTrace <- sum(diag(cov(Z)))
+  R2 <- 1 - Pooled_within_cluster_trace/TotalTrace
+  
+  ## Punish the value of variance and dispersion if there are nodes that have not been assigned
+  WeightedTraceW <- Trace * (N/(N - numNodesWoAssignment ))
+
+  return(c(Trace, WeightedTraceW, TotalTrace, R2))
+}
 
 ##Binary covariate dispersion score
 ##Understanding cohesiveness within and between clusters 
@@ -551,8 +634,9 @@ BinaryDispersionScore <- function(X, Fm, Hm, epsilon){
   
   ##Create a new community of background nodes that as unassigned
   NodesWoAssignment <- (rowSums(C) == 0)
+  if(sum(NodesWoAssignment) > 0){
   C[,nc+1] <- as.numeric(NodesWoAssignment)
-  
+  }
   ## find number of nodes wihtout assignment
   numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
   
@@ -646,8 +730,10 @@ AverageSimilarityScore <- function(d, epsilon){
   
   ##Create a new community of background nodes that as unassigned
   NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
-  C[,nc+1] <- as.numeric(NodesWoAssignment)
-  
+  if(sum(NodesWoAssignment) > 0){
+    
+   C[,nc+1] <- as.numeric(NodesWoAssignment)
+}
   numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
   
   colnames(C) <- make_letter_names(dim(C)[2]) #letters[1:dim(C)[2]]
@@ -722,7 +808,7 @@ conductance <- function(graph, communities, ground_truth) {
 HyperParameterSelection <- function(metricsCov, cols_to_select){
   metricsCov$front <- 0
   df_list <- metricsCov %>% 
-    #filter(unassigned <= degree01) %>%
+    filter(unassigned <= degree01) %>%
     group_by(bigN, OL, dir, pctMiss) %>%
     group_split() 
   fronts_list <- list()

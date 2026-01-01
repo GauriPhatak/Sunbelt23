@@ -233,14 +233,22 @@ SetBinarycov <- function(G, k, N,nc, k_start, Cnew,connType, pC,
   ## setting covariates for outgoing communities. hence Cnew will be -1
   binVal <- matrix(ncol = k, nrow = N, 0)
   
-  for (i in 1:nc) {
-    if(i <= dim(pC)[1]){
-        idx <- which(!(Cnew[, i] == 0))
+  ## generate community to covariate correlation assignments.
+  if(nc < k){
+    assgnments <- c( sample(1:nc), sample(1:nc, k - nc, replace = TRUE))
+  }else{
+    assgnments <- sample(1:nc, k,replace  = FALSE)
+  }
+  
+  for (i in 1:k) {
+  #  if(i <= dim(pC)[1]){
+    j <- assgnments[i]
+        idx <- which(!(Cnew[, j] == 0))
         binVal[idx, i] <- rbinom(length(idx), 1, pC[i, 1])
-        idx_n <- which(Cnew[, i] == 0)
+        idx_n <- which(Cnew[, j] == 0)
         binVal[idx_n, i] <- rbinom(length(idx_n), 1, pC[i, 2])
         
-    }
+  #  }
   }
  
   binVal_orig <- binVal
@@ -263,16 +271,26 @@ SetBinarycov <- function(G, k, N,nc, k_start, Cnew,connType, pC,
 SetContinuousCov <- function(G,o, N,nc, o_start, C, connType, 
                              dist,CovNamesLin,missing,missType, MARparam=NULL, k){
   ## Based on the mean and variance indicated by the dist matrix we assign continuous values to the network covariates.
+  #print("Stop here")
   contVal <- matrix(ncol = o, nrow = N, 0) 
   s <- 1 
+  
+  ## generate community to covariate correlation assignments.
+  if(nc < o){
+    assgnments <- c( sample(1:nc), sample(1:nc, o - nc, replace = TRUE))
+  }else{
+    assgnments <- sample(1:nc, o,replace  = FALSE)
+  }
+  
   ## for each community set the covariate values. 
-  for (i in 1:nc) {
+  for (i in 1:o) {
+    j <- assgnments[i]
     if(s < length(dist)){
       ## set incoming community covariate
-      idx_in <- which(C[,i] == -1)
+      idx_in <- which(C[,j] == -1)
       contVal[idx_in, i] <- rnorm(length(idx_in), dist[[s]][1], dist[[s]][2])
       #Set outgoing community covariate
-      idx_out <- which(C[,i] == 1)
+      idx_out <- which(C[,j] == 1)
       contVal[idx_out, i] <- rnorm(length(idx_out), dist[[s+1]][1], dist[[s+1]][2])
       ## setting covariates for the non community nodes
       idx_n <- which(!(1:N %in% c(idx_in, idx_out)))
@@ -311,20 +329,6 @@ SetContinuousCov <- function(G,o, N,nc, o_start, C, connType,
   
 }
 
-make_letter_names <- function(n) {
-  # Convert number to base-26 alphabetic (Excel style)
-  to_letters <- function(x) {
-    out <- c()
-    while (x > 0) {
-      x <- x - 1
-      out <- c((x %% 26) + 1, out)
-      x <- x %/% 26
-    }
-    paste0(letters[out], collapse = "")
-  }
-  
-  sapply(1:n, to_letters)
-}
 
 genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
                          CovNamesLPin,CovNamesLPout,CovNamesLinin,CovNamesLinout,
@@ -348,7 +352,7 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   colnames(op) <- ColNames #letters[1:nc]
   
   ## overlapping various combinations of communities.
-  Cnew <- data.frame(op)
+  Cnew <- as.data.frame(op, check.names = FALSE)
   fin <- c()
   #3 Right now just set this to do 2 group overlap . need to add 3 group and higher later.
   for (i in 2) {
@@ -381,7 +385,8 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
       }
     }else if(Type == "Cohesive"){
       l <- 1
-      for(j in 1:dim(c)[1]){
+      id <- which(pClustOL != 0)
+      for(j in id){#1:dim(c)[1]){
         com <- which(C %in% c[j, ])
         fin <- c(fin, com)
         idx <- sample(com , size = length(com) * pClustOL[j], replace = FALSE)
@@ -428,7 +433,6 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   ## calculate the weight matrices
   F_u <- matrix(0,nrow = N, ncol = nc)
   H_u <- matrix(0,nrow = N, ncol = nc)
-  print(sum(Cnew > 0))
   if( dir == "directed" ){
     F_u[Cnew > 0] <- rbeta(sum(Cnew > 0),a,b)
     H_u[Cnew < 0] <- rbeta(sum(Cnew < 0),a,b)
@@ -764,15 +768,32 @@ updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impTy
         X <- cm
         y <- BC[,i]
       }
-
-      mod[[i]] <- glmnet(X, y, family = "binomial", lambda = lambda, alpha = 1, maxit = 1000)
-      W[i,] <- as.matrix(coef(mod[[i]]))[,1]
+      
+     # cvOP <- cv.glmnet(X,y,family = "binomial" , nlambda = 10, alpha = 1, maxit = 1000)
+    #  lambda <- cvOP$lambda.min
+      #lambda <- max(abs((t(X) %*% (y - (sum(y) / dim(X)[1] )))/dim(X)[1] )) * 0.01
+      mod[[i]] <- glmnet(X, y, family = "binomial", lambda = lambda, alpha = 1, maxit = 2000)#alpha = 1, lambda = lambda ,maxit = 1000)
+      # dev <- mod[[i]]$dev
+      # coefs <- coef(mod[[i]])
+      # df <- colSums(coefs != 0) - 1
+      # n <- length(y)
+      # BIC <- dev + log(n) * df
+      # idx_bic <- which.min(BIC)
+      # 
+      # lambda_bic <- mod[[i]]$lambda[idx_bic]
+      #glmnet(X, y, family = "binomial", lambda = lambda, alpha = 1)#, maxit = 1000)
+      W[i,] <- as.matrix(coef(mod[[i]]))[,1]#coef(mod[[i]])[, idx_bic]#as.matrix(coef(mod[[i]]))[,1]
       
       p[[i]] <- predict(mod[[i]], newx = cm, s = lambda, type = "response")
       
       # MANUALLY CALCULATE LOG-LIKELIHOOD
-      # For Gaussian regression (Linear Model)
+      # For binomial regression (Logistic Model)
+      eps <- 1e-15 ## to make sure the predicted probability does not go to 1 or 0 and cause numerical error
+      p[[i]] <- pmin(pmax(p[[i]], eps), 1 - eps)
       logLik <- logLik + sum(y * log(p[[i]][!mIdx]) + (1 - y) * log(1 - p[[i]][!mIdx]), na.rm = TRUE)
+      if(is.infinite(logLik)){
+        print("Infinite value here")
+      }
       
     }
     
@@ -1014,20 +1035,51 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
         y <- Z[,i]
       }
       
-      if(penalty =="LASSO"){
-        
-        mod[[i]] <- glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 1, maxit = 1000)
-        beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
+      if(penalty == "LASSO"){
+        #cvOP <- cv.glmnet(X,y,family = "gaussian" , nlambda = 10, alpha = 1, maxit = 5000)
+        #lambda <- cvOP$lambda.min
+        #X_new <- apply(X, 2, function(x) (x - mean(x)) / sd(x))
+        #lambda = max(abs((t(X_new) %*% y) /dim(Z)[1])) *0.01
+        mod[[i]] <- glmnet(X, y, family = "gaussian" , lambda = lambda, alpha = 1, maxit = 2000)
+        #,lambda = lambda, alpha = 1 , maxit = 1000)
+        #glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 1)#, maxit = 1000)
+        # coefs <- coef(mod[[i]])
+        # yhat <- predict(mod[[i]], X)
+        # 
+        # rss <- colSums((y - yhat)^2)
+        # df <- colSums(coefs != 0) - 1  # exclude intercept
+        # n <- length(y)
+        # 
+        # bic <- n * log(rss / n) + log(n) * df
+        # best <- which.min(bic)
+        # lambda_bic <- mod[[i]]$lambda[best]
+        # 
+        beta[i,] <- as.matrix(coef(mod[[i]]))[,1]#coef(mod[[i]])[, best]#as.matrix(coef(mod[[i]]))[,1]
         
       }else if(penalty =="ElasticNet"){
-        
-        mod[[i]] <- glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 0.5, maxit = 1000) 
+        cvOP <- cv.glmnet(X,y,family = "gaussian" , nlambda = 10, alpha = 0, maxit = 1000)
+        lambda <- cvOP$lambda.min
+        mod[[i]] <- glmnet(X, y, family = "gaussian",lambda = lambda, alpha = 0.5 , maxit = 1000)
         beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
         
       }else if(penalty == "Ridge"){
+        #cvOP <- cv.glmnet(X,y,family = "gaussian" , nlambda = 10, alpha = 0, maxit = 1000)
+        #lambda <- cvOP$lambda.min
+        mod[[i]] <- glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 0, maxit = 2000)
+        #glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 0)#, maxit = 1000) 
+        # coefs <- coef(mod[[i]])
+        # yhat <- predict(mod[[i]], X)
+        # 
+        # rss <- colSums((y - yhat)^2)
+        # df <- colSums(coefs != 0) - 1  # exclude intercept
+        # n <- length(y)
+        # 
+        # bic <- n * log(rss / n) + log(n) * df
+        # best <- which.min(bic)
+        # lambda_bic <- mod[[i]]$lambda[best]
         
-        mod[[i]] <- glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 0, maxit = 1000) 
-        beta[i,] <- as.matrix(coef(mod[[i]]))
+        beta[i,] <- as.matrix(coef(mod[[i]]))[,1]#coef(mod[[i]])[, best]#as.matrix(coef(mod[[i]]))[,1]
+        #beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
       }
       
       predictions[[i]] <- predict(mod[[i]], newx = cm, s = lambda, type = "response")
@@ -1430,9 +1482,9 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
         
       }
       FAILURE <- TRUE
+      omgIdx <- round(OmegaIdx(G, Ftot, Htot, N, delta, nc, nc_sim),3)
       print(paste0("ERROR in Pct increase ,total iterations ", 
-                   iter, " with seed value ", seed, " Final OI ",
-                   round(OmegaIdx(G, Ftot, Htot, N, delta, nc, nc_sim),3)))
+                   iter, " with seed value ", seed, " Final OI ",omgIdx))
       break
     }
     
@@ -1446,6 +1498,8 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
         MSEtmp <- MSEop(Ftot, Htot, covOrig_cont, betaout,N, dir, o_in,o_out, missValsout_cont)
         mseMD <- rbind(mseMD, MSEtmp[[1]])
         mse <- rbind(mse, MSEtmp[[2]])
+        
+        
         
         accutmp <- accuOP(k_in, k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
         accuracyMD <- rbind(accuracyMD, accutmp[[1]])
@@ -1479,13 +1533,13 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
     Htot <- opMat[[2]]
     
     ## Updating logistic paramters
-    
     b2 <- updateLogisticParam(W = Wout, BC = X_out , Wtm1 = Ftot, Wtm2 = Htot, 
                               missVals = missValsout_bin, lambda = lambda_bin, 
                               alphaLR = alpha, dir = dir, impType, seed)
     Wout <- b2[[1]]
     X_out <- b2[[2]]
     BinLL <- b2[[3]]
+    
     ### Updating the beta matrix for continuous covariates
     c1 <- updateLinearRegParam(betaout,missValsout_cont,Z_out,Ftot,Htot,alpha,
                                lambda_lin, N, dir, impType, alphaLin, penalty,seed)
@@ -1497,7 +1551,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
     
     if(test == TRUE){
       
-      arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
+      #arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
       OIn <- OmegaIdx(G, Ftot, Htot, N, delta,nc, nc_sim)
       OmegaVal <- c(OmegaVal, OIn)
       MSEtmp <- MSEop(Ftot, Htot, covOrig_cont, betaout,N, dir, o_in,o_out, missValsout_cont)
