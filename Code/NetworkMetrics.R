@@ -197,6 +197,54 @@ OmegaIdx_ <- function(A_mat, B_mat,N){
   return(OI)
 }
 
+omega_index_fast <- function(obs_matrix, exp_matrix) {
+  # Validate inputs
+  if (nrow(obs_matrix) != nrow(exp_matrix)) {
+    stop("Matrices must have the same number of nodes")
+  }
+  
+  n <- nrow(obs_matrix)
+  
+  # Create indicator matrices for node pairs sharing communities
+  create_overlap_matrix <- function(mat) {
+    # mat: binary matrix n x m
+    # Returns: n x n matrix where [i,j] = number of shared communities between i and j
+    tcrossprod(mat)  # mat %*% t(mat) gives shared community count
+  }
+  
+  obs_overlap <- create_overlap_matrix(obs_matrix)
+  exp_overlap <- create_overlap_matrix(exp_matrix)
+  
+  # Convert to binary: 1 if nodes share at least one community, 0 otherwise
+  obs_binary <- (obs_overlap > 0) * 1
+  exp_binary <- (exp_overlap > 0) * 1
+  
+  # Remove diagonal (self-pairs)
+  diag(obs_binary) <- diag(exp_binary) <- 0
+  
+  # Calculate agreement
+  agreement <- sum(obs_binary == exp_binary) / (n * (n - 1))
+  
+  # Calculate expected agreement
+  # Probability that nodes are together in each partition
+  p_obs_together <- sum(obs_binary) / (n * (n - 1))
+  p_exp_together <- sum(exp_binary) / (n * (n - 1))
+  
+  # Expected agreement if partitions are independent
+  expected_agreement <- p_obs_together * p_exp_together + 
+    (1 - p_obs_together) * (1 - p_exp_together)
+  
+  # Calculate Omega Index
+  if (abs(1 - expected_agreement) < 1e-10) {
+    return(0)
+  }
+  
+  omega <- (agreement - expected_agreement) / (1 - expected_agreement)
+  
+  # Clip to [0, 1] range
+  return(max(0, min(1, omega)))
+}
+
 OmegaIdx <- function(G, Fm, Hm, N, delta, nc, nc_sim) {
   # A_mat, B_mat: binary membership matrices, same number of rows (items)
   A_mat <- as.matrix(memOverlapCalc(Fm, Hm, delta,N, nc))
@@ -204,7 +252,7 @@ OmegaIdx <- function(G, Fm, Hm, N, delta, nc, nc_sim) {
     dplyr::select(any_of(c(make_letter_names(nc_sim)))) %>% 
     abs() %>% 
     as.matrix()
-  OI <- OmegaIdx_(A_mat,B_mat,N)
+  OI <- OmegaIdx_(A_mat,B_mat,N)#omega_index_fast(A_mat,B_mat)#OmegaIdx_(A_mat,B_mat,N)
   return(OI)
 }
 
