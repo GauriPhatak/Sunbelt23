@@ -500,7 +500,8 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
 }
 
 updateWtmat <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W, alphaLL, 
-                        missVals_bin,missVals_cont , alpha, start, end, dir, inNeigh, outNeigh, lambda_bin, lambda_lin, penalty){
+                        missVals_bin,missVals_cont , alpha, start, end, dir, 
+                        inNeigh, outNeigh, lambda_bin, lambda_lin, penalty, lambda_grph){
   if(printFlg == TRUE){
     print("in updateWtmat")
   }
@@ -539,7 +540,7 @@ updateWtmat <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W, alphaLL
     
     Ftot[i, ] <- CmntyWtUpdt(matrix(Ftot[i,], ncol = nc), matrix(Htot[i,], ncol = nc),
                              Htot_neigh, Htot_sum,X_u,W,Z_u, beta,sigmaSq,alpha,
-                             alphaLL,nc, 2, nc+1,mode, dir,lambda_bin, lambda_lin, penalty)
+                             alphaLL,nc, 2, nc+1,mode, dir,lambda_bin, lambda_lin, penalty,lambda_grph)
     if(dir == "directed"){
       ## Ftot neighbours
       neigh_Htot <- outNeigh[[i]] 
@@ -548,7 +549,7 @@ updateWtmat <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W, alphaLL
       
       Htot[i, ] <- CmntyWtUpdt(matrix(Htot[i,],ncol = nc), matrix(Ftot[i,],ncol = nc),
                                Ftot_neigh,Ftot_sum,X_u,W,Z_u,beta,sigmaSq,alpha,
-                               alphaLL,nc, nc + 2, (nc*2)+1,"out",dir,lambda_bin, lambda_lin, penalty)
+                               alphaLL,nc, nc + 2, (nc*2)+1,"out",dir,lambda_bin, lambda_lin, penalty,lambda_grph)
     }else{
       Htot[i, ] <- Ftot[i, ]
     }
@@ -574,7 +575,7 @@ bb_step_size <- function(x_prev, x_current, grad_prev, grad_current, variant = 1
 
 CmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
                         Z_u = NULL, beta = NULL ,sigmaSq ,alpha ,alphaLL ,
-                        nc ,start ,end ,mode,dir , lambda_bin, lambda_lin, penalty ) {
+                        nc ,start ,end ,mode,dir , lambda_bin, lambda_lin, penalty, lambda_grph ) {
   
   llG <- rep(0,nc)
   
@@ -608,7 +609,15 @@ CmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
   }
   
   ## Function to update the community weights vector using non negative matrix factorization
-  W1_u_new <- W1_u + (alpha * (c(llG) +  alphaLL *(llX[1:nc] + llZ[1:nc])))
+  #Updated value
+  UpVal <- (c(llG) +  alphaLL *(llX[1:nc] + llZ[1:nc]))
+  ## experimenting with adding L1 enalty to the weight matrix
+   #L1_Wtpenalty <- 0.00005 lambda_grph
+ #  for(i in 1:length(UpVal)){
+ #   UpVal[i] <- sign(UpVal[i]) * max(abs(UpVal[i]) - lambda_grph, 0 )
+ # }
+  W1_u_new <- W1_u + (alpha * UpVal)
+  
   W1_u_new[(W1_u_new < 0) | (W1_u_new == 0)] <- 0
   
   return(W1_u_new)
@@ -630,8 +639,11 @@ GraphComntyWtUpdt <- function(W1_u,W2_u,W2_neigh, W2_sum){
   llG <- c(llG_1) - c(llG_2)
   ## experimental scaled version of the above llog lik
   scale <- 1
-  llG <- scale * llG
-  
+  ## experimenting with adding L1 enalty to the weight matrix
+  # L1_Wtpenalty <- 0.001
+  # for(i in 1:length(llG)){
+  #   llG[i] <- sign(llG[i]) * max(abs(llG[i]) - L1_Wtpenalty, 0 )
+  # }
   return(llG)
 }
 
@@ -768,12 +780,15 @@ updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impTy
         X <- cm
         y <- BC[,i]
       }
-      
-     # cvOP <- cv.glmnet(X,y,family = "binomial" , nlambda = 10, alpha = 1, maxit = 1000)
-    #  lambda <- cvOP$lambda.min
-      #lambda <- max(abs((t(X) %*% (y - (sum(y) / dim(X)[1] )))/dim(X)[1] )) * 0.01
-      mod[[i]] <- glmnet(X, y, family = "binomial", lambda = lambda, alpha = 1, maxit = 2000)#alpha = 1, lambda = lambda ,maxit = 1000)
-      # dev <- mod[[i]]$dev
+      suppressWarnings({
+        cvOP <- cv.glmnet(X,y,family = "binomial" , nlambda = 100, alpha = 1, maxit = 2000)
+        lambda <- cvOP$lambda.1se
+        #lambda <- max(abs((t(X) %*% (y - (sum(y) / dim(X)[1] )))/dim(X)[1] )) * 0.01
+        #weights_vec <- ifelse(y == 1, sum(y == 0) / sum(y == 1), 1)
+        mod[[i]] <- glmnet(X, y, family = "binomial", lambda = lambda, alpha = 1, maxit = 2000)#, weights = weights_vec)#alpha = 1, lambda = lambda ,maxit = 1000)
+        
+      })
+       # dev <- mod[[i]]$dev
       # coefs <- coef(mod[[i]])
       # df <- colSums(coefs != 0) - 1
       # n <- length(y)
@@ -1036,11 +1051,14 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
       }
       
       if(penalty == "LASSO"){
-        #cvOP <- cv.glmnet(X,y,family = "gaussian" , nlambda = 10, alpha = 1, maxit = 5000)
-        #lambda <- cvOP$lambda.min
-        #X_new <- apply(X, 2, function(x) (x - mean(x)) / sd(x))
-        #lambda = max(abs((t(X_new) %*% y) /dim(Z)[1])) *0.01
-        mod[[i]] <- glmnet(X, y, family = "gaussian" , lambda = lambda, alpha = 1, maxit = 2000)
+        suppressWarnings({
+          cvOP <- cv.glmnet(X,y,family = "gaussian" , nlambda = 100, alpha = 1, maxit = 2000)
+          lambda <- cvOP$lambda.1se
+          #X_new <- apply(X, 2, function(x) (x - mean(x)) / sd(x))
+          #lambda = max(abs((t(X_new) %*% y) /dim(Z)[1])) *0.01
+          mod[[i]] <- glmnet(X, y, family = "gaussian" , lambda = lambda, alpha = 1, maxit =2000)
+        })
+        
         #,lambda = lambda, alpha = 1 , maxit = 1000)
         #glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 1)#, maxit = 1000)
         # coefs <- coef(mod[[i]])
@@ -1264,7 +1282,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
                  nitermax, orig,randomize = TRUE, CovNamesLinin = c(),
                  CovNamesLinout = c(),CovNamesLPin = c(),CovNamesLPout = c(), 
                  dir, alphaLL = NULL,test = TRUE,missing = NULL, covOrig, 
-                 epsilon,  impType, alphaLin, penalty, seed, covInit, specOP,nc_sim) {
+                 epsilon,  impType, alphaLin, penalty, seed, covInit, specOP,nc_sim,lambda_grph) {
   if(printFlg == TRUE){
     print("In CoDA Func")
   }
@@ -1499,8 +1517,6 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
         mseMD <- rbind(mseMD, MSEtmp[[1]])
         mse <- rbind(mse, MSEtmp[[2]])
         
-        
-        
         accutmp <- accuOP(k_in, k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
         accuracyMD <- rbind(accuracyMD, accutmp[[1]])
         accuracy <- rbind(accuracy, accutmp[[2]])
@@ -1528,7 +1544,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
     ## We look for neighbors our node is connected to with the edges directed outward from our node.
     opMat <- updateWtmat(G,Ftot,Htot,"all",s,nc,X_out,Z_out,k_out,o_out,
                          betaout,Wout, alphaLL,missValsout_bin, missValsout_cont,alpha, start = 2, 
-                         end = nc + 1, dir, inNeigh, outNeigh, lambda_bin, lambda_lin, penalty)
+                         end = nc + 1, dir, inNeigh, outNeigh, lambda_bin, lambda_lin, penalty,lambda_grph)
     Ftot <- opMat[[1]]
     Htot <- opMat[[2]]
     
@@ -1548,11 +1564,19 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
     sigmaSqout <- c1[[3]]
     LinLL <- c1[[4]]
     Z_in <- 0
+    # 
+    # if(all(betaout == 0)){
+    #   print("all betaout 0")
+    # }
+    # if(all(Wout == 0)){
+    #   print("all wout 0")
+    # }
     
     if(test == TRUE){
       
       #arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
       OIn <- OmegaIdx(G, Ftot, Htot, N, delta,nc, nc_sim)
+      #print(OIn)
       OmegaVal <- c(OmegaVal, OIn)
       MSEtmp <- MSEop(Ftot, Htot, covOrig_cont, betaout,N, dir, o_in,o_out, missValsout_cont)
       mseMD <- rbind(mseMD, MSEtmp[[1]])
