@@ -145,8 +145,8 @@ GTLogLik <- function(G,nc,pConn,alphaLL,CovNamesLinin,CovNamesLinout,
   
   A <- 1 - (1 * as.matrix(as_adjacency_matrix(G)))
   Eneg  <- as_edgelist(igraph::graph_from_adjacency_matrix(A, mode = dir))
-  
-  GrphLL <- Lg_cal(G = G, Ftot = Fm, Htot = Hm,Eneg = Eneg, epsilon = epsilon, dir = dir)
+  E <- igraph::as_edgelist(G)
+  GrphLL <- Lg_cal(G = G, Ftot = Fm, Htot = Hm,Eneg = Eneg, epsilon = epsilon, dir = dir, E)#(G, Ftot, Htot,Eneg,epsilon, dir, E)
   ll <- binLL + contLL + GrphLL
   
   return(list(ll, c(binLL,contLL,GrphLL), VIFval))
@@ -328,7 +328,6 @@ SetContinuousCov <- function(G,o, N,nc, o_start, C, connType,
   return(list(G, contVal_orig))
   
 }
-
 
 genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
                          CovNamesLPin,CovNamesLPout,CovNamesLinin,CovNamesLinout,
@@ -515,9 +514,9 @@ updateWtmat <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W, alphaLL
   ## Calculating the sum at the beginning of the loop
   Htot_sum <- as.matrix(colSums(Htot))
   Ftot_sum <- as.matrix(colSums(Ftot))
-  
   for (i in s) {
     ## If there are covariates set the variables here
+   
     X_u <- NULL
     if (k > 0) {
       X_u <- matrix(X[i, ], ncol = k)
@@ -555,7 +554,7 @@ updateWtmat <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W, alphaLL
     }
     
   }
-  
+ 
   return(list(Ftot,Htot))
 }
 
@@ -613,12 +612,13 @@ CmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
   UpVal <- (c(llG) +  alphaLL *(llX[1:nc] + llZ[1:nc]))
   ## experimenting with adding L1 enalty to the weight matrix
    #L1_Wtpenalty <- 0.00005 lambda_grph
- #  for(i in 1:length(UpVal)){
- #   UpVal[i] <- sign(UpVal[i]) * max(abs(UpVal[i]) - lambda_grph, 0 )
- # }
+  #  for(i in 1:length(UpVal)){
+  #   UpVal[i] <- sign(UpVal[i]) * max(abs(UpVal[i]) - lambda_grph, 0 )
+  # }
   W1_u_new <- W1_u + (alpha * UpVal)
   
   W1_u_new[(W1_u_new < 0) | (W1_u_new == 0)] <- 0
+  W1_u_new[(W1_u_new > 1)] <- 1
   
   return(W1_u_new)
   
@@ -751,7 +751,7 @@ updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impTy
   if(printFlg == TRUE){
     print("In update linear param")
   }
-  set.seed(seed)
+  #set.seed(seed)
   
   if(dir == "directed"){
     cm <- cbind( Wtm1 , Wtm2)
@@ -781,11 +781,11 @@ updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impTy
         y <- BC[,i]
       }
       suppressWarnings({
-        cvOP <- cv.glmnet(X,y,family = "binomial" , nlambda = 100, alpha = 1, maxit = 2000)
-        lambda <- cvOP$lambda.1se
+        #cvOP <- cv.glmnet(X,y,family = "binomial" , nlambda = 100, alpha = 1)
+        #lambda <- cvOP$lambda.min
         #lambda <- max(abs((t(X) %*% (y - (sum(y) / dim(X)[1] )))/dim(X)[1] )) * 0.01
         #weights_vec <- ifelse(y == 1, sum(y == 0) / sum(y == 1), 1)
-        mod[[i]] <- glmnet(X, y, family = "binomial", lambda = lambda, alpha = 1, maxit = 2000)#, weights = weights_vec)#alpha = 1, lambda = lambda ,maxit = 1000)
+        mod[[i]] <- glmnet(X, y, family = "binomial", lambda = lambda, alpha = 1, maxit = 1000)#, weights = weights_vec)#alpha = 1, lambda = lambda ,maxit = 1000)
         
       })
        # dev <- mod[[i]]$dev
@@ -1020,7 +1020,7 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
   if(printFlg == TRUE){
     print("In update linear param")
   }
-  set.seed(seed)
+  #set.seed(seed)
   
   if(dir == "directed"){
     cm <- cbind( Wtm1 , Wtm2)
@@ -1052,11 +1052,11 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
       
       if(penalty == "LASSO"){
         suppressWarnings({
-          cvOP <- cv.glmnet(X,y,family = "gaussian" , nlambda = 100, alpha = 1, maxit = 2000)
-          lambda <- cvOP$lambda.1se
+          #cvOP <- cv.glmnet(X,y,family = "gaussian" , nlambda = 100, alpha = 1)
+          #lambda <- cvOP$lambda.min
           #X_new <- apply(X, 2, function(x) (x - mean(x)) / sd(x))
           #lambda = max(abs((t(X_new) %*% y) /dim(Z)[1])) *0.01
-          mod[[i]] <- glmnet(X, y, family = "gaussian" , lambda = lambda, alpha = 1, maxit =2000)
+          mod[[i]] <- glmnet(X, y, family = "gaussian" , lambda = lambda, alpha = 1, maxit =1000)
         })
         
         #,lambda = lambda, alpha = 1 , maxit = 1000)
@@ -1075,8 +1075,8 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
         beta[i,] <- as.matrix(coef(mod[[i]]))[,1]#coef(mod[[i]])[, best]#as.matrix(coef(mod[[i]]))[,1]
         
       }else if(penalty =="ElasticNet"){
-        cvOP <- cv.glmnet(X,y,family = "gaussian" , nlambda = 10, alpha = 0, maxit = 1000)
-        lambda <- cvOP$lambda.min
+        #cvOP <- cv.glmnet(X,y,family = "gaussian" , nlambda = 10, alpha = 0, maxit = 1000)
+        #lambda <- cvOP$lambda.min
         mod[[i]] <- glmnet(X, y, family = "gaussian",lambda = lambda, alpha = 0.5 , maxit = 1000)
         beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
         
@@ -1237,7 +1237,7 @@ initCov <- function(covtmp, CovNames) {
 }
 
 initWtmat <- function(G, mode, N, nc, seed,specOP,epsilon){
-  set.seed(seed)
+  #set.seed(seed)
   Wtmat <- matrix(nrow = N, ncol = nc,runif(nc * N, 0.0001,0.0005))
   rownames(Wtmat) <- names(igraph::degree(G, mode = mode))
   return(Wtmat)
@@ -1308,7 +1308,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
     Hinit <- Htot
   }
   
-  set.seed(seed)
+  #set.seed(seed)
   
   iter <- 0
   k_in <- k[1]
@@ -1325,6 +1325,10 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
   
   Z_in <- b[[3]]
   Z_out <- b[[4]]
+  
+  ## scaling the continuous covariats
+  Z_out <- scale(Z_out)
+  covOrig_cont <- scale(covOrig_cont)
   
   missValsin <- b[[5]]
   missValsout_bin <- b[[6]]
@@ -1576,12 +1580,17 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
       
       #arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
       OIn <- OmegaIdx(G, Ftot, Htot, N, delta,nc, nc_sim)
-      #print(OIn)
+      
       OmegaVal <- c(OmegaVal, OIn)
       MSEtmp <- MSEop(Ftot, Htot, covOrig_cont, betaout,N, dir, o_in,o_out, missValsout_cont)
       mseMD <- rbind(mseMD, MSEtmp[[1]])
       mse <- rbind(mse, MSEtmp[[2]])
-      
+      # print(paste0(" delta ",round(OIn,4),
+      #               " delta*1.5 ",round(OmegaIdx(G, Ftot, Htot, N, delta*1.5,nc, nc_sim),4),
+      #               " delta*2 ",round(OmegaIdx(G, Ftot, Htot, N, delta*2,nc, nc_sim),4),
+      #               " delta*3 ",round(OmegaIdx(G, Ftot, Htot, N, delta*3,nc, nc_sim),4),
+      #               " delta*4 ",round(OmegaIdx(G, Ftot, Htot, N, delta*4,nc, nc_sim),4)))
+      print(paste0(" delta ",round(OIn,4), " MSE ",paste0(round(MSEtmp[[2]],3),collapse = ",") ))
       accutmp <- accuOP(k_in, k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
       accuracyMD <- rbind(accuracyMD, accutmp[[1]])
       accuracy <- rbind(accuracy, accutmp[[2]])
