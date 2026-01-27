@@ -4,8 +4,6 @@ library(linkprediction)  # For partition density (install via devtools::install_
 library(stringr)
 library(tidyverse)
 library(gmp)
-#library(DirectedClustering)
-#library(poweRlaw)
 library(e1071)
 
 make_letter_names <- function(n) {
