@@ -228,7 +228,7 @@ mode <- function(x) {
 
 ## Network generation code
 SetBinarycov <- function(G, k, N,nc, k_start, Cnew,connType, pC,
-                         CovNamesLP, missing) {
+                         CovNamesLP, missing,missType) {
   ## Based on the probability matrix pC assign indicates the binary assignment of covariates to a community
   ## setting covariates for outgoing communities. hence Cnew will be -1
   binVal <- matrix(ncol = k, nrow = N, 0)
@@ -254,7 +254,15 @@ SetBinarycov <- function(G, k, N,nc, k_start, Cnew,connType, pC,
   binVal_orig <- binVal
   if(!is.null(missing)) {
     for (j in 1:k) {
-      binVal[sample(1:N, round(missing[j] * N / 100)), j] <- NA
+      if(missType[j] == "Random"){ # 1) Random (MCAR)
+        binVal[sample(1:N, round(missing[j] * N / 100)), j] <- NA
+      }else if(missType[j] == "CovDep_MAR"){ # 4) if the value is 1 then we have a certain percent missing. No missing in 0
+        idx <- which(binVal[, j] == 1)
+        idx <- sample(idx, round(missing[j] * length(idx) / 100) )
+        binVal[idx, j] <- NA
+      }else if(missType[j] == "CommDep_MAR"){
+        binVal[sample(1:N, round(missing[j] * N / 100)), j] <- NA
+      }
       G <- G %>%
         set_vertex_attr(name = CovNamesLP[j], value = c(binVal[, j]))
     }
@@ -304,15 +312,15 @@ SetContinuousCov <- function(G,o, N,nc, o_start, C, connType,
     for (j in 1:o) {
       ## Create missingness based on type of missingness. 
       if(missType[j] == "Random"){ # 1) Random (MCAR)
-        contVal[sample(1:N, round(missing[j+k] * N / 100)), j] <- NA
+        contVal[sample(1:N, round(missing[j] * N / 100)), j] <- NA
       }else if(missType[j] == "GT_MAR"){ # 2) Greater Than a particular value (MAR)
         sampTot <- which(floor(contVal[,j]) > MARparam[1]) ## Indices to be sampled from based on restriction
-        contVal[sample(sampTot,round(missing[j+k]*MARparam[2]/100)),j] <- NA
-        contVal[sample(which(!((1:N) %in% sampTot)), round(missing[j+k]*(100-MARparam[2])/100)), j] <- NA
+        contVal[sample(sampTot,round(missing[j]*MARparam[2]/100)),j] <- NA
+        contVal[sample(which(!((1:N) %in% sampTot)), round(missing[j]*(100-MARparam[2])/100)), j] <- NA
       }else if(missType[j] == "LT_MAR"){ # 3) Less than a particular value (MAR)
         sampTot <- which(contVal[,j] < MARparam[1]) ## Indices to be sampled from based on restriction
-        contVal[sample(sampTot,round(missing[j+k]*MARparam[2]/100)),j] <- NA
-        contVal[sample(which(!((1:N) %in% sampTot)), round(missing[j+k]*(100-MARparam[2])/100)), j] <- NA
+        contVal[sample(sampTot,round(missing[j]*MARparam[2]/100)),j] <- NA
+        contVal[sample(which(!((1:N) %in% sampTot)), round(missing[j]*(100-MARparam[2])/100)), j] <- NA
       }else if(missType[j] == "CovDep_MAR"){ # 4) Dependent on another covariate that is not missing (MAR)
         
       }
@@ -467,11 +475,11 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   if (c("binary") %in% covTypes) {
     if (length(CovNamesLPin) > 0) {
       op <- SetBinarycov(g.sim,k_in,N,nc,k_start=0,Cnew,connType=1,pC,
-                         CovNamesLPin,missing)
+                         CovNamesLPin,missing[1:k_in],missType[1:k_out])
     }
     if (length(CovNamesLPout) > 0) {
       op <- SetBinarycov(g.sim,k=k_out,N,nc,k_start=k_in,Cnew,connType=1,pC,
-                         CovNamesLPout,missing)
+                         CovNamesLPout,missing[1:k_out],missType[1:k_out])
       
     }
     g.sim <- op[[1]]
@@ -481,14 +489,14 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   if (c("continuous") %in% covTypes) {
     if (length(CovNamesLinin) > 0) {
       op <- SetContinuousCov(g.sim, o_in, N, nc, o_start = 0, Cnew, 
-                             connType = 1, dist,CovNamesLinin,missing,
-                             missType, MARparam, k_out)
+                             connType = 1, dist,CovNamesLinin,missing[(k_out+1):(o_out+k_out)],
+                             missType[(k_out+1):(o_out+k_out)], MARparam, k_out)
     }
     if (length(CovNamesLinout) > 0) {
       
       op <- SetContinuousCov(g.sim, o_out, N,nc, o_start = o_in, Cnew, 
-                             connType = 1, dist, CovNamesLinout, missing,
-                             missType, MARparam,k_out)
+                             connType = 1, dist, CovNamesLinout, missing[(k_out+1):(o_out+k_out)],
+                             missType[(k_out+1):(o_out+k_out)], MARparam,k_out)
     }
     g.sim <- op[[1]]
     covVal_orig_cont <- op[[2]]
@@ -1326,10 +1334,6 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
   Z_in <- b[[3]]
   Z_out <- b[[4]]
   
-  ## scaling the continuous covariats
-  Z_out <- scale(Z_out)
-  covOrig_cont <- scale(covOrig_cont)
-  
   missValsin <- b[[5]]
   missValsout_bin <- b[[6]]
   missValsout_cont <- b[[7]]
@@ -1426,6 +1430,11 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
     }
   }
   
+  
+  ## scaling the continuous covariats
+  Z_out <- scale(Z_out)
+  covOrig_cont <- scale(covOrig_cont)
+  
   ############ Initialize the coef matrix for covariates ##############
   
   ############## Setting initial values of binary covariates coefs weights ###############
@@ -1489,10 +1498,11 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
     LLnew <- LLvec[1]
     pctInc <- abs((LLnew - LLold)/(LLold)) * 100
     if(is.nan(pctInc)){
+      C <- as.matrix(memOverlapCalc(Ftot,Htot,delta, N, nc),ncol = nc )
       if(test == FALSE){
         
         arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
-        OmegaVal <- c(OmegaVal, OmegaIdx(G, Ftot, Htot, N, delta,nc, nc_sim))
+        OmegaVal <- c(OmegaVal, OmegaIdx(G, C, N, nc, nc_sim) )
         
         MSEtmp <- MSEop(Ftot, Htot, covOrig_cont, betaout,N, dir, o_in,o_out, missValsout_cont)
         mseMD <- rbind(mseMD, MSEtmp[[1]])
@@ -1504,18 +1514,19 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
         
       }
       FAILURE <- TRUE
-      omgIdx <- round(OmegaIdx(G, Ftot, Htot, N, delta, nc, nc_sim),3)
+      omgIdx <- round(OmegaIdx(G, C, N, nc, nc_sim) ,3)
       print(paste0("ERROR in Pct increase ,total iterations ", 
                    iter, " with seed value ", seed, " Final OI ",omgIdx))
       break
     }
     
     if((pctInc < thresh) | (dim(lllst)[1] == nitermax)){
+      C <- as.matrix(memOverlapCalc(Ftot,Htot,delta, N, nc),ncol = nc )
       if(test == FALSE){
         lllst <- rbind(lllst, LLvec)
         
         arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
-        OmegaVal <- c(OmegaVal, OmegaIdx(G, Ftot, Htot, N, delta,nc, nc_sim))
+        OmegaVal <- c(OmegaVal, OmegaIdx(G, C, N, nc, nc_sim))
         
         MSEtmp <- MSEop(Ftot, Htot, covOrig_cont, betaout,N, dir, o_in,o_out, missValsout_cont)
         mseMD <- rbind(mseMD, MSEtmp[[1]])
@@ -1525,13 +1536,12 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
         accuracyMD <- rbind(accuracyMD, accutmp[[1]])
         accuracy <- rbind(accuracy, accutmp[[2]])
         
-        
       }
       FAILURE <- FALSE
       print(paste0("The final percent change ", round(pctInc,6), 
                    " ,total iterations ", iter, " with seed value ", seed, 
                    " Final LogLik ", round(LLnew,3),
-                   " Final OI ",round(OmegaIdx(G, Ftot, Htot, N, delta, nc, nc_sim),3), 
+                   " Final OI ",round(OmegaIdx(G, C, N, nc, nc_sim),3), 
                    " MSE ", paste0(round(tail(mse,1),3), collapse = ", "),
                    " MSE MD ", paste0(round(tail(mseMD,1),3), collapse = ", ")))
       break
@@ -1579,7 +1589,8 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
     if(test == TRUE){
       
       #arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
-      OIn <- OmegaIdx(G, Ftot, Htot, N, delta,nc, nc_sim)
+      C <- as.matrix(memOverlapCalc(Ftot,Htot,delta, N, nc),ncol = nc )
+      OIn <- OmegaIdx(G, C, N, nc, nc_sim)
       
       OmegaVal <- c(OmegaVal, OIn)
       MSEtmp <- MSEop(Ftot, Htot, covOrig_cont, betaout,N, dir, o_in,o_out, missValsout_cont)
@@ -1590,7 +1601,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
       #               " delta*2 ",round(OmegaIdx(G, Ftot, Htot, N, delta*2,nc, nc_sim),4),
       #               " delta*3 ",round(OmegaIdx(G, Ftot, Htot, N, delta*3,nc, nc_sim),4),
       #               " delta*4 ",round(OmegaIdx(G, Ftot, Htot, N, delta*4,nc, nc_sim),4)))
-      print(paste0(" delta ",round(OIn,4), " MSE ",paste0(round(MSEtmp[[2]],3),collapse = ",") ))
+      #print(paste0(" delta ",round(OIn,4), " MSE ",paste0(round(MSEtmp[[2]],3),collapse = ",") ))
       accutmp <- accuOP(k_in, k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
       accuracyMD <- rbind(accuracyMD, accutmp[[1]])
       accuracy <- rbind(accuracy, accutmp[[2]])
