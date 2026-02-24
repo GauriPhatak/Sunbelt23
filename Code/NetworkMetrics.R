@@ -122,7 +122,8 @@ accuCalc <- function(k,W,Wtm1,Wtm2,X, dir){
     predLR <- apply(sigmoid(W, cbind(1, Wtm)) > 0.5, 1, as.numeric)
     acc <- rep(0, k)
     for (i in 1:k) {
-      cm <-  caret::confusionMatrix(factor(predLR[, i], levels = c(0, 1)), factor(X[, i]))
+      cm <-  caret::confusionMatrix(factor(predLR[, i], levels = c(0, 1)), 
+                                    factor(X[, i], levels = c(0, 1)))
       acc[i] <- round(cm$overall[1], 2)
     }
     accuracy <- rbind(accuracy,acc)
@@ -243,9 +244,36 @@ omega_index_fast <- function(obs_matrix, exp_matrix) {
   return(max(0, min(1, omega)))
 }
 
-OmegaIdx <- function(G, Fm, Hm, N, delta, nc, nc_sim) {
+OmegaIdx <- function(G, A_mat, N, nc, nc_sim) {
   # A_mat, B_mat: binary membership matrices, same number of rows (items)
-  A_mat <- as.matrix(memOverlapCalc(Fm, Hm, delta,N, nc))
+  #A_mat <- as.matrix(memOverlapCalc(Fm, Hm, delta,N, nc))
+  
+  ## drop the really small communities
+  ## drop communities smaller than total number of unattached nodes.
+  #degree01 <- sum(igraph::degree(G) %in% c(0,1) )
+  #drop_cols <- which(colSums(A_mat) <= degree01)
+  
+  #if(length(drop_cols) > 0 ){
+  #  A_mat <- A_mat[, -drop_cols]
+  #  effective_nc <- ncol(A_mat)
+  #}
+  
+  ## drop tiny communities
+  #drop_cols <- DropTinyCommunities(degree01, A_mat)
+  #if(length(drop_cols)  == 2){
+  #  A_mat <- drop_cols[[1]]
+  #  effective_nc <- drop_cols[[2]]
+  #}
+  
+  ## drop highly overlapping or contained clusters
+  # maxOL <- 0.60
+  # drop_cols <- Percent_overlap(A_mat, maxOL) #DropTinyCommunities(degree01, C)
+  # if(length(drop_cols)  == 2){
+  #   A_mat <- drop_cols[[1]]
+  #   effective_nc <- drop_cols[[2]]
+  # }
+  # 
+  
   B_mat <- as.data.frame(vertex_attr(G)) %>% 
     dplyr::select(any_of(c(make_letter_names(nc_sim)))) %>% 
     abs() %>% 
@@ -262,7 +290,7 @@ SilhouetteScore <- function(C, Z, DistMeasure = "Euclidean"){
   }else if(DistMeasure == "Jaccard"){
     A <- as.matrix(dist(apply(Z, 2, scales::rescale, to = c(0,1)), method = "binary"))
   }
-
+  
   NodesWoAssignment <- (rowSums(C) == 0)
   if(sum(NodesWoAssignment) > 0){
     C[,nc+1] <- as.numeric(NodesWoAssignment)
@@ -308,19 +336,11 @@ SilhouetteScore <- function(C, Z, DistMeasure = "Euclidean"){
 }
 
 ## Community wise average triangle participation ratio
-Comm_TPR <- function(G, Fm, Hm, delta, N, nc, dir){
-  C <- memOverlapCalc(Fm, Hm, delta, N, nc)
+Comm_TPR <- function(G, C , N, nc, dir){
+  
   tpr <- 0
   tprVec <- c()
   
-  ##Create a new community of background nodes that as unassigned
-  NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
-  numNodesWoAssignment <- sum(NodesWoAssignment)
-  if(sum(NodesWoAssignment) > 0){
-    
- 
-  C[,nc+1] <- as.numeric(NodesWoAssignment)
-}
   for(i in 1:dim(C)[2]){
     idx <- which(C[,i] == 1)
     iG <- induced_subgraph(G,idx)
@@ -333,7 +353,7 @@ Comm_TPR <- function(G, Fm, Hm, delta, N, nc, dir){
     
     # Calculate the triangle participation ratio
     total_vertices <- vcount(iG)
-
+    
     tprVec <- c(tprVec,(participating_vertices / total_vertices) )
   }
   ## Triangle participation ratio of the whole network
@@ -359,20 +379,15 @@ Comm_TPR <- function(G, Fm, Hm, delta, N, nc, dir){
   ##TPR not including the new unassigned cluster
   tprWoW <- tprWo * (N - numNodesWoAssignment)/N
   
-return(c(tprVec,tprW,tprWo,tprWW, tprWoW))  
+  return(c(tprVec,tprW,tprWo,tprWW, tprWoW))  
   
 }
 
 ## Ego splitting the graph to calculate conductance
-EgoSplitConductance <- function(G,Fm , Hm, dir, delta , N , nc){
-  C <- memOverlapCalc(Fm, Hm, delta, N, nc)
-
+EgoSplitConductance <- function(G , C, dir, degree01, N, nc, numNodesWoAssignment){
+  
   G <- set_vertex_attr(G, "name", value = 1:vcount(G))
-  ##Create a new community of background nodes that as unassigned
-  NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
-  if(sum(NodesWoAssignment) > 0){
-    C[,nc+1] <- as.numeric(NodesWoAssignment)
-  }
+  
   ## Get original graph edges
   edge_orig <- as_edgelist(G)
   colnames(edge_orig) <- c("from","to")
@@ -383,12 +398,16 @@ EgoSplitConductance <- function(G,Fm , Hm, dir, delta , N , nc){
   dropped_edges <- matrix(0,nrow = 0,ncol =2)
   for(i in 1:vcount(G)){
     neigh <- neighbors(G, v = i, mode = "total")
-    target_nodes <- neigh[which((as.matrix(C[neigh, ]) %*% t(C[i,])) == 0)]
-    if(length(target_nodes) > 0){
-      dropped_edges <- rbind(dropped_edges, 
-                             as.data.frame(edge_orig) %>%
-                               filter(from == i & to %in% target_nodes))
+    
+    if(length(neigh) > 0 ){
+      target_nodes <- neigh[which((matrix(C[neigh, ], nrow = length(neigh)) %*% as.matrix(C[i,])) == 0)]
+      if(length(target_nodes) > 0){
+        dropped_edges <- rbind(dropped_edges, 
+                               as.data.frame(edge_orig) %>%
+                                 filter(from == i & to %in% target_nodes))
+      }      
     }
+    
   }
   ## find the number of communities a node is part of. set vertex color based on that
   numCom <- rowSums(C)
@@ -397,22 +416,22 @@ EgoSplitConductance <- function(G,Fm , Hm, dir, delta , N , nc){
   for(i in 1:dim(C)[2]){
     idx <- which(C[,i] == 1)
     Gsub[[i]] <- induced_subgraph(G, vids = idx)
-
+    
     Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "Origname", value = vertex_attr(Gsub[[i]],"name"))
     Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "Group", value = i)
     Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "VertColor", value = vertex_attr(Gsub[[i]],"VertColor"))
     Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "name", value = paste0(vertex_attr(Gsub[[i]],"name"),"_",i))
-    }
+  }
   CombinedGraph <- disjoint_union(Gsub)
   
   if(nrow(dropped_edges) > 0 ){
-  ## keep distinct edges
-  dropped_edges <- dropped_edges %>% distinct()
-  
-  CombinedGraph <- set_edge_attr(CombinedGraph, name = "color", value = "grey28")
-  
-  CombinedGraph <- add_edges(CombinedGraph, as.vector(t(dropped_edges)), color = "darkred")
-  
+    ## keep distinct edges
+    dropped_edges <- dropped_edges %>% distinct()
+    
+    CombinedGraph <- set_edge_attr(CombinedGraph, name = "color", value = "grey28")
+    
+    CombinedGraph <- add_edges(CombinedGraph, as.vector(t(dropped_edges)), color = "darkred")
+    
   }
   
   Vatt <- as.data.frame(vertex_attr(CombinedGraph)) %>% 
@@ -430,15 +449,16 @@ EgoSplitConductance <- function(G,Fm , Hm, dir, delta , N , nc){
         filter(item1 < item2) %>%  # Avoid duplicates and self-pairs
         ungroup()  
     }
-
+    
     CombinedGraph <- add_edges(CombinedGraph, as.vector(t(Vatt[,2:3])), color = "darkred")
     
   }
-
+  
   
   CombinedGraph <- igraph::simplify(CombinedGraph,remove.multiple = TRUE,remove.loops = TRUE)
   
   ConductanceVal <- rep(0,dim(C)[2])
+  Internal_density <- rep(0, dim(C)[2])
   for (i in 1:dim(C)[2]) {
     S <- V(CombinedGraph)$name[which(as.numeric(V(CombinedGraph)$Group) == i)]
     Sc <- V(CombinedGraph)$name[which(as.numeric(V(CombinedGraph)$Group) != i)]
@@ -458,9 +478,14 @@ EgoSplitConductance <- function(G,Fm , Hm, dir, delta , N , nc){
     if(min(vol_S, vol_Sc) > 0){
       ConductanceVal[i] <- cut_edges / min(vol_S, vol_Sc)
     }
+    
+    ## calculate the internal density for each of the clusters
+    idx <- which(as.numeric(V(CombinedGraph)$Group) == i)
+    nNode <- length(idx)
+    subG <- induced_subgraph(CombinedGraph, vids = idx)
+    Internal_density[i] <- ecount(subG)*2/(nNode*(nNode-1))
+    
   }
-  ##punish internal density if nodes have no assignment
-  numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
   
   ## MEan conductance W the new background cluster
   MeanConductanceW <- mean(ConductanceVal,na.rm =T)
@@ -472,7 +497,11 @@ EgoSplitConductance <- function(G,Fm , Hm, dir, delta , N , nc){
   WeightedMeanConductanceW <- MeanConductanceW*(N/(N - numNodesWoAssignment ))
   WeightedMeanConductanceWo <- MeanConductanceWo*(N/(N - numNodesWoAssignment ))
   
- return(c(ConductanceVal, MeanConductanceW, MeanConductanceWo,WeightedMeanConductanceW, WeightedMeanConductanceWo))
+  ## Weighting with density
+  alpha <- median(ConductanceVal[1:nc])/median(Internal_density[1:nc])
+  ConductanceWDensityPen <- MeanConductanceWo + alpha * sum(1 - Internal_density[1:nc])/nc
+  
+  return(c(ConductanceVal, MeanConductanceW, MeanConductanceWo,WeightedMeanConductanceW, WeightedMeanConductanceWo, ConductanceWDensityPen))
 }
 
 ##internal density of a cluster. Need to be maximized
@@ -491,8 +520,8 @@ InternalDensity <- function(G, d, epsilon, dir){
   NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
   if(sum(NodesWoAssignment) > 0){
     
-   C[,nc+1] <- as.numeric(NodesWoAssignment)
-}
+    C[,nc+1] <- as.numeric(NodesWoAssignment)
+  }
   InternalDensityVal <- rep(0,dim(C)[2])
   n <- rep(0,dim(C)[2])
   for(i in 1:dim(C)[2]){
@@ -534,29 +563,57 @@ InternalDensity <- function(G, d, epsilon, dir){
 ##calculate attribute cohesion
 ## Dissimilarity score or distance measure. Have to minimize.
 ## also includes non normalized variance. Does not take scales of the attributes into consideration
-AverageDissimilarityScore <- function(d,epsilon){
+AverageDissimilarityScore <- function(Z, C, degree01, numNodesWoAssignment){
   ##reading the covariates (cont.)
-  Z <- as.data.frame(d$Zout_cov)#as.data.frame(scale(d$Zout_cov)) 
+  #Z <- as.data.frame(d$Zout_cov)#as.data.frame(scale(d$Zout_cov)) 
   
   ## reading the community weight matrices
-  Fm <- d$Ffin
-  Hm <- d$Hfin
+  #Fm <- d$Ffin
+  #Hm <- d$Hfin
   
   ## Number of nodes and communities
-  N <- dim(Fm)[1]
-  nc <- dim(Fm)[2]
+  N <- dim(C)[1]
+  nc <- dim(C)[2]
   
   ##Decide the community affiliations
-  delta <- getDelta(N, epsilon)
-  C <- memOverlapCalc(Fm, Hm, delta, N, nc)
+  #delta <- getDelta(N, epsilon)
+  #C <- memOverlapCalc(Fm, Hm, delta, N, nc)
   
-  ##Create a new community of background nodes that as unassigned
-  NodesWoAssignment <- (rowSums(C) == 0)
-  if(sum(NodesWoAssignment) > 0){
-    C[,nc+1] <- as.numeric(NodesWoAssignment)
-  }
-  ## find number of nodes wihtout assignment
-  numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
+  ## drop the really small communities
+  ## drop communities smaller than total number of unattached nodes.
+  #degree01 <- sum(igraph::degree(G) %in% c(0,1) )
+  #drop_cols <- which(colSums(C) <= degree01)
+  
+  ## Change the effective nc to the reduced number of clusters
+  # if(length(drop_cols) > 0 ){
+  #   C <- C[, -drop_cols]
+  #   nc <- ncol(C)
+  # }
+  # ## drop tiny communities
+  # drop_cols <- DropTinyCommunities(degree01, C)
+  # if(length(drop_cols)  == 2){
+  #   C <- drop_cols[[1]]
+  #   nc <- drop_cols[[2]]
+  # }
+  # 
+  # ## drop highly overlapping or contained clusters
+  # maxOL <- 0.60
+  # drop_cols <- Percent_overlap(C, maxOL) #DropTinyCommunities(degree01, C)
+  # if(length(drop_cols)  == 2){
+  #   C <- drop_cols[[1]]
+  #   nc <- drop_cols[[2]]
+  # }
+  # 
+  # ##Create a new community of background nodes that as unassigned
+  # NodesWoAssignment <- (rowSums(C) == 0)
+  # ##punish internal density if nodes have no assignment
+  # numNodesWoAssignment <- sum(NodesWoAssignment)
+  # 
+  # if(sum(NodesWoAssignment) > 0){
+  #   C <- cbind(C, new_col = as.numeric(NodesWoAssignment))
+  #   nc <- nc+1
+  # }
+  # 
   ## Set column names to communities
   ColNames <- make_letter_names(dim(C)[2])
   colnames(C) <- ColNames#letters[1:dim(C)[2]]
@@ -590,7 +647,7 @@ AverageDissimilarityScore <- function(d,epsilon){
     AvgVarianceWo <- sum((vm[1:nc, ]/n_cov) * (n[1:nc]), na.rm = TRUE)/N
     DispersionScoreWo <- sum((vmNorm[1:nc, ]/n_cov) * (n[1:nc]), na.rm = TRUE)/N
   }
-
+  
   ## Punish the value of variance and dispersion if there are nodes that have not been assigned
   WeightedAvgVarianceW <- AvgVarianceW * (N/(N - numNodesWoAssignment ))
   WeightedDispersionScoreW <- DispersionScoreW * (N/(N - numNodesWoAssignment ))
@@ -655,13 +712,13 @@ WeightedTrace <- function(d, epsilon){
   
   ## Punish the value of variance and dispersion if there are nodes that have not been assigned
   WeightedTraceW <- Trace * (N/(N - numNodesWoAssignment ))
-
+  
   return(c(Trace, WeightedTraceW, TotalTrace, R2))
 }
 
 ##Binary covariate dispersion score
 ##Understanding cohesiveness within and between clusters 
-BinaryDispersionScore <- function(X, Fm, Hm, epsilon){
+BinaryDispersionScore <- function(X, C, degree01, numNodesWoAssignment){
   # ##reading the covariates (cont.)
   # Z <- as.data.frame(d$Xout_cov) 
   # 
@@ -670,21 +727,47 @@ BinaryDispersionScore <- function(X, Fm, Hm, epsilon){
   # Hm <- d$Hfin
   
   ## Number of nodes and communities
-  N <- dim(Fm)[1]
-  nc <- dim(Fm)[2]
+  N <- dim(C)[1]
+  nc <- dim(C)[2]
   
   ##Decide the community affiliations
-  delta <- getDelta(N, epsilon)
-  C <- memOverlapCalc(Fm, Hm, delta, N, nc)
+  #delta <- getDelta(N, epsilon)
+  #C <- memOverlapCalc(Fm, Hm, delta, N, nc)
   
-  
-  ##Create a new community of background nodes that as unassigned
-  NodesWoAssignment <- (rowSums(C) == 0)
-  if(sum(NodesWoAssignment) > 0){
-  C[,nc+1] <- as.numeric(NodesWoAssignment)
-  }
-  ## find number of nodes wihtout assignment
-  numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
+  ## drop the really small communities
+  ## drop communities smaller than total number of unattached nodes.
+  #degree01 <- sum(igraph::degree(G) %in% c(0,1) )
+  # drop_cols <- which(colSums(C) <= degree01)
+  # 
+  # ## Change the effective nc to the reduced number of clusters
+  # #if(length(drop_cols) > 0 ){
+  # #  C <- C[, -drop_cols]
+  # #  nc <- ncol(C)
+  # #}
+  # ## drop tiny communities
+  # drop_cols <- DropTinyCommunities(degree01, C)
+  # if(length(drop_cols)  == 2){
+  #   C <- drop_cols[[1]]
+  #   nc <- drop_cols[[2]]
+  # }
+  # 
+  # ## drop highly overlapping or contained clusters
+  # maxOL <- 0.60
+  # drop_cols <- Percent_overlap(C, maxOL) #DropTinyCommunities(degree01, C)
+  # if(length(drop_cols)  == 2){
+  #   C <- drop_cols[[1]]
+  #   nc <- drop_cols[[2]]
+  # }
+  # 
+  # ##Create a new community of background nodes that as unassigned
+  # NodesWoAssignment <- (rowSums(C) == 0)
+  # ##punish internal density if nodes have no assignment
+  # numNodesWoAssignment <- sum(NodesWoAssignment)
+  # 
+  # if(sum(NodesWoAssignment) > 0){
+  #   C <- cbind(C, new_col = as.numeric(NodesWoAssignment))
+  #   nc <- nc+1
+  # }
   
   ## Set column names to communities
   colnames(C) <- make_letter_names(dim(C)[2]) #letters[1:dim(C)[2]]
@@ -758,29 +841,88 @@ BinaryDispersionScore <- function(X, Fm, Hm, epsilon){
   return(c(AvgBinarySpreadW,BinaryDispersionScoreW,WeightedAvgBinarySpreadW, WeightedBinaryDispersionScoreW))
 }
 
+## Function to drop tiny communities
+DropTinyCommunities <- function(degree01, C){
+  ## drop the really small communities
+  ## drop communities smaller than total number of unattached nodes.
+  #degree01 <- sum(igraph::degree(G) %in% c(0,1) )
+  drop_cols <- which(colSums(C) <= degree01)
+  nc <- ncol(C)
+  ## Change the effective nc to the reduced number of clusters
+  if(length(drop_cols) > 0 ){
+    new_nc <- nc - length(drop_cols)
+    C <- as.matrix(C[, -drop_cols], ncol = new_nc)
+    nc <- ncol(C)
+    return(list(C, nc))
+    
+  }
+  return(0)
+}
+
+## Function to merge communities that have excessive overlap
+## find percent contained
+percent_contained <- function(a, b) {
+  if (sum(a == 1) == 0){ return(NA_real_)  }# avoid divide-by-zero
+  return(sum(a == 1 & b == 1) / sum(a == 1))
+}
+
+Percent_overlap <- function(C, maxOL){
+  C <- as.data.frame(C)
+  cols <- colnames(C)
+  pct <- outer(cols, cols,FUN = Vectorize(function(a, b) percent_contained(C[[a]], C[[b]])))
+  
+  idx <- which(as.matrix(pct) > maxOL,  arr.ind = TRUE)
+  #norm <- t(apply(idx, 1, sort))
+  #idx <- norm[!duplicated(norm), ]
+  
+  for(i in 1:nrow(idx)){
+    C[,idx[i,1]] <-  as.integer(C[,idx[i,1]] | C[, idx[i,2]] )
+  }
+  
+  C <- as.matrix(C[, !duplicated(as.list(C))])
+  return(list(C, ncol(C)))
+}
+
+
 ## similarity within each cluster
 # Have to maximizehigher the better
 ## Need to implement Jaccard similarity for categorical variables
-AverageSimilarityScore <- function(d, epsilon){
+AverageSimilarityScore <- function(Z, C, degree01, numNodesWoAssignment){
   
-  Z <- as.data.frame(d$Zout_cov) 
+  #Z <- as.data.frame(d$Zout_cov) 
+  #Fm <- d$Ffin
+  #Hm <- d$Hfin
   
-  Fm <- d$Ffin
-  Hm <- d$Hfin
+  N <- dim(C)[1]
+  nc <- dim(C)[2]
   
-  N <- dim(Fm)[1]
-  nc <- dim(Fm)[2]
+  #delta <- getDelta(N, epsilon)
+  #C <- memOverlapCalc(Fm, Hm, delta, N, nc)
   
-  delta <- getDelta(N, epsilon)
-  C <- memOverlapCalc(Fm, Hm, delta, N, nc)
-  
-  ##Create a new community of background nodes that as unassigned
-  NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
-  if(sum(NodesWoAssignment) > 0){
-    
-   C[,nc+1] <- as.numeric(NodesWoAssignment)
-}
-  numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
+  ## drop tiny communities
+  # drop_cols <- DropTinyCommunities(degree01, C)
+  # if(length(drop_cols)  == 2){
+  #   C <- drop_cols[[1]]
+  #   nc <- drop_cols[[2]]
+  # }
+  # 
+  # ## drop highly overlapping or contained clusters
+  # maxOL <- 0.60
+  # drop_cols <- Percent_overlap(C, maxOL) #DropTinyCommunities(degree01, C)
+  # if(length(drop_cols)  == 2){
+  #   C <- drop_cols[[1]]
+  #   nc <- drop_cols[[2]]
+  # }
+  # 
+  # #  ##Create a new community of background nodes that as unassigned
+  # NodesWoAssignment <- (rowSums(C) == 0)
+  # ##punish internal density if nodes have no assignment
+  # numNodesWoAssignment <- sum(NodesWoAssignment)
+  # 
+  # if(sum(NodesWoAssignment) > 0){
+  #   C <- cbind(C, new_col = as.numeric(NodesWoAssignment))
+  #   nc <- nc+1
+  # }
   
   colnames(C) <- make_letter_names(dim(C)[2]) #letters[1:dim(C)[2]]
   
@@ -850,16 +992,31 @@ conductance <- function(graph, communities, ground_truth) {
   return(totCond)
 }
 
+## find the group sizes
+groupSize <- function(C){
+  sizes <- colSums(C)
+  return(list(sizes))
+}
+
 ## Non dominated sorting used for selecting hyperparameters
-HyperParameterSelection <- function(metricsCov, cols_to_select){
+HyperParameterSelection <- function(metricsCov, cols_to_select, covariates = TRUE){
   metricsCov$front <- 0
-  df_list <- metricsCov %>% 
-    filter(unassigned <= degree01) %>%
-    group_by(bigN, OL, dir, pctMiss) %>%
-    group_split() 
+  
+  if(covariates == TRUE){
+    df_list <- metricsCov %>% 
+      filter(unassigned <= degree01) %>%
+      group_by(bigN, OL, dir, pctMiss) %>%
+      group_split() 
+  }else{
+    df_list <- metricsCov %>% 
+      filter(unassigned <= degree01) %>%
+      group_by(bigN, OL, dir) %>%
+      group_split() 
+  }
+  
   fronts_list <- list()
   for(i in 1:length(df_list)){
-    if(length(cols_to_select) > 1 ){
+    if(covariates == TRUE ){
       X <-  df_list[[i]] %>%
         dplyr::select(!!!rlang::syms(cols_to_select)) %>% #WeightedMeanConductanceW, WeightedDispersionScoreW, WeightedBinaryDispersionScoreW) %>% 
         t()
@@ -877,7 +1034,7 @@ HyperParameterSelection <- function(metricsCov, cols_to_select){
       df_list[[i]]$front <-  fronts
       
     }
-
+    
   }
   
   FrontTotal <- bind_rows(df_list) %>% ungroup()
