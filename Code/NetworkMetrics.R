@@ -1005,7 +1005,7 @@ HyperParameterSelection <- function(metricsCov, cols_to_select, covariates = TRU
   if(covariates == TRUE){
     df_list <- metricsCov %>% 
       filter(unassigned <= degree01) %>%
-      group_by(bigN, OL, dir, pctMiss) %>%
+      group_by(bigN, OL, dir, PctMiss) %>%
       group_split() 
   }else{
     df_list <- metricsCov %>% 
