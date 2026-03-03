@@ -1,0 +1,852 @@
+---
+title: "FinalPlots"
+output: pdf_document
+date: "2025-11-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+#source("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/CoDACov.R")
+
+```
+
+
+# Hyperparameter selection based on validation pipeline
+
+Reading the data files
+```{r}
+## read the hyperparam combinations
+filePath <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/4clustersims_comb_ScaledcovWLambda.rds"
+S <- readRDS(filePath)
+
+SaveFolder <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/ResultsFolder/SubsetResults/"
+#covariate data
+covOP <- readRDS(paste0(SaveFolder, "ScaleFullOPCombined_covOP.rds"))
+metrics_cov <- readRDS(paste0(SaveFolder, "ScaleFullOPCombined_metricsCov.rds"))
+
+#no covariate data
+nocovOP <- readRDS(paste0(SaveFolder, "ScaleFullOPCombined_nocovOP.rds"))
+metrics_nocov <-  readRDS(paste0(SaveFolder, "ScaleFullOPCombined_metricsnoCov.rds"))
+metrics_nocov$dir <- nocovOP$Dir
+colors <-  c("brown4","blue4","sienna3","orangered","chartreuse4", "darkorchid","cornflowerblue", "coral2","chocolate3", 
+             "gold1","cyan2","slateblue3","salmon4",
+             "darkolivegreen1", "aquamarine","firebrick2", "maroon2","dodgerblue" )
+```
+
+Details of the hyperparam combinations
+
+Binary+cont covariate at different levels of overlap
+
+OL: "NoOL","2GrpOL1","2GrpOL2"
+
+PctMiss:"0","10","25"
+
+Dir: "directed" , "undirected"
+
+alpha: 1e-05 1e-04 1e-03
+
+lambda binary: 1e-05 1e-04 1e-03 1e-02 1e-01 1e+00
+
+lambda linear: 1e-05 1e-04 1e-03 1e-02
+
+Penalty: LASSO
+
+Bin Corr: High Corr
+
+nc : 2,3,4,5,6
+Plot: OI for Dir,OL for cov vs no cov (No missing data)
+
+
+```{r}
+## Front for covariate method
+cols_to_select_cov <- c("WeightedBinaryDispersionScoreW","WeightedDispersionScoreW")
+#metric_na <- which(apply(metrics_cov, 1, function(x) any(is.na(x))))
+
+#if(length(metric_na) > 0){
+#  metrics_cov <- metrics_cov[-c(metric_na),]
+  #covOP <- covOP[-c(metric_na),]  
+#}
+
+length(which(metrics_cov$Failure == FALSE))
+metrics_cov <- metrics_cov %>% select(-Failure)
+metrics_cov$degree01 <- metrics_cov$degree0 + metrics_cov$degree1
+metrics_cov <- HyperParameterSelection(metrics_cov, cols_to_select_cov, TRUE)
+
+## Front for no covariate method
+cols_to_select <- c("SdMeanConductanceW")
+metrics_nocov <- HyperParameterSelection(metrics_nocov, cols_to_select, FALSE)
+
+## Set factor levels for overlap
+metrics_cov$OL <- factor(metrics_cov$OL, levels = c("NoOL","5Pct","10Pct","15Pct","20Pct","25Pct"))
+metrics_nocov$OL <- factor(metrics_nocov$OL, levels = c("NoOL","5Pct","10Pct","15Pct","20Pct","25Pct") )
+
+## set factor levels for missing data 
+metrics_cov$PctMiss <- factor(metrics_cov$PctMiss, levels = c("0","5","10","15","20"))
+metrics_nocov$PctMiss <- 0
+
+## set factor level for alpha lambdas 
+metrics_cov$alpha <- factor(metrics_cov$alpha, levels = c("1e-05", "5e-05", "1e-04", "5e-04", "0.001"))
+metrics_nocov$alpha <- factor(metrics_nocov$alpha, levels = c("1e-05", "5e-05", "1e-04", "5e-04", "0.001"))
+
+metrics_cov$lambda_bin <- factor(metrics_cov$lambda_bin, levels = c("1e-05", "1e-04"))
+metrics_cov$lambda_lin <- factor(metrics_cov$lambda_lin, levels = c("1e-05", "1e-04"))
+
+## removing group size variable for plotting
+metrics_cov <- metrics_cov %>% select(-c(groupSize))
+metrics_nocov <- metrics_nocov %>% select(-c(groupSize))
+
+## unlist dir
+metrics_cov$dir <- unlist(metrics_cov$dir)
+metrics_nocov$dir <- unlist(metrics_nocov$dir)
+
+metrics_cov$Accavg <- (metrics_cov$Acc1+metrics_cov$Acc2+metrics_cov$Acc3)/3
+metrics_cov$MSEavg <- (metrics_cov$MSE1+metrics_cov$MSE2+metrics_cov$MSE3)/3
+
+```
+
+Assessing what is happening with the number of clusters. 
+Why do we end up choosing so many 5 clusters
+
+```{r}
+
+ff <- metrics_cov %>% filter(front == 1)
+
+gbg <- ff %>% group_by(dir, PctMiss, OL ) %>% summarise(n = n()) 
+  group_by(dir, PctMiss, OL, effective_nc ) %>% 
+  summarise(n = n())
+
+ff4 <- ff %>% filter(effective_nc == 4)
+ff5_gs <- bind_rows(ff5$groupSize)
+ff5_gs$min <- sapply(ff5$groupSize, min)
+ff5_gs$OI <- ff5$OI
+ff5$minGS <- sapply(ff5$groupSize, min)
+ff5_gs$bigN <- ff5$bigN
+ff5_gs$PctMiss <- ff5$PctMiss
+ff5_gs$OL <- ff5$OL
+ff5_gs$fl <- ff5$Filename
+ff5_gs$i <- ff5$i
+
+file <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/ResultsFolder/ScaledFullOP/"
+df <- readRDS(paste0(file, "AlphaSel_finalOLWLambdaFTF505.rds"))
+
+G <- df[[3]][[8]]
+vatt <- abs(as.data.frame(vertex_attr(G))[,1:4])
+d <- df[[1]][[48]]
+fm <- d$Ffin
+hm <- d$Hfin
+delta <- getDelta(200, 0.00001)
+val <- memOverlapCalc(fm,hm,delta,200,5)
+view(cbind(val,vatt))
+cor(val)
+
+## find percent contained
+percent_contained <- function(a, b) {
+  if (sum(a == 1) == 0){ return(NA_real_)  }# avoid divide-by-zero
+  return(sum(a == 1 & b == 1) / sum(a == 1))
+}
+
+cols <- colnames(as.data.frame(vatt))
+pct <- outer(cols, cols,Vectorize(function(a, b) percent_contained(vatt[[a]], vatt[[b]])))
+pct
+
+cols <- colnames(as.data.frame(val))
+pct <- outer(cols, cols,Vectorize(function(a, b) percent_contained(val[[a]], val[[b]])))
+pct
+diag(pct) <- 0
+which(as.matrix(pct) > 0.5,  arr.ind = TRUE)
+ff5 %>% ggplot()+
+  geom_point(aes(x = minGS, y = OI, color = OL))+facet_wrap(~PctMiss)
+
+```
+
+Assesing relationship between Oi and Conductance
+```{r}
+#levels(metrics_nocov$OL) <-  c("NoOL","10Pct","20Pct","30Pct")#list( NoOL = "NoOL", `2GrpOL1` = "10Pct", `2GrpOL2` = "20Pct" , `2GrpOL3`  = "30Pct")
+
+dir <- unique(metrics_cov$dir)
+OL <- unique(metrics_cov$OL)
+I <- unique(metrics_cov$effective_nc)
+metrics_cov$i <- as.numeric(metrics_cov$i)
+gbg <- metrics_cov %>% filter(unassigned <= degree01 ) %>%
+  pivot_longer(!c(bigN,OI,effective_nc,dir,OL,penalty, alpha,degree0, degree01, degree1,lambda_bin,lambda_lin, unassigned,PctMiss,Filename)) %>%
+  filter(name %in% c("MinMeanConductanceW","MaxMeanConductanceW","SdMeanConductanceW", "MeanConductanceW","MeanConductanceWo","WeightedMeanConductanceW","WeightedMeanConductanceWo", "ConductanceWDensityPen") ) %>%
+  dplyr::group_by(dir, OL, bigN, name, PctMiss) %>%
+  dplyr::mutate(
+    normalized_value = (value - min(value)) / (max(value) - min(value))
+  ) %>%
+  ungroup()
+for(PctMiss in unique(metrics_cov$PctMiss)){
+  for(dirV in dir){
+    for(OLv in as.character(OL)){
+      tmp <- gbg %>% filter(dir == {{dirV}}, OL == {{OLv}}, PctMiss == {{PctMiss}})
+      if(nrow(tmp) > 0){
+        print(tmp %>% 
+                ggplot()+
+                geom_point(aes(x = OI, y = value, color = as.factor(effective_nc) ))+
+                facet_wrap(~name, scales = "free")+
+                ggtitle(paste(dirV, " NW with ",OLv, " Pct missing ", PctMiss))+
+                theme(legend.position = "bottom", panel.background = element_blank()))  
+      }
+    }
+  }
+}
+
+```
+
+Assessing relationship between OI and BIC, LL
+```{r}
+#levels(metrics_nocov$OL) <-  c("NoOL","10Pct","20Pct","30Pct")#list( NoOL = "NoOL", `2GrpOL1` = "10Pct", `2GrpOL2` = "20Pct" , `2GrpOL3`  = "30Pct")
+
+dir <- unique(metrics_cov$dir)
+OL <- unique(metrics_cov$OL)
+I <- unique(metrics_cov$effective_nc)
+metrics_cov$i <- as.numeric(metrics_cov$i)
+gbg <- metrics_cov %>% filter(unassigned <= degree01 ) %>%
+  pivot_longer(!c(bigN,OI,effective_nc,dir,OL,penalty, alpha,degree0, degree01, degree1,lambda_bin,lambda_lin, unassigned,PctMiss,Filename)) %>%
+  filter(name %in% c("BIC", "ICL", "LL") ) %>%
+  dplyr::group_by(dir, OL, bigN, name, PctMiss) %>%
+  dplyr::mutate(
+    normalized_value = (value - min(value)) / (max(value) - min(value))
+  ) %>%
+  ungroup()
+for(PctMiss in unique(metrics_cov$PctMiss)){
+  for(dirV in dir){
+    for(OLv in as.character(OL)){
+      tmp <- gbg %>% filter(dir == {{dirV}}, OL == {{OLv}}, PctMiss == {{PctMiss}})
+      if(nrow(tmp) > 0){
+        print(tmp %>% 
+                ggplot()+
+                geom_point(aes(x = OI, y = value, color = as.factor(effective_nc) ))+
+                facet_wrap(~name, scales = "free")+
+                ggtitle(paste(dirV, " NW with ",OLv, " Pct missing ", PctMiss))+
+                theme(legend.position = "bottom", panel.background = element_blank()))  
+      }
+    }
+  }
+}
+
+```
+
+Pairwise comparison between directed and undirected for different realizations of the networks. 
+```{r}
+pairwise <- metrics_cov %>% filter(unassigned <= degree01) %>%
+  group_by(OL, dir,bigN, PctMiss ) %>% 
+  filter(front == 1) %>%
+  summarise(mean_OI = mean(OI),
+            median_OI = median(OI),
+            sd = sd(OI),
+            max_OI = max(OI),
+            min_OI = min(OI)) %>%
+  ungroup()
+p<- pairwise %>%
+  ggplot()+
+  geom_point(aes(x = interaction(dir,OL), y = mean_OI, color = dir ))+
+  geom_line(aes(x = interaction(dir,OL), y = mean_OI, group = interaction(bigN,OL)), alpha=0.5)+
+  facet_wrap(~PctMiss)+ ylim(0,1)+
+  theme(legend.position = "bottom", 
+        panel.background = element_blank(), 
+        axis.text.x = element_text(angle = 90, vjust = 0.75))
+p
+ggsave(paste0(getwd(),"/FinalPlots/pairwisecomparisonofOI_meanOI.png"))
+
+pairwise %>%
+  ggplot()+
+  geom_point(aes(x = interaction(dir,OL), y = max_OI, color = dir ))+
+  geom_line(aes(x = interaction(dir,OL), y = max_OI, group = interaction(bigN,OL)), alpha=0.5)+
+  facet_wrap(~PctMiss)+ylim(0,1)+
+  theme(legend.position = "bottom", 
+        panel.background = element_blank(), 
+        axis.text.x = element_text(angle = 90, vjust = 0.75))
+
+p <-pairwise %>%
+  ggplot()+
+  geom_point(aes(x = interaction(dir,OL), y = median_OI, color = dir ))+
+  geom_line(aes(x = interaction(dir,OL), y = median_OI, group = interaction(bigN,OL)), alpha=0.5)+
+  facet_wrap(~PctMiss)+ylim(0,1)+
+  theme(legend.position = "bottom", 
+        panel.background = element_blank(), 
+        axis.text.x = element_text(angle = 90, vjust = 0.75))
+p
+#ggsave(paste0(getwd(),"/FinalPlots/pairwisecomparisonofOI_medianOI.png"))
+
+```
+
+## Median comparison
+
+```{r}
+
+dircomp <- pairwise %>% 
+  select(OL, dir, PctMiss,bigN, median_OI) %>%
+  pivot_wider(values_from = median_OI, names_from = dir) %>%
+  dplyr::mutate(pctImp = ((directed - undirected)/undirected)*100)
+
+AvgPctImp <- dircomp %>% 
+  group_by(OL, PctMiss) %>% 
+  summarise(avgPctImp = median(pctImp, na.rm = T),
+            meanchange = median(directed, na.rm = T) - median(undirected, na.rm = T),
+            pctImp_postavg = (median(directed, na.rm = T) - median(undirected, na.rm = T))/median(undirected, na.rm = T)*100 )
+
+p <- AvgPctImp %>% 
+  ggplot()+ 
+  geom_point(aes(x = OL, y = avgPctImp, color = PctMiss))+
+  geom_line(aes(x = OL, y = avgPctImp, group = PctMiss),linetype = "dashed", alpha = 0.6)+
+  ylab("Median Percent Improvement") + 
+  xlab("Percent cluster overlap")+
+  labs(color = "Percent missing")+
+  geom_hline(aes( yintercept  =0), alpha = 0.7)+
+  scale_color_manual(values = colors)+
+  theme(legend.position = "bottom", 
+        panel.background = element_blank())
+p
+#ggsave(paste0(getwd(),"/FinalPlots/ValueofDirectedVsUndirectedMedian.png"))
+
+AvgPctImp %>% 
+  ggplot()+ 
+  geom_point(aes(color = OL, y = meanchange, x = PctMiss))+
+  geom_line(aes(group = OL, y = meanchange, x = PctMiss),linetype = "dashed", alpha = 0.6)+
+  geom_hline(aes( yintercept  =0), alpha = 0.7)+
+  scale_color_manual(values = colors)+
+  theme(legend.position = "bottom", 
+        panel.background = element_blank())
+
+
+AvgPctImp %>% 
+  ggplot()+ 
+  geom_point(aes(x = OL, y = pctImp_postavg, color = PctMiss))+
+  geom_line(aes(x = OL, y = pctImp_postavg, group = PctMiss),linetype = "dashed", alpha = 0.6)+
+  geom_hline(aes( yintercept  =0), alpha = 0.7)+
+  scale_color_manual(values = colors)+
+  theme(legend.position = "bottom", 
+        panel.background = element_blank())
+
+
+
+
+```
+
+
+## Mean comparison
+
+```{r}
+
+dircomp <- pairwise %>% 
+  select(OL, dir, PctMiss,bigN, mean_OI) %>%
+  pivot_wider(values_from = mean_OI, names_from = dir) %>%
+  dplyr::mutate(pctImp = ((directed - undirected)/undirected)*100)
+
+AvgPctImp <- dircomp %>% 
+  group_by(OL, PctMiss) %>% 
+  summarise(avgPctImp = mean(pctImp, na.rm = T),
+            meanchange = mean(directed, na.rm = T) - mean(undirected, na.rm = T),
+            pctImp_postavg = (mean(directed, na.rm = T) - mean(undirected, na.rm = T))/mean(undirected, na.rm = T)*100 )
+
+p <- AvgPctImp %>% 
+  ggplot()+ 
+  geom_point(aes(x = OL, y = avgPctImp, color = PctMiss))+
+  geom_line(aes(x = OL, y = avgPctImp, group = PctMiss),linetype = "dashed", alpha = 0.6)+
+  ylab("Mean Percent Improvement") + 
+  xlab("Percent cluster overlap")+
+  labs(color = "Percent missing")+
+  geom_hline(aes( yintercept  =0), alpha = 0.7)+
+  scale_color_manual(values = colors)+
+  theme(legend.position = "bottom", 
+        panel.background = element_blank())
+p
+ggsave(paste0(getwd(),"/FinalPlots/ValueofDirectedVsUndirectedMean.png"))
+
+AvgPctImp %>% 
+  ggplot()+ 
+  geom_point(aes(x = OL, y = meanchange, color = PctMiss))+
+  geom_line(aes(x = OL, y = meanchange, group = PctMiss),linetype = "dashed", alpha = 0.6)+
+  geom_hline(aes( yintercept  =0), alpha = 0.7)+
+  scale_color_manual(values = colors)+
+  theme(legend.position = "bottom", 
+        panel.background = element_blank())
+AvgPctImp %>% 
+  ggplot()+ 
+  geom_point(aes(x = OL, y = pctImp_postavg, color = PctMiss))+
+  geom_line(aes(x = OL, y = pctImp_postavg, group = PctMiss),linetype = "dashed", alpha = 0.6)+
+  geom_hline(aes( yintercept  =0), alpha = 0.7)+
+  scale_color_manual(values = colors)+
+  theme(legend.position = "bottom", 
+        panel.background = element_blank())
+
+
+
+
+```
+Create table of parameters for each group
+
+```{r}
+## Group by OL, direction, percent missing
+
+Param_comp <- metrics_cov %>% 
+  group_by(OL, dir, bigN, PctMiss ) %>% 
+  filter(front == 1) %>% 
+  select(OL, dir, bigN, PctMiss, alpha, lambda_bin, lambda_lin,effective_nc, penalty, OI, front) %>% ungroup()
+
+PC_Distinct <- Param_comp %>% select(-c(OI, bigN))  %>% distinct()
+
+summary_table <- PC_Distinct %>%
+  # Group by the 3 group columns
+  group_by(OL, dir, PctMiss) %>%
+  # Get unique values for each of the 5 columns, sorted and collapsed
+  summarise(
+    alpha = paste(sort(unique(alpha)), collapse = ", "),
+    lambda_bin = paste(sort(unique(lambda_bin)), collapse = ", "), 
+    lambda_lin = paste(sort(unique(lambda_lin)), collapse = ", "), 
+    nc = paste(sort(unique(effective_nc)), collapse = ", "), 
+    penalty = paste(sort(unique(penalty)), collapse = ", "),
+    .groups = 'drop'
+  )
+
+# Display with kable
+kable(summary_table, 
+      caption = "Unique Values for Each Group Combination",
+      align = c("l", "l", "l", "l", "l", "l", "l", "l")) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 12,
+    position = "center"
+  ) %>%
+  column_spec(1:3, bold = TRUE, background = "#f5f5f5") %>%
+  column_spec(4:8, width = "3cm") %>%
+  row_spec(0, bold = TRUE, color = "white", background = "#2c3e50") %>%
+  add_header_above(c("Grouping Columns" = 3, "Unique Values for Each Group" = 5))
+```
+
+
+
+For different values of alpha, dir and ol compare OI between cov and no cov
+
+Mean Comparison
+
+```{r}
+metrics_nocov$PctMiss <- 0
+##Combined cov and no cov datatset
+OIcomb <- rbind(metrics_cov %>% filter(front ==1) %>%
+                  dplyr::mutate(covType = "Covariate") %>% 
+                  select(bigN,OL,PctMiss,dir,covType,OI,front),
+                metrics_nocov %>% #filter(front ==1) %>%
+                  dplyr::mutate(covType = "No Covariate") %>% 
+                  select(bigN,OL,PctMiss,dir,covType,OI,front)) %>%
+  filter(front == 1)
+# group_by(bigN,OL,PctMiss,dir,covType)  
+# summarise(mean_OI = mean(OI),
+#           max_OI = max(OI),
+#           min_OI = min(OI),
+#           median_OI = median(OI)) %>% ungroup()
+
+OIcomb   %>% ggplot()+
+  geom_boxplot(aes(x = OL, y = OI, color = covType)) +
+  facet_wrap(PctMiss~dir, ncol =2)+ 
+  theme(legend.position = "bottom", panel.background = element_blank())
+
+OI_range <- OIcomb %>% 
+  group_by(OL,PctMiss,dir,covType) %>% 
+  summarise(median_OI = median(OI),
+            mean_OI = mean(OI),
+            sd_OI = sd(OI),
+            min_OI = min(OI),
+            max_OI = max(OI))
+#  pivot_longer(!c(OL,PctMiss,dir,covType))
+
+#for(pct in unique(OI_range$PctMiss)){
+#  tmp <- OI_range %>% filter(PctMiss == {{pct}})
+
+OI_range %>% ggplot() +
+  geom_point(aes(x = OL, y = mean_OI, color =interaction(covType, PctMiss )))+
+  geom_line(aes(x = OL, y = mean_OI, color =interaction(covType, PctMiss ), group = interaction(covType, PctMiss ) ))+
+  geom_point(aes(x = OL, y = mean_OI+sd_OI, color = interaction(covType, PctMiss )))+
+  geom_line(aes(x = OL, y = mean_OI+sd_OI,color =interaction(covType, PctMiss ), 
+                group = interaction(covType, PctMiss )),linetype = "dashed", alpha = 0.6)+  
+  geom_point(aes(x = OL, y = mean_OI-sd_OI, color = interaction(covType, PctMiss )))+
+  geom_line(aes(x = OL, y = mean_OI-sd_OI, color =interaction(covType, PctMiss ), 
+                group = interaction(covType, PctMiss )),linetype = "dashed", alpha = 0.6)+
+  scale_color_manual(values = colors)+ylab("Omega Index")+xlab("Overlap Level")+ labs(color = "") + 
+  facet_wrap(~dir)+# ggtitle(pct)+ylim(-0.3,1.1)+
+  theme(legend.position = "bottom", panel.background = element_blank())
+
+# 
+p <-  OI_range %>% ggplot(aes(x = OL, y = mean_OI,ymin = mean_OI-sd_OI, ymax = mean_OI+sd_OI ))+
+  geom_errorbar(aes(color =interaction(covType, PctMiss) ), alpha =0.7, width = 0.15)+
+  geom_point(aes(color =interaction(covType, PctMiss) ))+
+  geom_line(aes(x = OL, y = mean_OI, color =interaction(covType, PctMiss ), group = interaction(covType, PctMiss ) ))+
+  ylab("Mean Omega Index") + xlab("Percent cluster overlap")+labs(color = "W/Wo covariates")+
+  scale_color_manual(values = colors)+
+  facet_wrap(~dir)+ #ylim(-0.3,1.1)+
+  theme(legend.position = "bottom", panel.background = element_blank())
+p
+ggsave(paste0(getwd(),"/FinalPlots/MeanOI_CovvsNoCov.png"))
+
+
+p <-  OI_range %>% ggplot(aes(x = OL, y = mean_OI,ymin = min_OI, ymax = max_OI ))+
+  geom_errorbar(aes(color =interaction(covType, PctMiss) ), alpha =0.7, width = 0.15)+
+  geom_point(aes(color =interaction(covType, PctMiss) ))+
+  geom_line(aes(x = OL, y = mean_OI, color =interaction(covType, PctMiss ), group = interaction(covType, PctMiss ) ))+
+  ylab("Mean Omega Index") + xlab("Percent cluster overlap")+labs(color = "W/Wo covariates")+
+  scale_color_manual(values = colors)+
+  facet_wrap(~dir)+ #ylim(-0.3,1.1)+
+  theme(legend.position = "bottom", panel.background = element_blank())
+p
+
+table <- kable(OI_range %>% filter(covType == "Covariate") %>% 
+                 select(OL, PctMiss, dir, covType, mean_OI, sd_OI, min_OI, max_OI) %>%
+                 dplyr::mutate(
+                   Value = paste0(
+                     round(mean_OI , 2),
+                     "(", round(min_OI, 2), " – ", round(max_OI, 2), ")"
+                   )
+                 ) %>% select(-c(min_OI, max_OI, mean_OI)) , 
+               caption = "Unique Values for Each Group Combination",
+               align = c("l", "l", "l", "l", "l")) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 12,
+    position = "center"
+  ) %>%
+  column_spec(1:4, bold = TRUE, background = "#f5f5f5") %>%
+  column_spec(5, width = "3cm") %>%
+  row_spec(0, bold = TRUE, color = "white", background = "#2c3e50")
+table
+#add_header_above(c("Grouping Columns" = 3, "Unique Values for Each Group" = 5))
+save_kable(table, file = paste0(getwd(),"/FinalPlots/OIRangeTableMean.png"))
+
+
+```
+
+Median Comparison
+```{r}
+metrics_nocov$PctMiss <- 0
+##Combined cov and no cov datatset
+OIcomb <- rbind(metrics_cov %>% filter(front ==1) %>%
+                  dplyr::mutate(covType = "Covariate") %>% 
+                  select(bigN,OL,PctMiss,dir,covType,OI,front),
+                metrics_nocov %>% #filter(front ==1) %>%
+                  dplyr::mutate(covType = "No Covariate") %>% 
+                  select(bigN,OL,PctMiss,dir,covType,OI,front)) %>%
+  filter(front == 1)
+# group_by(bigN,OL,PctMiss,dir,covType)  
+# summarise(mean_OI = mean(OI),
+#           max_OI = max(OI),
+#           min_OI = min(OI),
+#           median_OI = median(OI)) %>% ungroup()
+
+OIcomb   %>% ggplot()+
+  geom_boxplot(aes(x = OL, y = OI, color = covType)) +
+  facet_wrap(PctMiss~dir, ncol =2)+ 
+  theme(legend.position = "bottom", panel.background = element_blank())
+
+OI_range <- OIcomb %>% 
+  group_by(OL,PctMiss,dir,covType) %>% 
+  summarise(median_OI = median(OI),
+            mean_OI = mean(OI),
+            sd_OI = sd(OI),
+            min_OI = min(OI),
+            max_OI = max(OI))
+#  pivot_longer(!c(OL,PctMiss,dir,covType))
+
+#for(pct in unique(OI_range$PctMiss)){
+#  tmp <- OI_range %>% filter(PctMiss == {{pct}})
+
+OI_range %>% ggplot() +
+  geom_point(aes(x = OL, y = median_OI, color =interaction(covType, PctMiss )))+
+  geom_line(aes(x = OL, y = median_OI, color =interaction(covType, PctMiss ), group = interaction(covType, PctMiss ) ))+
+  geom_point(aes(x = OL, y = median_OI+sd_OI, color = interaction(covType, PctMiss )))+
+  geom_line(aes(x = OL, y = median_OI+sd_OI,color =interaction(covType, PctMiss ), 
+                group = interaction(covType, PctMiss )),linetype = "dashed", alpha = 0.6)+  
+  geom_point(aes(x = OL, y = median_OI-sd_OI, color = interaction(covType, PctMiss )))+
+  geom_line(aes(x = OL, y = median_OI-sd_OI, color =interaction(covType, PctMiss ), 
+                group = interaction(covType, PctMiss )),linetype = "dashed", alpha = 0.6)+
+  scale_color_manual(values = colors)+ylab("Omega Index")+xlab("Overlap Level")+ labs(color = "") + 
+  facet_wrap(~dir)+# ggtitle(pct)+ylim(-0.3,1.1)+
+  theme(legend.position = "bottom", panel.background = element_blank())
+
+# 
+p <-  OI_range %>% ggplot(aes(x = OL, y = median_OI,ymin = median_OI-sd_OI, ymax = median_OI+sd_OI ))+
+  geom_errorbar(aes(color =interaction(covType, PctMiss) ), alpha =0.7, width = 0.15)+
+  geom_point(aes(color =interaction(covType, PctMiss) ))+
+  geom_line(aes(x = OL, y = median_OI, color =interaction(covType, PctMiss ), group = interaction(covType, PctMiss ) ))+
+  ylab("Median Omega Index") + xlab("Percent cluster overlap")+labs(color = "W/Wo covariates")+
+  scale_color_manual(values = colors)+
+  facet_wrap(~dir)+ #ylim(-0.3,1.1)+
+  theme(legend.position = "bottom", panel.background = element_blank())
+p
+ggsave(paste0(getwd(),"/FinalPlots/MedianOI_CovvsNoCov.png"))
+
+
+p <-  OI_range %>% ggplot(aes(x = OL, y = median_OI,ymin = min_OI, ymax = max_OI ))+
+  geom_errorbar(aes(color =interaction(covType, PctMiss) ), alpha =0.7, width = 0.15)+
+  geom_point(aes(color =interaction(covType, PctMiss) ))+
+  geom_line(aes(x = OL, y = median_OI, color =interaction(covType, PctMiss ), group = interaction(covType, PctMiss ) ))+
+  ylab("Median Omega Index") + xlab("Percent cluster overlap")+labs(color = "W/Wo covariates")+
+  scale_color_manual(values = colors)+
+  facet_wrap(~dir)+ #ylim(-0.3,1.1)+
+  theme(legend.position = "bottom", panel.background = element_blank())
+p
+
+table <- kable(OI_range %>% filter(covType == "Covariate") %>% 
+                 select(OL, PctMiss, dir, covType, median_OI, sd_OI, min_OI, max_OI) %>%
+                 dplyr::mutate(
+                   Value = paste0(
+                     round(median_OI , 2),
+                     "(", round(min_OI, 2), " – ", round(max_OI, 2), ")"
+                   )
+                 ) %>% select(-c(min_OI, max_OI, median_OI)) , 
+               caption = "Unique Values for Each Group Combination",
+               align = c("l", "l", "l", "l", "l")) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 12,
+    position = "center"
+  ) %>%
+  column_spec(1:4, bold = TRUE, background = "#f5f5f5") %>%
+  column_spec(5, width = "3cm") %>%
+  row_spec(0, bold = TRUE, color = "white", background = "#2c3e50")
+table
+#add_header_above(c("Grouping Columns" = 3, "Unique Values for Each Group" = 5))
+save_kable(table, file = paste0(getwd(),"/FinalPlots/OIRangeTableMedian.png"))
+
+
+```
+
+
+Figures: Correlation between OI Vs WeightedDispersionScore(Cont., Binary), EgoSplit Conductance. what do each metric capture?
+
+```{r}
+## For each network, for each direction and pct overlap find correlation
+Cor_matrix <- metrics_cov %>% filter(front ==1) %>%
+  filter(unassigned <= degree01) %>%
+  group_by(bigN, OL, dir, PctMiss, penalty) %>%
+  summarise(WeightedMeanConductance = stats::cor(WeightedMeanConductanceWo, OI) , 
+            WeightedDispersionScore = stats::cor(WeightedDispersionScoreW,OI) ,
+            WeightedBinaryDispersionScore = stats::cor(WeightedBinaryDispersionScoreW, OI)) %>%
+  ungroup()
+gbg <- Cor_matrix %>% pivot_longer(!c(bigN, OL, dir, PctMiss, penalty)) %>% filter(penalty == "LASSO" )
+for(n in unique(gbg$name)){
+  print(gbg %>% filter(name =={{n}}) %>% ggplot()+
+          geom_point(aes(x = interaction(OL, PctMiss), y = value, color = dir )))  
+  print(gbg  %>% filter(name == {{n}}) %>% ggplot()+
+          geom_boxplot(aes(x = as.factor(OL), y = value, color = dir))+ 
+          facet_grid(vars(PctMiss))+ ggtitle(paste0("Correlation plot for OI vs ", n))+
+          theme(legend.position = "bottom", panel.background = element_blank()) )
+}
+
+```
+
+MSE of choosen vs MSE of not choosen hyperparameter combinations.
+
+```{r}
+metrics_cov %>% group_by(OL, dir, front, PctMiss, penalty) %>% 
+  summarise(MSEavg = mean(MSEavg)) %>%
+  ggplot()+
+  geom_point(aes(x = factor(front), y = log(MSEavg), color = OL))+
+  facet_grid(vars(PctMiss), vars(dir))
+ylim(min(metrics_cov$MSEavg), 1e+4)
+
+
+```
+
+Number of times the front choose 4 as nc based on metrics
+
+```{r}
+gbg <- metrics_cov %>% filter(front == 1) %>% 
+  select(dir, effective_nc, PctMiss, OL) %>% 
+  group_by( dir,effective_nc,  PctMiss,OL) %>%
+  dplyr::summarise(n = n(), .groups = "drop") %>%
+  group_by(dir,PctMiss,OL) %>%
+  dplyr::mutate(percent = n / sum(n) * 100) %>%
+  ungroup()
+
+gbgMedPct <- metrics_cov %>% filter(front == 1) %>% 
+  select(bigN,dir, effective_nc, PctMiss, OL) %>% 
+  group_by(bigN, dir,effective_nc,  PctMiss,OL) %>%
+  dplyr::summarise(n = n(), .groups = "drop") %>%
+  group_by(bigN,dir,PctMiss,OL) %>%
+  dplyr::mutate(percent = n / sum(n) * 100) %>%
+  ungroup() %>% group_by(dir, effective_nc,PctMiss,OL) %>%
+  dplyr::summarise(medianPct = median(percent))
+
+
+p <- gbg %>% filter(effective_nc == 3) %>% ggplot()+
+  geom_point(aes( x = OL, y = percent, color = PctMiss))+
+  geom_line(aes( x = OL, y = percent, color = PctMiss, group = PctMiss))+
+  ylab("Percent of correctly selected cluster size") + xlab("Percent cluster overlap")+labs(color = "Percent missing covariates")+
+  scale_color_manual(values = colors)+
+  facet_wrap(~dir)+ ylim(0,100)+
+  theme(legend.position = "bottom", panel.background = element_blank())
+p
+
+p <- gbg %>% filter(effective_nc == 4) %>% ggplot()+
+  geom_point(aes( x = PctMiss, y = percent, color = OL))+
+  geom_line(aes( x = PctMiss, y = percent, color = OL, group = OL))+
+  ylab("Percent of correctly selected cluster size") + 
+  labs(color="Percent cluster overlap")+
+  xlab( "Percent missing covariates")+
+  scale_color_manual(values = colors)+
+  facet_wrap(~dir)+ ylim(0,100)+
+  theme(legend.position = "bottom", panel.background = element_blank())
+p
+ggsave(paste0(getwd(),"/FinalPlots/PercentCorrectClusterSizeChoosenMeanByMissing.png"))
+
+p <- gbg %>% filter(effective_nc == 4) %>% ggplot()+
+  geom_point(aes( x = OL, y = percent, color = PctMiss))+
+  geom_line(aes( x = OL, y = percent, color = PctMiss, group = PctMiss))+
+  ylab("Percent of correctly selected cluster size") + xlab("Percent cluster overlap")+labs(color = "Percent missing covariates")+
+  scale_color_manual(values = colors)+
+  facet_wrap(~dir)+ ylim(0,100)+
+  theme(legend.position = "bottom", panel.background = element_blank())
+p
+ggsave(paste0(getwd(),"/FinalPlots/PercentCorrectClusterSizeChoosenMeanByOL.png"))
+
+p <- gbgMedPct %>% filter(effective_nc == 4) %>% ggplot()+
+  geom_point(aes( x = OL, y = medianPct, color = PctMiss))+
+  geom_line(aes( x = OL, y = medianPct, color = PctMiss, group = PctMiss))+
+  ylab("Percent of correctly selected cluster size") + xlab("Percent cluster overlap")+labs(color = "Percent missing covariates")+
+  scale_color_manual(values = colors)+
+  facet_wrap(~dir)+ ylim(0,100)+
+  theme(legend.position = "bottom", panel.background = element_blank())
+p
+
+p <- gbg %>% filter(effective_nc == 5) %>% ggplot()+
+  geom_point(aes( x = OL, y = percent, color = PctMiss))+
+  geom_line(aes( x = OL, y = percent, color = PctMiss, group = PctMiss))+
+  ylab("Percent of correctly selected cluster size") + xlab("Percent cluster overlap")+labs(color = "Percent missing covariates")+
+  scale_color_manual(values = colors)+
+  facet_wrap(~dir)+ ylim(0,100)+
+  theme(legend.position = "bottom", panel.background = element_blank())
+p
+```
+
+## with covariates
+
+```{r}
+
+ff <- metrics_cov %>% filter(front == 1)
+
+p <- ff %>% ggplot()+ geom_boxplot(aes(color = alpha, y =OI, x = OL))+ 
+  ylab("Omega Index") + xlab("Percent Overlap")+labs(color = "Learning Rate Alpha")+
+  facet_wrap(~PctMiss) + theme(legend.position = "bottom", panel.background = element_blank())
+p
+#ggsave(paste0(getwd(),"/FinalPlots/OIForEachAlpha.png"))
+
+p <- ff %>% ggplot()+ geom_boxplot(aes(color = lambda_bin, y =OI, x = OL)) +ylab("Omega Index") + xlab("Percent Overlap")+labs(color = "Penalty for Binary Cov")+ facet_wrap(~PctMiss) + theme(legend.position = "bottom", panel.background = element_blank())
+p
+#ggsave(paste0(getwd(),"/FinalPlots/OIForEachLambdaBin.png"))
+
+p <- ff %>% ggplot()+ geom_boxplot(aes(color = lambda_lin, y =OI, x = OL)) +ylab("Omega Index") + xlab("Percent Overlap")+labs(color = "Penalty for Continuous Cov")+ facet_wrap(~PctMiss) + theme(legend.position = "bottom", panel.background = element_blank())
+p
+#ggsave(paste0(getwd(),"/FinalPlots/OIForEachLambdaLin.png"))
+
+```
+
+
+```{r}
+
+ff <- metrics_cov %>% filter(front == 1)
+ffnew <- ff %>% group_by(OL, PctMiss, alpha, dir) %>% 
+  dplyr::summarise(meanOI = mean(OI), minOI = min(OI), maxOI = max(OI)) %>% 
+  ungroup()
+for(pctM in unique(ffnew$PctMiss)){
+  p <- ffnew %>% filter(PctMiss == {{pctM}}) %>%
+  ggplot()+ 
+  geom_point(aes(y =meanOI, x = alpha,color = OL))+
+  geom_errorbar(aes(color =OL, y =meanOI, x = alpha, ymin = minOI, ymax = maxOI), alpha =0.3, width = 0.15)+ 
+  geom_line(aes(color = OL, y = meanOI, x = alpha, group = OL))+ 
+  ylab("Omega Index") + xlab("Learning rate")+
+    labs(color = "Percent overlap")+
+  facet_wrap(~dir) + theme(legend.position = "bottom", panel.background = element_blank())
+print(p)
+ggsave(paste0(getwd(),"/FinalPlots/OIForEachAlpha_PctMiss",pctM,".png"))
+
+}
+
+```
+
+```{r}
+
+for(pctM in unique(ff$PctMiss)){
+p <- ff %>% filter(PctMiss == {{pctM}}) %>%
+  ggplot()+
+  geom_boxplot(aes(color = lambda_bin, x = OL,y = OI))+
+  ylab("Omega Index") + xlab("Percent overlap")+
+    labs(color = "Binary attribute penalty")+
+  facet_wrap(~dir) + theme(legend.position = "bottom", panel.background = element_blank())
+print(p)
+ggsave(paste0(getwd(),"/FinalPlots/OIForEachLmabdaBin_PctMiss",pctM,".png"))
+}
+```
+
+
+```{r}
+
+for(pctM in unique(ff$PctMiss)){
+p <- ff %>% filter(PctMiss == {{pctM}}) %>%
+  ggplot()+ 
+  geom_boxplot(aes(color = lambda_lin, x = OL,y = OI))+
+  ylab("Omega Index") + xlab("Percent overlap")+
+    labs(color = "Continuous attribute penalty")+
+  facet_wrap(~dir) + theme(legend.position = "bottom", panel.background = element_blank())
+print(p)
+ggsave(paste0(getwd(),"/FinalPlots/OIForEachLmabdaLin_PctMiss",pctM,".png"))
+}
+
+```
+
+## Comparison on mse and accuracy of prediction
+
+```{r}
+
+for(pctM in unique(ff$PctMiss)){
+p <- ff %>% filter(PctMiss == {{pctM}}) %>%
+  ggplot()+
+  geom_boxplot(aes(x = OL, y = Accavg, color = lambda_bin))+
+  ylab("Average Prediction Accuracy") + 
+  xlab("Percent overlap")+
+  labs(color = "Binary attribute penalty")+
+  facet_wrap(~dir) + ylim(0,1)+
+  theme(legend.position = "bottom", panel.background = element_blank())
+print(p)
+#ggsave(paste0(getwd(),"/FinalPlots/AvgAccuracyLambdaBin_PctMiss",pctM,".png"))
+
+}
+for(pctM in unique(ff$PctMiss)){
+p <- ff %>% filter(PctMiss == {{pctM}}) %>%
+  ggplot()+
+  geom_boxplot(aes(x = OL, y = MSEavg, color = lambda_lin))+
+  ylab("Average Mean Sq Error") + 
+  xlab("Percent overlap")+
+  labs(color = "Continuous attribute penalty")+
+  facet_wrap(~dir) + 
+  theme(legend.position = "bottom", panel.background = element_blank())
+print(p)
+#ggsave(paste0(getwd(),"/FinalPlots/AvgMSELambdaLin_PctMiss",pctM,".png"))
+
+}
+
+```
+
+
+## without covariates
+
+```{r}
+ff <- metrics_nocov %>% filter(front == 1)
+
+p <- ff %>% ggplot()+ geom_boxplot(aes(color = alpha, y =OI, x = OL))+ 
+  ylab("Omega Index") + xlab("Percent Overlap")+labs(color = "Learning Rate Alpha")+
+  facet_wrap(~PctMiss) + theme(legend.position = "bottom", panel.background = element_blank())
+p
+#ggsave(paste0(getwd(),"/FinalPlots/OIForEachAlpha_Nocov.png"))
+
+```
+
+
+
+
+

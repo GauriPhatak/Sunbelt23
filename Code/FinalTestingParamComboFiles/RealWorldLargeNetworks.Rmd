@@ -1,0 +1,359 @@
+---
+title: "RealWorldLargeNetworks"
+output: pdf_document
+date: "2025-11-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(igraph)
+library(RColorBrewer)
+library(readr)
+library(GGally)
+library(intergraph)
+```
+
+## Facebook network
+
+```{r}
+## reading node edge file
+NWfile <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/LargeRealData/Facebook/facebook_combined/facebook_combined.txt"
+
+edgeList <- read_table(NWfile, col_names = F)
+edgeList <- matrix(cbind(as.numeric(unlist(edgeList$X1))+1, as.numeric(unlist(edgeList$X2))+1 ), nc = 2)
+## create graph from edgelist 
+G <- igraph::graph_from_edgelist(edgeList, directed = FALSE)
+
+igraph::plot.igraph(igraph::simplify(G),vertex.label = NA,vertex.size = 5, edge.arrow.size= 0.1, edge.color = "grey28")
+
+```
+
+```{r}
+#Reading the circles data 
+egoFiles <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/LargeRealData/Facebook/facebook/facebook/"
+
+files <- list.files(egoFiles)
+
+filesDF <- as.data.frame(cbind(filenames = files, egoNets = str_extract(files, "^\\d+")))
+
+circlesdf <- list()#matrix(0, nrow = 0, ncol = 3)
+G <- list()
+features_list <-list()
+egofeatures_list <-list()
+for(ego in unique(str_extract(files, "^\\d+"))){
+  idx <- which(filesDF$egoNets == ego)
+  ## read the circles files
+  circles <- readLines(paste0(egoFiles, filesDF$filenames[idx[1]] ))#read_tsv(paste0(egoFiles, filesDF$filenames[idx[1]] ), col_names = F, na = c( "NA", "NULL"))
+  circles <- lapply(circles, function(line) {
+    elements <- unlist(strsplit(line,  split = "\t"))
+    # Replace empty strings with NA
+    elements[elements == ""] <- NA
+    return(elements)
+  })
+  
+  max_cols <- max(sapply(circles, length))
+  padded_data <- lapply(circles, function(x) {
+    length(x) <- max_cols
+    return(x)
+  })
+  circles <- as.data.frame(do.call(rbind, padded_data), stringsAsFactors = FALSE)
+  ## keep circles greater than 9 nodes
+  circleSize <- ncol(circles) - 1 - rowSums(is.na(circles))
+  circles <- circles[circleSize > 4, ]
+  
+  ## read the edges
+  edges <- read_table(paste0(egoFiles, filesDF$filenames[idx[2]] ), col_names = F)
+  edges <- matrix(cbind( as.character(as.numeric(unlist(edges$X1))+1), 
+                         as.character(as.numeric(unlist(edges$X2))+1) ), 
+                  ncol = 2)
+  
+  ## setting ego and circle number to nodes
+  if(nrow(circles) >0 ){
+    ## Add the network only if we iclude the circles information for that egonetwork
+    G_tmp <- graph_from_edgelist(edges, directed = FALSE)
+    G[[ego]] <- igraph::simplify(delete_vertices(G_tmp, which(igraph::degree(G_tmp) == 0)))
+    igraph::plot.igraph(G[[ego]],vertex.label = NA,vertex.size = 5, edge.arrow.size= 0.1, edge.color = "grey28")
+    
+    circles <- circles %>% pivot_longer(!V1) %>% na.omit()
+    circles$value <- as.numeric(circles$value)+1
+    circles <- data.frame(circles = circles$V1, node=circles$value )
+    #circles$ego <- ego
+    circles <- circles %>% 
+      mutate(val = 1) %>% 
+      pivot_wider(names_from = circles, 
+                  values_from = val,
+                    values_fill = 0)
+    circlesdf[[ego]] <- circles #%>% arrange( circles, node) #rbind(circlesdf , circles %>% arrange( circles, node) )
+    
+    
+    ## read the ego features
+    egofeatures_list[[ego]] <- read_table(paste0(egoFiles, filesDF$filenames[idx[3]] ), col_names = F)
+    
+    ## read the features
+    features <- read_table(paste0(egoFiles, filesDF$filenames[idx[4]] ), col_names = F)
+    features[,1] <- features[,1]+1
+    
+    ## read the feature names
+    feature_names <- read_table(paste0(egoFiles, filesDF$filenames[idx[5]] ), col_names = F)
+    features$ego <- ego
+    colnames(features) <- c("Node", unlist(feature_names[,2]),"ego")
+    features_list[[ego]] <- features
+  }
+}
+
+fldr <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/LargeRealData/ProcessedData/"
+saveRDS(G , paste0(fldr, "fbEgoNWs.rds"))
+saveRDS(circlesdf, paste0(fldr,"fbCircles.rds"))
+saveRDS(features_list,paste0(fldr,"fbfeatures.rds"))
+saveRDS(egofeatures_list,paste0(fldr,"fbegofeatures.rds"))
+
+```
+
+## Google+ Network
+
+Complete network
+
+```{r}
+## reading node edge file
+NWfile <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/LargeRealData/GooglePlus/gplus_combined/gplus_combined.txt"
+
+edges <- read_table(NWfile, col_names = F)
+
+edges$X1 <- as.character(edges$X1)
+edges$X2 <- as.character(edges$X2)
+
+# collect all unique node names
+nodes <- unique(c(edges$X1, edges$X2))
+
+# assign each node an integer ID 1...N
+node_id <- setNames(seq_along(nodes), nodes)
+
+rm(edges, nodes )
+```
+
+```{r, warning=FALSE}
+#Reading the circles data 
+egoFiles <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/LargeRealData/GooglePlus/gplus/gplus/"
+
+files <- list.files(egoFiles)
+
+filesDF <- as.data.frame(cbind(filenames = files, 
+                               egoNets = node_id[as.character(as.numeric(str_extract(files, "^\\d+")))] ))
+
+circlesdf <- list()#matrix(0, nrow = 0, ncol = 3)
+G <- list()
+features_list <-list()
+egofeatures_list <-list()
+ego_list <- unique(filesDF$egoNets )
+for(ego in ego_list){
+  print(ego)
+  idx <- which(filesDF$egoNets == ego)
+  ## read the circles files
+  circles <- readLines(paste0(egoFiles, filesDF$filenames[idx[1]] ))
+  #read_tsv(paste0(egoFiles, filesDF$filenames[idx[1]] ), col_names = F, na = c( "NA", "NULL"))
+  if(length(circles) >0 ){
+    circles <- lapply(circles, function(line) {
+    elements <- unlist(strsplit(line,  split = "\t"))
+    # Replace empty strings with NA
+    elements[elements == ""] <- NA
+    return(elements)})
+    
+    
+  max_cols <- max(sapply(circles, length))
+  padded_data <- lapply(circles, function(x) {
+    length(x) <- max_cols
+    return(x)
+  })
+  circles <- as.data.frame(do.call(rbind, padded_data), stringsAsFactors = FALSE)
+  ## keep circles greater than 9 nodes
+  circleSize <- ncol(circles) - 1 - rowSums(is.na(circles))
+  circles <- circles[circleSize > 4, ]
+  
+  ## setting ego and circle number to nodes
+  if(nrow(circles) >0 ){
+    
+    circles <- circles %>% pivot_longer(!V1) %>% na.omit()
+    circles$value <- node_id[as.character(as.numeric(circles$value))]
+    circles <- circles  %>% na.omit()
+    circles <- data.frame(circles = circles$V1, node=circles$value )
+    #circles$ego <- ego
+    circles <- circles %>% 
+      mutate(val = 1) %>% 
+      pivot_wider(names_from = circles, 
+                  values_from = val,
+                    values_fill = 0)
+    circlesdf[[ego]] <- circles #%>% arrange( circles, node) #rbind(circlesdf , circles %>% arrange( circles, node) )
+    
+  ## read the edges
+  edges <- read_table(paste0(egoFiles, filesDF$filenames[idx[2]] ), col_names = F)
+  edges$X1 <- as.character(edges$X1)
+  edges$X2 <- as.character(edges$X2)
+  edges <- matrix(cbind(as.character(node_id[edges$X1]), 
+                        as.character(node_id[edges$X2])), 
+                  ncol =2)
+    ## Add the network only if we iclude the circles information for that egonetwork
+    G_tmp <- graph_from_edgelist(edges, directed = TRUE)
+    G[[ego]] <- simplify(G_tmp)
+      #igraph::simplify(delete_vertices(G_tmp, which(igraph::degree(G_tmp) == 0)))
+   
+    ## read the ego features
+    egofeatures_list[[ego]] <- read_table(paste0(egoFiles, filesDF$filenames[idx[3]] ), col_names = F)
+    
+    ## read the features
+    features <- read_table(paste0(egoFiles, filesDF$filenames[idx[4]] ), col_names = F)
+    features[,1] <- node_id[as.character(unlist(features[,1])) ]
+    if(!all(is.na(colSums(features[,2:ncol(features)])))){
+      ## read the feature names
+    feature_names <- read_table(paste0(egoFiles, filesDF$filenames[idx[5]] ), col_names = F)
+    features$ego <- ego
+    colnames(features) <- c("Node", unlist(feature_names[,2]),"ego")
+    features_list[[ego]] <- features
+    }
+  }}
+}
+
+ fldr <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/LargeRealData/ProcessedData/"
+ saveRDS(G , paste0(fldr, "GplusEgoNWs.rds"))
+ saveRDS(circlesdf, paste0(fldr,"GplusCircles.rds"))
+ saveRDS(features_list,paste0(fldr,"Gplusfeatures.rds"))
+ saveRDS(egofeatures_list,paste0(fldr,"Gplusegofeatures.rds"))
+
+```
+
+## reading first network in gplus network
+
+```{r}
+fldr <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/LargeRealData/ProcessedData/"
+#G_list <- readRDS(paste0(fldr,"GplusEgoNWs.rds"))
+# circles <- readRDS(paste0(fldr,"GplusCircles.rds"))
+# allCircles <- matrix(0, nrow =0 , ncol = 3)
+# ##combine circles of the ego networks
+# for(ego in names(circles)){
+#   allCircles <- rbind(allCircles, circles[[ego]] %>% pivot_longer(!node))
+# }
+# allCircles <- allCircles[allCircles$value == 1,]
+# allCircles <- allCircles %>% pivot_wider(names_from = name, values_from = value, values_fill = 0) %>% arrange(node)
+#saveRDS(allCircles, paste0(fldr, "AllCirclesGplus.rds"))
+#G <- readRDS(paste0(fldr, "FullGraphGplus.rds"))
+allCircles <- readRDS(paste0(fldr, "AllCirclesGplus.rds"))
+#rowSums(allCircles[,2:431])
+#ClustSize <- sort(colSums(allCircles[, 2:431]))
+#barplot(ClustSize)
+#hist(ClustSize, breaks = 300)
+#sort(table(ClustSize))
+
+## check if all the nodes in the circles are included in the full graph
+#G_nodes <- c(V(G)$name)
+#C_nodes <- as.character(allCircles$node)
+
+#G_nodes %in% C_nodes
+## Nodes to subset from the graph
+#sbst_nodes <- C_nodes[C_nodes %in% G_nodes]
+## Creating subgraph of nodes that we have circle information for
+#multiple_vertices <- V(G)[sbst_nodes]
+#G_sub <- subgraph(G, multiple_vertices)
+#getwd()
+#postCirclesGrph <- simplify(delete_vertices(G_sub, which(degree(G_sub) == 0)))
+#saveRDS(postCirclesGrph , paste0(fldr, "postCirclesGrph.rds"))
+postCirclesGrph <- readRDS(paste0(fldr, "postCirclesGrph.rds"))
+#png(filename = paste0(fldr,"FullGplus_plot.png"), width = 800, height = 600)
+#ggnet2(asNetwork(postCirclesGrph), size = 1)
+#dev.off()
+#(23115*23114)/ecount(postCirclesGrph)
+##combining all the networks and then filtering out the ones not featured in the circles
+#g_combined <- Reduce(function(a, b) igraph::graph.union(a, b, byname = TRUE), G_list)
+#g_combined <- simplify(g_combined)
+
+```
+
+```{r}
+names <- V(postCirclesGrph)$name
+
+allCircles$node <- as.character(allCircles$node)
+allCircles <- allCircles[allCircles$node %in% names, ]
+saveRDS(allCircles, paste0(fldr , "FinalCircles.rds"))
+df <- as.data.frame(cbind(allCircles[,1], rowSums(allCircles[,2:431])))
+
+df2 <- as.data.frame(cbind(node = V(postCirclesGrph )$name, 
+                           degreeIn = igraph::degree(postCirclesGrph, mode ="in" ),
+                           degreeOut = igraph::degree(postCirclesGrph, mode ="out" )))
+df <- left_join(df, df2, join_by(node  == node))
+#sort(colSums(allCircles[,2:431]))
+
+```
+
+Working on features of nodes.
+```{r}
+## Reading ego features
+egofeatures <-  readRDS(paste0(fldr, "Gplusfeatures.rds"))
+common_cols <- Reduce(intersect, lapply(egofeatures, names))
+combined <- bind_rows(lapply(egofeatures, ~ select(.x, all_of(common_cols))))
+
+# get vector of all column names
+all_cols <- unlist(lapply(egofeatures, names))
+# count occurrences
+col_freq <- sort(table(all_cols), decreasing = TRUE)
+sort(col_freq, decreasing = TRUE)
+parts <- strsplit(names(col_freq), ":", fixed = TRUE)
+# ensure each element has length 2 by padding with NA
+parts_padded <- lapply(parts, function(x) {
+  if (length(x) < 3) c(x, NA) else x
+})
+
+result <- do.call(rbind, parts_padded)
+colnames(result) <- c("col1", "col2","col3")
+result <- as.data.frame(result, stringsAsFactors = FALSE)
+
+
+## toomany columns not included. I will just generate correlated covariates. 
+```
+
+PRoperties of each group
+```{r}
+
+#sort(colSums(allCircles[,2:dim(allCircles)[2]]))
+
+colnames(allCircles) <- c("node", paste0("g", seq_len(ncol(allCircles)-1)))
+df <- df[,c(1,2,4,5)]
+colnames(df) <- c("node","NumGroups","degIn","degOut")
+
+GroupSize <- as.data.frame(colSums(allCircles[,2:431]))
+
+df <- df[match(V(postCirclesGrph)$name,allCircles$node), ]
+df$nodeNames <- V(postCirclesGrph)$name
+sum(df$node == df$nodeNames)
+
+postCirclesGrph <- set_vertex_attr(postCirclesGrph, "NumGroupschar", index = V(postCirclesGrph), as.character(df$NumGroups))
+```
+
+```{r}
+
+G <- asNetwork(postCirclesGrph)
+png(filename = paste0(fldr,"postCirclessizecolor_plot.png"), width = 800, height = 600)
+ggnet2(G, size = "numGroups", color = "NumGroupschar" )
+dev.off()
+
+```
+
+```{r}
+## Generate covariates for the different groups
+
+## lets call the first one age. Teenager, 20's 30's 40's 50's 60's
+
+## call the other one salary . Salary increases till mid 50's reduces once you go above retirement age. Teenagers let paid less.
+
+# gender "Woman," "Man," and "Non-binary,"  "other"
+
+## proportion of car accidents high in teenagers, low in adults, high in older people.
+
+
+#3 Education levels
+
+
+```
+
+
+
+## Philosophers Network
