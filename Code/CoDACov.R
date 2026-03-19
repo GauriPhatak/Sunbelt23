@@ -506,6 +506,72 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   return(list(g.sim, list(covVal_orig_bin, covVal_orig_cont), F_u, H_u, Apuv))
 }
 
+bb_step_size <- function(x_prev, x_current, grad_prev, grad_current, variant = 1) {
+  s <- x_current - x_prev
+  y <- grad_current - grad_prev
+  
+  if (variant == 1) {
+    # BB1 variant
+    as.numeric((t(s) %*% s) / (t(s) %*% y))
+  } else {
+    # BB2 variant
+    as.numeric((t(s) %*% y) / (t(y) %*% y))
+  }
+}
+
+LRParamUpdt <- function(W, X, Ftot,Htot, alphaLR, lambda, missing, dir) {
+  
+  ## Do not add penalty to the intercept hence removing the 1 from the Ftotn matrix
+  if(dir =="directed"){
+    Ftotn <- cbind(1,Ftot, Htot)
+  } else{
+    Ftotn <- cbind(1,Ftot)
+  }
+  N <- dim(X)[1]
+  for(i in 1:dim(X)[2]){
+    p_i <- sigmoid(W[i,], Ftotn)
+    W_grad <- ((p_i - X[,i]) %*% Ftotn[,-c(1)])/N
+    W_0 <- sum(p_i - X[,i])/N
+    W[i,1] <- W[i,1] - alphaLR*W_0
+    W[i, -c(1)] <- sign(W[i,-c(1)] - alphaLR * W_grad) * max(abs(W[i,-c(1)] - alphaLR * W_grad) - alphaLR * lambda, 0)
+  }
+  
+  return(W)
+}
+
+PredictCovLR <- function(X, W, Fmat, Hmat, missing,dir, impType) {
+  if(dir =="directed"){
+    Ftotn <- cbind(1, Fmat, Hmat)
+  } else{
+    Ftotn <- cbind(1, Fmat)
+  }
+  size <- 100
+  for (i in 1:dim(X)[2]) {
+    if(impType == "StochasticReg"){
+      X[which(missing[, i]), i] <- as.numeric((rbinom(1,size,sigmoid(W[i, ], Ftotn[which(missing[, i]), ]))/size) > 0.5)
+    }else{
+      X[which(missing[, i]), i] <- as.numeric(sigmoid(W[i, ], Ftotn[which(missing[, i]), ]) > 0.5)## This uses sigmoid function 
+    }
+  }
+  return(X)
+}
+
+updateLogisticParam_old <- function(W,X,Wtm,Wtm2,missVals,lambda,alphaLR,dir,impType){
+  Wret <- W
+  Xret <- X
+  if (length(W) > 0) {
+    if (sum(missVals) > 0) {
+      Wret <-  LRParamUpdt(W, X, Wtm,Wtm2 ,alphaLR, lambda, missVals, dir)
+      Xret <-  PredictCovLR(X, W, Wtm,Wtm2, missVals, dir, impType)
+    } else{
+      Wret <-  LRParamUpdt(W, X, Wtm,Wtm2, alphaLR, lambda, missVals, dir)
+    }
+  }
+  
+  return(list(Wret,Xret))
+}
+
+
 updateWtmat <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W, alphaLL, 
                         missVals_bin,missVals_cont , alpha, start, end, dir, 
                         inNeigh, outNeigh, lambda_bin, lambda_lin, penalty, lambda_grph){
@@ -566,18 +632,6 @@ updateWtmat <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W, alphaLL
   return(list(Ftot,Htot))
 }
 
-bb_step_size <- function(x_prev, x_current, grad_prev, grad_current, variant = 1) {
-  s <- x_current - x_prev
-  y <- grad_current - grad_prev
-  
-  if (variant == 1) {
-    # BB1 variant
-    as.numeric((t(s) %*% s) / (t(s) %*% y))
-  } else {
-    # BB2 variant
-    as.numeric((t(s) %*% y) / (t(y) %*% y))
-  }
-}
 
 
 CmntyWtUpdt <- function(W1_u ,W2_u ,W2_neigh ,W2_sum ,X_u = NULL ,W = NULL ,
@@ -703,58 +757,6 @@ CalcQuk <- function(wtmat, W){
   return(Q_uk)
 }
 
-LRParamUpdt <- function(W, X, Ftot,Htot, alphaLR, lambda, missing, dir) {
-  
-  ## Do not add penalty to the intercept hence removing the 1 from the Ftotn matrix
-  if(dir =="directed"){
-    Ftotn <- cbind(1,Ftot, Htot)
-  } else{
-    Ftotn <- cbind(1,Ftot)
-  }
-  N <- dim(X)[1]
-  for(i in 1:dim(X)[2]){
-    p_i <- sigmoid(W[i,], Ftotn)
-    W_grad <- ((p_i - X[,i]) %*% Ftotn[,-c(1)])/N
-    W_0 <- sum(p_i - X[,i])/N
-    W[i,1] <- W[i,1] - alphaLR*W_0
-    W[i, -c(1)] <- sign(W[i,-c(1)] - alphaLR * W_grad) * max(abs(W[i,-c(1)] - alphaLR * W_grad) - alphaLR * lambda, 0)
-  }
-  
-  return(W)
-}
-
-PredictCovLR <- function(X, W, Fmat, Hmat, missing,dir, impType) {
-  if(dir =="directed"){
-    Ftotn <- cbind(1, Fmat, Hmat)
-  } else{
-    Ftotn <- cbind(1, Fmat)
-  }
-  size <- 100
-  for (i in 1:dim(X)[2]) {
-    if(impType == "StochasticReg"){
-      X[which(missing[, i]), i] <- as.numeric((rbinom(1,size,sigmoid(W[i, ], Ftotn[which(missing[, i]), ]))/size) > 0.5)
-    }else{
-      X[which(missing[, i]), i] <- as.numeric(sigmoid(W[i, ], Ftotn[which(missing[, i]), ]) > 0.5)## This uses sigmoid function 
-    }
-  }
-  return(X)
-}
-
-updateLogisticParam_old <- function(W,X,Wtm,Wtm2,missVals,lambda,alphaLR,dir,impType){
-  Wret <- W
-  Xret <- X
-  if (length(W) > 0) {
-    if (sum(missVals) > 0) {
-      Wret <-  LRParamUpdt(W, X, Wtm,Wtm2 ,alphaLR, lambda, missVals, dir)
-      Xret <-  PredictCovLR(X, W, Wtm,Wtm2, missVals, dir, impType)
-    } else{
-      Wret <-  LRParamUpdt(W, X, Wtm,Wtm2, alphaLR, lambda, missVals, dir)
-    }
-  }
-  
-  return(list(Wret,Xret))
-}
-
 updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impType,seed){
   if(printFlg == TRUE){
     print("In update linear param")
@@ -774,6 +776,7 @@ updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impTy
   mod <- list()
   logLik <- 0
   p <- list()
+  total_loss <- rep(0,dim(BC)[2])
   if (length(W) > 0) {
     
     for(i in 1:dim(BC)[2]){
@@ -789,25 +792,23 @@ updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impTy
         y <- BC[,i]
       }
       suppressWarnings({
-        #cvOP <- cv.glmnet(X,y,family = "binomial" , nlambda = 100, alpha = 1)
-        #lambda <- cvOP$lambda.min
-        #lambda <- max(abs((t(X) %*% (y - (sum(y) / dim(X)[1] )))/dim(X)[1] )) * 0.01
-        #weights_vec <- ifelse(y == 1, sum(y == 0) / sum(y == 1), 1)
-        mod[[i]] <- glmnet(X, y, family = "binomial", lambda = lambda, alpha = 1, maxit = 1000)#, weights = weights_vec)#alpha = 1, lambda = lambda ,maxit = 1000)
+
+        mod[[i]] <- glmnet(X, y, family = "binomial", lambda = lambda, alpha = 1, maxit = 1000)
         
       })
-       # dev <- mod[[i]]$dev
-      # coefs <- coef(mod[[i]])
-      # df <- colSums(coefs != 0) - 1
-      # n <- length(y)
-      # BIC <- dev + log(n) * df
-      # idx_bic <- which.min(BIC)
-      # 
-      # lambda_bic <- mod[[i]]$lambda[idx_bic]
-      #glmnet(X, y, family = "binomial", lambda = lambda, alpha = 1)#, maxit = 1000)
-      W[i,] <- as.matrix(coef(mod[[i]]))[,1]#coef(mod[[i]])[, idx_bic]#as.matrix(coef(mod[[i]]))[,1]
+      W_old <- W[i,] ## Temp
+      W[i,] <- as.matrix(coef(mod[[i]]))[,1]
+      W[i,] <- alphaLR * W[i,] + (1 - alphaLR) * W_old ##temp
       
       p[[i]] <- predict(mod[[i]], newx = cm, s = lambda, type = "response")
+      
+      ## predicting to calculate logistic loss
+      eta <- predict(mod[[i]], newx = cm, s = lambda, type = "link")
+      log_loss <- mean(log(1 + exp(eta)) - y * eta)
+      beta <- as.vector(coef(mod[[i]], s = lambda))[-1]  # remove intercept
+      lasso_penalty <- lambda * sum(abs(beta))
+      total_loss[i] <- log_loss + lasso_penalty
+      
       
       # MANUALLY CALCULATE LOG-LIKELIHOOD
       # For binomial regression (Logistic Model)
@@ -829,7 +830,7 @@ updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impTy
     }
   }
   
-  return(list(Wret, BCret, logLik))
+  return(list(Wret, BCret, logLik, total_loss))
 }
 
 ## Continuous covariates parameter updates
@@ -849,6 +850,83 @@ SigmaSqCalc <- function(Z, beta, Ftot, Htot, missVals,dir) {
     }
   }
   return(sigmaSq)
+}
+
+
+updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, 
+                                 impType, alphaLin, penalty,seed){
+  if(printFlg == TRUE){
+    print("In update linear param")
+  }
+  #set.seed(seed)
+  
+  if(dir == "directed"){
+    cm <- cbind( Wtm1 , Wtm2)
+  }else{
+    cm <- Wtm1
+  }
+  
+  betaret <- beta
+  Zret <-  Z
+  nc <- ncol(Wtm1)
+  sigmaSq <- NULL
+  mod <- list()
+  logLik <- 0
+  predictions <- list()
+  if (length(beta) > 0) {
+    
+    for(i in 1:dim(Z)[2]){
+      ##"Ridge","LASSO","ElasticNet" 
+      ## filter out the missing data so we update only based on the avaiable data
+      if(sum(missVals[,i]) > 0){
+        mIdx <- missVals[,i]
+        X <-  cm[!mIdx,]
+        y <- Z[!mIdx,i]
+      }else{
+        mIdx <- rep(FALSE, dim(Z)[1])
+        X <- cm
+        y <- Z[,i]
+      }
+      
+      if(penalty == "LASSO"){
+        suppressWarnings({
+          mod[[i]] <- glmnet(X, y, family = "gaussian" , lambda = lambda, alpha = 1, maxit =1000)
+        })
+
+        #beta_old <- beta[i,] ## Temp
+        beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
+        #beta[i,] <- alpha * beta[i,] + (1 - alpha) * beta_old ##temp
+        
+      }else if(penalty =="ElasticNet"){
+        
+        mod[[i]] <- glmnet(X, y, family = "gaussian",lambda = lambda, alpha = 0.5 , maxit = 1000)
+        beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
+        
+      }else if(penalty == "Ridge"){
+        mod[[i]] <- glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 0, maxit = 2000)
+        beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
+      }
+      
+      predictions[[i]] <- predict(mod[[i]], newx = cm, s = lambda, type = "response")
+      
+      # MANUALLY CALCULATE LOG-LIKELIHOOD
+      # For Gaussian regression (Linear Model)
+      logLik <- logLik + sum(dnorm(y, 
+                                   mean = predictions[[i]][!mIdx], 
+                                   sd = sqrt(mean((y - predictions[[i]][!mIdx])^2)), log = TRUE))
+    }
+    
+    betaret <- beta
+    sigmaSq <-  SigmaSqCalc(Z, betaret, Wtm1,Wtm2, missVals,dir)
+    
+    if (sum(missVals) > 0) {
+      for(i in 1:dim(Z)[2]){
+        idx <- which(missVals[, i])
+        Zret[idx, i] <- predictions[[i]][idx]
+      }
+    }
+  }
+  return( list( betaret, Zret, sigmaSq, logLik) )
 }
 
 sdErr <- function(Z_i, beta, Fm, N, p, k){
@@ -1022,113 +1100,6 @@ LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir,
   return(beta_new)
 }
 
-
-updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, 
-                                 impType, alphaLin, penalty,seed){
-  if(printFlg == TRUE){
-    print("In update linear param")
-  }
-  #set.seed(seed)
-  
-  if(dir == "directed"){
-    cm <- cbind( Wtm1 , Wtm2)
-  }else{
-    cm <- Wtm1
-  }
-  
-  betaret <- beta
-  Zret <-  Z
-  nc <- ncol(Wtm1)
-  sigmaSq <- NULL
-  mod <- list()
-  logLik <- 0
-  predictions <- list()
-  if (length(beta) > 0) {
-    
-    for(i in 1:dim(Z)[2]){
-      ##"Ridge","LASSO","ElasticNet" 
-      ## filter out the missing data so we update only based on the avaiable data
-      if(sum(missVals[,i]) > 0){
-        mIdx <- missVals[,i]
-        X <-  cm[!mIdx,]
-        y <- Z[!mIdx,i]
-      }else{
-        mIdx <- rep(FALSE, dim(Z)[1])
-        X <- cm
-        y <- Z[,i]
-      }
-      
-      if(penalty == "LASSO"){
-        suppressWarnings({
-          #cvOP <- cv.glmnet(X,y,family = "gaussian" , nlambda = 100, alpha = 1)
-          #lambda <- cvOP$lambda.min
-          #X_new <- apply(X, 2, function(x) (x - mean(x)) / sd(x))
-          #lambda = max(abs((t(X_new) %*% y) /dim(Z)[1])) *0.01
-          mod[[i]] <- glmnet(X, y, family = "gaussian" , lambda = lambda, alpha = 1, maxit =1000)
-        })
-        
-        #,lambda = lambda, alpha = 1 , maxit = 1000)
-        #glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 1)#, maxit = 1000)
-        # coefs <- coef(mod[[i]])
-        # yhat <- predict(mod[[i]], X)
-        # 
-        # rss <- colSums((y - yhat)^2)
-        # df <- colSums(coefs != 0) - 1  # exclude intercept
-        # n <- length(y)
-        # 
-        # bic <- n * log(rss / n) + log(n) * df
-        # best <- which.min(bic)
-        # lambda_bic <- mod[[i]]$lambda[best]
-        # 
-        beta[i,] <- as.matrix(coef(mod[[i]]))[,1]#coef(mod[[i]])[, best]#as.matrix(coef(mod[[i]]))[,1]
-        
-      }else if(penalty =="ElasticNet"){
-        #cvOP <- cv.glmnet(X,y,family = "gaussian" , nlambda = 10, alpha = 0, maxit = 1000)
-        #lambda <- cvOP$lambda.min
-        mod[[i]] <- glmnet(X, y, family = "gaussian",lambda = lambda, alpha = 0.5 , maxit = 1000)
-        beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
-        
-      }else if(penalty == "Ridge"){
-        #cvOP <- cv.glmnet(X,y,family = "gaussian" , nlambda = 10, alpha = 0, maxit = 1000)
-        #lambda <- cvOP$lambda.min
-        mod[[i]] <- glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 0, maxit = 2000)
-        #glmnet(X, y, family = "gaussian", lambda = lambda, alpha = 0)#, maxit = 1000) 
-        # coefs <- coef(mod[[i]])
-        # yhat <- predict(mod[[i]], X)
-        # 
-        # rss <- colSums((y - yhat)^2)
-        # df <- colSums(coefs != 0) - 1  # exclude intercept
-        # n <- length(y)
-        # 
-        # bic <- n * log(rss / n) + log(n) * df
-        # best <- which.min(bic)
-        # lambda_bic <- mod[[i]]$lambda[best]
-        
-        beta[i,] <- as.matrix(coef(mod[[i]]))[,1]#coef(mod[[i]])[, best]#as.matrix(coef(mod[[i]]))[,1]
-        #beta[i,] <- as.matrix(coef(mod[[i]]))[,1]
-      }
-      
-      predictions[[i]] <- predict(mod[[i]], newx = cm, s = lambda, type = "response")
-      
-      # MANUALLY CALCULATE LOG-LIKELIHOOD
-      # For Gaussian regression (Linear Model)
-      logLik <- logLik + sum(dnorm(y, 
-                                   mean = predictions[[i]][!mIdx], 
-                                   sd = sqrt(mean((y - predictions[[i]][!mIdx])^2)), log = TRUE))
-    }
-    
-    betaret <- beta
-    sigmaSq <-  SigmaSqCalc(Z, betaret, Wtm1,Wtm2, missVals,dir)
-    
-    if (sum(missVals) > 0) {
-      for(i in 1:dim(Z)[2]){
-        idx <- which(missVals[, i])
-        Zret[idx, i] <- predictions[[i]][idx]
-      }
-    }
-  }
-  return( list( betaret, Zret, sigmaSq, logLik) )
-}
 
 ## Log likleihood calculations
 Lx_cal <- function(W, N, Fmat, Hmat, X, dir){
@@ -1478,6 +1449,9 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
   accuracy <- matrix(nrow = 0, ncol = k_in + k_out)
   accuracyMD <- matrix(nrow = 0, ncol = k_in + k_out)
   
+  ##logistic regression loss
+  bin_loss <- matrix(nrow=0,ncol=k_in+k_out)
+  
   corMat <- matrix(0, nrow =0 , ncol = 15)
   
   delta <- getDelta(N,epsilon)
@@ -1511,6 +1485,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
         accutmp <- accuOP(k_in, k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
         accuracyMD <- rbind(accuracyMD, accutmp[[1]])
         accuracy <- rbind(accuracy, accutmp[[2]])
+        bin_loss <- total_loss
         
       }
       FAILURE <- TRUE
@@ -1535,6 +1510,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
         accutmp <- accuOP(k_in, k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
         accuracyMD <- rbind(accuracyMD, accutmp[[1]])
         accuracy <- rbind(accuracy, accutmp[[2]])
+        bin_loss <- total_loss
         
       }
       FAILURE <- FALSE
@@ -1569,6 +1545,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
     Wout <- b2[[1]]
     X_out <- b2[[2]]
     BinLL <- b2[[3]]
+    total_loss <- b2[[4]]
     
     ### Updating the beta matrix for continuous covariates
     c1 <- updateLinearRegParam(betaout,missValsout_cont,Z_out,Ftot,Htot,alpha,
@@ -1605,6 +1582,8 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
       accutmp <- accuOP(k_in, k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
       accuracyMD <- rbind(accuracyMD, accutmp[[1]])
       accuracy <- rbind(accuracy, accutmp[[2]])
+      
+      bin_loss <- rbind(bin_loss, total_loss)
       
     }
   }
@@ -1653,7 +1632,8 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
       FAILURE,
       backTransParams,
       corMat,
-      bic = BICv
+      bic = BICv,
+      bin_loss = bin_loss
     )
   )
 }
