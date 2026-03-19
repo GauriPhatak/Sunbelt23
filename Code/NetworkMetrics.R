@@ -999,18 +999,18 @@ groupSize <- function(C){
 }
 
 ## Non dominated sorting used for selecting hyperparameters
-HyperParameterSelection <- function(metricsCov, cols_to_select, covariates = TRUE){
+HyperParameterSelection <- function(metricsCov, cols_to_select, cols_to_filter,covariates = TRUE){
   metricsCov$front <- 0
   
   if(covariates == TRUE){
     df_list <- metricsCov %>% 
-      filter(unassigned <= degree01) %>%
-      group_by(bigN, OL, dir, PctMiss) %>%
+      #filter(unassigned <= degree0) %>%
+      group_by(!!!rlang::syms(cols_to_filter)) %>%#bigN, OL, dir, PctMiss) %>%
       group_split() 
   }else{
     df_list <- metricsCov %>% 
-      filter(unassigned <= degree01) %>%
-      group_by(bigN, OL, dir) %>%
+      #filter(unassigned <= degree0) %>%
+      group_by(!!!rlang::syms(cols_to_filter)) %>%#bigN, OL, dir) %>%
       group_split() 
   }
   
@@ -1022,7 +1022,11 @@ HyperParameterSelection <- function(metricsCov, cols_to_select, covariates = TRU
         t()
       if(any(is.na(X))){
         print("Stop here")
-      }else{
+      }else if(nrow(X) ==1){
+        fronts <- rank(X, ties.method = "first") #ecr::doNondominatedSorting(X)
+        df_list[[i]]$front <-  fronts
+      }
+      else{
         fronts <- ecr::doNondominatedSorting(X)
         df_list[[i]]$front <-  fronts$ranks
       }
