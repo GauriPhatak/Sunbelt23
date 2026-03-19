@@ -156,64 +156,6 @@ prob2logit <- function(x) {
   return(log(x / (1 - x)))
 }
 
-NWSimBin <- function(nc, k,  pC, N, pClust, B, o, dist,dir,
-                     covTypes = c("binary", "continuous"), 
-                     CovNamesLin = c(),CovNamesLP = c(), missing = NULL) {
-  C <- 0
-  while (length(table(C)) < nc) {
-    C <- sample(
-      x = make_letter_names(nc),#letters[1:nc],
-      size = N,
-      replace = TRUE,
-      prob = pClust
-    )
-  }
-  ## Create an empty network i.e. no cluster assignments or category assignments or edges
-  net <- network(N, directed = dir, density = 0)
-  ## Assign clusters to the nodes
-  net %v% 'Cluster' <- C
-  if (c("binary") %in% covTypes) {
-    ## Based on the probability matrix pC assign indicates the binary assignment of covariates to a community
-    binVal <- matrix(ncol = k, nrow = N, NA)
-    for (i in 1:nc) {
-      for (j in 1:k) {
-        binVal[which(as.numeric(net %v% 'Cluster') == i), j] <- rbinom(length(which(as.numeric(net %v% 'Cluster') == i)), 
-                                                                       1, 
-                                                                       pC[i, j])
-      }
-    }
-    for (j in 1:k) {
-      binVal[sample(1:N, round(missing * N / 100)), j] <- NA
-      net %v% CovNamesLP[j] <- binVal[, j]
-    }
-  }
-  if (c("continuous") %in% covTypes) {
-    ## Based on the mean and variance indicated by the dist matrix we assign continuous values to the network covariates.
-    contVal <- matrix(ncol = o, nrow = N, NA)
-    
-    for (i in 1:nc) {
-      for (j in 1:o) {
-        contVal[which(as.numeric(net %v% 'Cluster') == i), j] <- rnorm(length(which(as.numeric(net %v% 'Cluster') == i)), 
-                                                                       dist[i, j][[1]][[1]], 
-                                                                       dist[i, j][[1]][[2]])
-      }
-    }
-    for (j in 1:o) {
-      contVal[sample(1:N, round(missing * N / 100)), j] <- NA
-      net %v% CovNamesLin[j] <- contVal[, j]
-    }
-  }
-  ## Use the probability of connection values defined earlier for both cluster and category for fitting the data.
-  g.sim <- simulate(
-    net ~ nodemix("Cluster", levels = TRUE, levels2 = TRUE),
-    nsim = 1,
-    coef = prob2logit(c(B)),
-    control = ergm::control.simulate(MCMC.burnin = 10000, 
-                                     MCMC.interval = 1000)
-  )
-  return(g.sim)
-}
-
 flip <- function(p) {
   return(sample(
     x = c(T, F),
@@ -506,72 +448,6 @@ genBipartite <- function(N,nc,pClust,k_in,k_out,o_in,o_out,pC,dist,covTypes,
   return(list(g.sim, list(covVal_orig_bin, covVal_orig_cont), F_u, H_u, Apuv))
 }
 
-bb_step_size <- function(x_prev, x_current, grad_prev, grad_current, variant = 1) {
-  s <- x_current - x_prev
-  y <- grad_current - grad_prev
-  
-  if (variant == 1) {
-    # BB1 variant
-    as.numeric((t(s) %*% s) / (t(s) %*% y))
-  } else {
-    # BB2 variant
-    as.numeric((t(s) %*% y) / (t(y) %*% y))
-  }
-}
-
-LRParamUpdt <- function(W, X, Ftot,Htot, alphaLR, lambda, missing, dir) {
-  
-  ## Do not add penalty to the intercept hence removing the 1 from the Ftotn matrix
-  if(dir =="directed"){
-    Ftotn <- cbind(1,Ftot, Htot)
-  } else{
-    Ftotn <- cbind(1,Ftot)
-  }
-  N <- dim(X)[1]
-  for(i in 1:dim(X)[2]){
-    p_i <- sigmoid(W[i,], Ftotn)
-    W_grad <- ((p_i - X[,i]) %*% Ftotn[,-c(1)])/N
-    W_0 <- sum(p_i - X[,i])/N
-    W[i,1] <- W[i,1] - alphaLR*W_0
-    W[i, -c(1)] <- sign(W[i,-c(1)] - alphaLR * W_grad) * max(abs(W[i,-c(1)] - alphaLR * W_grad) - alphaLR * lambda, 0)
-  }
-  
-  return(W)
-}
-
-PredictCovLR <- function(X, W, Fmat, Hmat, missing,dir, impType) {
-  if(dir =="directed"){
-    Ftotn <- cbind(1, Fmat, Hmat)
-  } else{
-    Ftotn <- cbind(1, Fmat)
-  }
-  size <- 100
-  for (i in 1:dim(X)[2]) {
-    if(impType == "StochasticReg"){
-      X[which(missing[, i]), i] <- as.numeric((rbinom(1,size,sigmoid(W[i, ], Ftotn[which(missing[, i]), ]))/size) > 0.5)
-    }else{
-      X[which(missing[, i]), i] <- as.numeric(sigmoid(W[i, ], Ftotn[which(missing[, i]), ]) > 0.5)## This uses sigmoid function 
-    }
-  }
-  return(X)
-}
-
-updateLogisticParam_old <- function(W,X,Wtm,Wtm2,missVals,lambda,alphaLR,dir,impType){
-  Wret <- W
-  Xret <- X
-  if (length(W) > 0) {
-    if (sum(missVals) > 0) {
-      Wret <-  LRParamUpdt(W, X, Wtm,Wtm2 ,alphaLR, lambda, missVals, dir)
-      Xret <-  PredictCovLR(X, W, Wtm,Wtm2, missVals, dir, impType)
-    } else{
-      Wret <-  LRParamUpdt(W, X, Wtm,Wtm2, alphaLR, lambda, missVals, dir)
-    }
-  }
-  
-  return(list(Wret,Xret))
-}
-
-
 updateWtmat <- function(G, Ftot, Htot, mode, s, nc, X, Z, k, o, beta, W, alphaLL, 
                         missVals_bin,missVals_cont , alpha, start, end, dir, 
                         inNeigh, outNeigh, lambda_bin, lambda_lin, penalty, lambda_grph){
@@ -757,7 +633,7 @@ CalcQuk <- function(wtmat, W){
   return(Q_uk)
 }
 
-updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impType,seed){
+updateLogisticParam_damping <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impType,seed){
   if(printFlg == TRUE){
     print("In update linear param")
   }
@@ -833,6 +709,82 @@ updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impTy
   return(list(Wret, BCret, logLik, total_loss))
 }
 
+updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impType,seed){
+  if(printFlg == TRUE){
+    print("In update linear param")
+  }
+  #set.seed(seed)
+  
+  if(dir == "directed"){
+    cm <- cbind( Wtm1 , Wtm2)
+  }else{
+    cm <- Wtm1
+  }
+  
+  Wret <- W
+  BCret <-  BC
+  nc <- ncol(Wtm1)
+  sigmaSq <- NULL
+  mod <- list()
+  logLik <- 0
+  p <- list()
+  total_loss <- rep(0,dim(BC)[2])
+  prox_steps <- 10
+  if (length(W) > 0) {
+    
+    for(i in 1:dim(BC)[2]){
+      ##"Ridge","LASSO","ElasticNet" 
+      ## filter out the missing data so we update only based on the avaiable data
+      if(sum(missVals[,i]) > 0){
+        mIdx <- missVals[,i]
+        X <-  cbind(1,cm[!mIdx,])
+        y <- BC[!mIdx,i]
+      }else{
+        mIdx <- rep(FALSE, dim(BC)[1])
+        X <- cbind(1,cm)
+        y <- BC[,i]
+      }
+      for(k in 1:prox_steps){
+        eta <- X %*% W[i,]
+        p_tmp <- 1 / (1 + exp(-eta))
+        
+        grad <- t(X) %*% (y - p_tmp) / nrow(X)
+        
+        # gradient ascent
+        W[i, ] <- W[i,] + alphaLR * grad       
+        
+        # proximal step (no penalty on intercept)
+        W[i,-1] <- sign(W[i,-1]) * pmax(abs(W[i,-1]) - alphaLR * lambda, 0)  
+      }
+      
+      # ---- Prediction (full data) ----
+      eta_full <- cbind(1,cm) %*% W[i,]
+      p[[i]] <- 1 / (1 + exp(-eta_full))
+      
+      # ---- Loss + logLik (ONLY training data) ----
+      eta_train <- X %*% W[i,]
+      
+      log_loss <- mean(log1p(exp(eta_train)) - y * eta_train)
+      l1_penalty <- lambda * sum(abs(W[i,-1]))
+      total_loss[i] <- log_loss + l1_penalty
+      
+      logLik <- logLik + sum(y * eta_train - log1p(exp(eta_train)))
+      
+    }
+    
+    Wret <- W
+    if (sum(missVals) > 0) {
+      for(i in 1:dim(BC)[2]){
+        idx <- which(missVals[, i])
+        BCret[idx, i] <- ifelse(p[[i]][idx] > 0.5, 1, 0)
+      }
+    }
+  }
+  
+  return(list(Wret, BCret, logLik, total_loss))
+}
+
+
 ## Continuous covariates parameter updates
 SigmaSqCalc <- function(Z, beta, Ftot, Htot, missVals,dir) {
   sigmaSq <- rep(0, dim(beta)[1])
@@ -853,7 +805,7 @@ SigmaSqCalc <- function(Z, beta, Ftot, Htot, missVals,dir) {
 }
 
 
-updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, 
+updateLinearRegParam_glmnet <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, 
                                  impType, alphaLin, penalty,seed){
   if(printFlg == TRUE){
     print("In update linear param")
@@ -929,42 +881,100 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
   return( list( betaret, Zret, sigmaSq, logLik) )
 }
 
-sdErr <- function(Z_i, beta, Fm, N, p, k){
-  sdErr <- sqrt(sum((Z_i -  Fm %*% as.matrix(beta))^2)/ (N-p-k))
-  return(sdErr)
-}
-
-PredictCovLin <- function(Ftot,Htot, Z, beta, missVals, dir, impType) {
-  Z_out <- Z
-  if(dir == "directed"){
-    Fm <-  cbind(1, Ftot, Htot)
-  }else{  
-    Fm <-  cbind(1, Ftot)
+updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, 
+                                        impType, alphaLin, penalty,seed){
+  if(printFlg == TRUE){
+    print("In update linear param")
   }
-  for (i in 1:dim(Z_out)[2]) {
-    if(sum(missVals) > 0 ) {
-      idx <- which(missVals[, i])
-      if(impType == "StochasticReg"){
-        s <- sdErr(Z_out[-idx, i], beta[i, ], Fm[-idx,], dim(Z_out)[1], ncol(Z_out), dim(Z_out[idx,])[1])
-        err <- mean(rnorm(10,mean = 0,sd = s))
-        Z_out[idx, i] <- (Fm[idx,] %*% as.matrix(beta[i, ])) + err
-      }else if(impType == "Reg"){
-        Z_out[idx, i] <- Fm[idx,] %*% as.matrix(beta[i, ])
+  #set.seed(seed)
+  
+  if(dir == "directed"){
+    cm <- cbind( Wtm1 , Wtm2)
+  }else{
+    cm <- Wtm1
+  }
+  
+  betaret <- beta
+  Zret <-  Z
+  nc <- ncol(Wtm1)
+  sigmaSq <- NULL
+  mod <- list()
+  logLik <- 0
+  predictions <- list()
+  prox_steps <- 10
+  if (length(beta) > 0) {
+    
+    for(i in 1:dim(Z)[2]){
+      # Filter missing
+      if(sum(missVals[,i]) > 0){
+        mIdx <- missVals[,i]
+        X <- cm[!mIdx,]
+        y <- Z[!mIdx,i]
+      } else {
+        mIdx <- rep(FALSE, nrow(Z))
+        X <- cm
+        y <- Z[,i]
+      }
+      
+      # Add intercept
+      X_design <- cbind(1, X)
+      
+      # Initialize
+      if(all(beta[i,] == 0)){
+        beta[i,] <- rep(0, ncol(X_design))
+      }
+      
+      # Proximal gradient steps
+      for(k in 1:prox_steps){
+        beta[i,] <- prox_linear_update(X_design, y, beta[i,], lambda, alpha)
+      }
+      
+      # Predictions (FULL data)
+      X_full <- cbind(1, cm)
+      predictions[[i]] <- X_full %*% beta[i,]
+      
+      # Log-likelihood (TRAINING ONLY)
+      resid <- y - (X_design %*% beta[i,])
+      sigma2 <- mean(resid^2)
+      
+      logLik <- logLik + sum( -0.5 * log(2 * pi * sigma2) - (resid^2) / (2 * sigma2))
+    }
+    
+    betaret <- beta
+    sigmaSq <-  SigmaSqCalc(Z, betaret, Wtm1,Wtm2, missVals,dir)
+    
+    if (sum(missVals) > 0) {
+      for(i in 1:dim(Z)[2]){
+        idx <- which(missVals[, i])
+        Zret[idx, i] <- predictions[[i]][idx]
       }
     }
   }
-  return(Z_out)
+  return( list( betaret, Zret, sigmaSq, logLik) )
 }
 
-safe_sign <- function(x) ifelse(x == 0, 0, sign(x))
-
-grad_norm <- function(grad) {
-  sqrt(sum(grad^2))  # L2 norm
+prox_linear_update <- function(X, y, beta, lambda, step_size) {
+  n <- nrow(X)
+  
+  # Residual
+  r <- X %*% beta - y
+  
+  # Gradient of squared loss
+  grad <- t(X) %*% r / n
+  
+  # Gradient step
+  beta_temp <- beta - step_size * grad
+  
+  # Proximal step (L1, exclude intercept)
+  beta_new <- beta_temp
+  beta_new[-1] <- sign(beta_temp[-1]) * pmax(abs(beta_temp[-1]) - step_size * lambda, 0)
+  
+  return(beta_new)
 }
 
-# Soft-thresholding function
-soft_threshold <- function(z, lambda) {
-  sign(z) * pmax(abs(z) - lambda, 0)
+sdErr <- function(Z_i, beta, Fm, N, p, k){
+  sdErr <- sqrt(sum((Z_i -  Fm %*% as.matrix(beta))^2)/ (N-p-k))
+  return(sdErr)
 }
 
 ## Soft thresholding function
@@ -977,129 +987,6 @@ soft_thresh<- function(z_j,lambda){
     return(0)
   }
 }
-
-#AllUpdatemethods
-LinRParamUpdt <- function(beta, Z, Fmat,Hmat, alpha, lambda, N, missVals,dir, 
-                          impType, alphaLin, penalty ) {
-  if(printFlg == TRUE){
-    print("In Linparamupdate Func")
-  }
-  
-  beta_new <- beta
-  if(dir =="directed"){
-    Fm_n <- cbind(1,Fmat, Hmat)
-    X <- cbind(Fmat,Hmat)
-  }else{  
-    Fm_n <- cbind(1, Fmat)
-  }
-  ## setting group size 
-  p_g <- 2
-  
-  sigmaSq <- SigmaSqCalc(Z, beta, Fmat, Hmat, missVals,dir)
-  for (idx in 1:ncol(Z)) {
-    if(penalty == "LASSO"){
-      
-      beta_new[idx, 1] <- mean(Z[, idx] - (Fm_n[, -1] %*% beta_new[idx, -1]))
-      
-      for (j in 2:ncol(Fm_n)) {
-        ## residual and soft thresholding
-        r_j <- Z[,idx] - (Fm_n[,-j] %*% beta_new[idx ,-j])
-        z_j <- sum(Fm_n[, j] * r_j)
-        d_j <- sum(Fm_n[,j]^2)
-        s_j <- soft_thresh(z_j,lambda)
-        beta_new[idx,j] <- s_j/d_j
-      }
-      
-    }else if(penalty =="ElasticNet"){
-      mixP <- 0.5
-      beta_new[idx, 1] <- mean(Z[, idx] - (Fm_n[, -1] %*% beta_new[idx, -1]))
-      
-      for (j in 2:ncol(Fm_n)) {
-        # partial residual w/o feature j
-        r_j <- Z[,idx] - (Fm_n[,-j] %*% beta_new[idx,-j]) 
-        z_j <- sum(Fm_n[, j] * r_j)
-        
-        # Update beta_j with soft-thresholding
-        denom <- sum(Fm_n[, j]^2) + lambda * (1 - mixP) * N
-        beta_new[idx,j] <- sign(z_j) * pmax(abs(z_j) - lambda * mixP * N, 0)/denom
-      }
-      
-    }else if(penalty  == "GroupLASSO"){
-      beta_new[idx, 1] <- mean(Z[, idx] - (Fm_n[, -1] %*% beta_new[idx, -1]))
-      r <- Z[,idx] - Fm_n[,-1] %*% beta_new[idx,-1] - beta_new[idx,1]
-      for (g in 2:(ncol(Fmat)+1)) {
-        i <- c(g, g+3)
-        X_g <- Fm_n[, i]
-        beta_g <- beta_new[idx, i]
-        
-        # Residual excluding group g (using current intercept)
-        r <- r + X_g %*% beta_g
-        
-        # Least squares sol for g
-        z_g <- crossprod(X_g,r)/N
-        norm_z <- sqrt(sum(z_g^2))
-        if(norm_z >lambda){
-          shirnkage <- 1-lambda/norm_z
-          beta_g_new <- shirnkage * z_g
-        }else{
-          beta_g_new <- rep(0, length(i))
-        }
-        beta_new[idx,i] <-beta_g_new
-        r <- r - X_g %*% beta_g_new
-      }
-      
-      
-    }else if(penalty == "Ridge"){
-      beta_new[idx, 1] <- mean(Z[, idx] - Fm_n[, -1] %*% beta_new[idx, -1])
-      
-      for (j in 2:ncol(Fm_n)) {
-        # Partial residual w/o  j
-        r_j <- Z[,idx] - Fm_n[,-j] %*% beta_new[idx,-j]
-        #L2 penalty
-        xj <- Fm_n[, j]
-        beta_new[idx, j] <- sum(xj * r_j) / (sum(xj^2) + N * lambda)
-      }
-      
-    }else if(penalty == "GroupLASSOProxGrad"){
-      #Current parameters
-      beta_current <- beta[idx,]
-      intercept <- beta_current[1]
-      weights <- beta_current[-1]
-      
-      # Compute gradient (only for the smooth part)
-      residual <- Z[,idx] - intercept - X %*% weights
-      grad_intercept <- -mean(residual)
-      grad_weights <- (-1/N) * crossprod(X, residual)
-      
-      # Gradient step
-      beta_temp <- beta_current - alpha * c(grad_intercept, grad_weights)
-      
-      # Proximal operator (group soft thresholding)
-      beta_new <- beta_temp
-      # Don't penalize intercept
-      for (g in 2:(ncol(Fmat)+1)) {
-        ind <- c(g, g+3)
-        group_norm <- sqrt(sum(beta_temp[ind]^2))
-        if (group_norm <= lambda * alpha) {
-          beta_new[ind] <- 0
-        } else {
-          beta_new[ind] <- beta_temp[ind] * (1 - (lambda * alpha)/group_norm)
-        }
-      }
-      ## update the beta
-      beta[idx, ] <- beta_new
-      
-    }else{
-      print("Please provide the penalty method")
-      break}
-  }
-  
-  if(sum(is.infinite(beta_new)) > 0){
-    print("Beta_new is inifinite")
-  }
-  return(beta_new)
-}
-
 
 ## Log likleihood calculations
 Lx_cal <- function(W, N, Fmat, Hmat, X, dir){
