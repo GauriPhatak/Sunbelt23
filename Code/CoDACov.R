@@ -633,7 +633,7 @@ CalcQuk <- function(wtmat, W){
   return(Q_uk)
 }
 
-updateLogisticParam_damping <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impType,seed){
+updateLogisticParam_glmnet <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impType,seed){
   if(printFlg == TRUE){
     print("In update linear param")
   }
@@ -669,17 +669,17 @@ updateLogisticParam_damping <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,d
       }
       suppressWarnings({
 
-        mod[[i]] <- glmnet(X, y, family = "binomial", lambda = lambda, alpha = 1, maxit = 1000)
+        mod[[i]] <- glmnet(X, y, family = "binomial", lambda = lambda, alpha = 1,maxit = 50000)
         
       })
-      W_old <- W[i,] ## Temp
+      #W_old <- W[i,] ## Temp
       W[i,] <- as.matrix(coef(mod[[i]]))[,1]
-      W[i,] <- alphaLR * W[i,] + (1 - alphaLR) * W_old ##temp
+      #W[i,] <- alphaLR * W[i,] + (1 - alphaLR) * W_old ##temp
       
       p[[i]] <- predict(mod[[i]], newx = cm, s = lambda, type = "response")
       
       ## predicting to calculate logistic loss
-      eta <- predict(mod[[i]], newx = cm, s = lambda, type = "link")
+      eta <- predict(mod[[i]], newx = X, s = lambda, type = "link")
       log_loss <- mean(log(1 + exp(eta)) - y * eta)
       beta <- as.vector(coef(mod[[i]], s = lambda))[-1]  # remove intercept
       lasso_penalty <- lambda * sum(abs(beta))
@@ -689,8 +689,8 @@ updateLogisticParam_damping <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,d
       # MANUALLY CALCULATE LOG-LIKELIHOOD
       # For binomial regression (Logistic Model)
       eps <- 1e-15 ## to make sure the predicted probability does not go to 1 or 0 and cause numerical error
-      p[[i]] <- pmin(pmax(p[[i]], eps), 1 - eps)
-      logLik <- logLik + sum(y * log(p[[i]][!mIdx]) + (1 - y) * log(1 - p[[i]][!mIdx]), na.rm = TRUE)
+      pt <- pmin(pmax(p[[i]], eps), 1 - eps)
+      logLik <- logLik + sum(y * log(pt[!mIdx]) + (1 - y) * log(1 - pt[!mIdx]), na.rm = TRUE)
       if(is.infinite(logLik)){
         print("Infinite value here")
       }
@@ -709,7 +709,8 @@ updateLogisticParam_damping <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,d
   return(list(Wret, BCret, logLik, total_loss))
 }
 
-updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impType,seed){
+##logistic regression proximal gradient
+updateLogisticParam_ProximalGradient <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alpha,dir,impType,seed){
   if(printFlg == TRUE){
     print("In update linear param")
   }
@@ -747,21 +748,17 @@ updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impTy
       for(k in 1:prox_steps){
         eta <- X %*% W[i,]
         p_tmp <- 1 / (1 + exp(-eta))
-        
         grad <- t(X) %*% (y - p_tmp) / nrow(X)
-        
         # gradient ascent
-        W[i, ] <- W[i,] + alphaLR * grad       
-        
-        # proximal step (no penalty on intercept)
-        W[i,-1] <- sign(W[i,-1]) * pmax(abs(W[i,-1]) - alphaLR * lambda, 0)  
+        W[i, ] <- W[i,] + alpha * grad       
+        # proximal step
+        W[i,-1] <- sign(W[i,-1]) * pmax(abs(W[i,-1]) - alpha * lambda, 0)  
       }
       
-      # ---- Prediction (full data) ----
+      #Prediction full data
       eta_full <- cbind(1,cm) %*% W[i,]
       p[[i]] <- 1 / (1 + exp(-eta_full))
-      
-      # ---- Loss + logLik (ONLY training data) ----
+      # Loss + logLik
       eta_train <- X %*% W[i,]
       
       log_loss <- mean(log1p(exp(eta_train)) - y * eta_train)
@@ -784,7 +781,142 @@ updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alphaLR,dir,impTy
   return(list(Wret, BCret, logLik, total_loss))
 }
 
+## logsitic regression coordinate descent
+updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alpha,dir,impType,seed) {
+  
+  if (printFlg == TRUE) {
+    print("In update logistic param (Coordinate Descent)")
+  }
+  
+  # Build covariates
+  if (dir == "directed") {
+    cm <- cbind(Wtm1, Wtm2)
+  } else {
+    cm <- Wtm1
+  }
+  
+  Wret <- W
+  BCret <- BC
+  logLik <- 0
+  total_loss <- rep(0, ncol(BC))
+  p_list <- list()
+  
+  max_outer <- 25   # IRLS iterations
+  max_inner <- 50   # coordinate descent sweeps
+  tol <- 1e-6
+  
+  if (length(W) > 0) {
+    
+    for (i in 1:ncol(BC)) {
+      
+      # ---- Handle missing ----
+      if (sum(missVals[, i]) > 0) {
+        mIdx <- missVals[, i]
+        X <- cbind(1, cm[!mIdx, , drop = FALSE])
+        y <- BC[!mIdx, i]
+      } else {
+        mIdx <- rep(FALSE, nrow(BC))
+        X <- cbind(1, cm)
+        y <- BC[, i]
+      }
+      
+      n <- nrow(X)
+      p_dim <- ncol(X)
+      
+      # Initialize
+      b <- W[i, ]
+      
+      for (outer in 1:max_outer) {
+        
+        eta <- X %*% b
+        p <-  ifelse(eta >= 0,1 / (1 + exp(-eta)), exp(eta) / (1 + exp(eta)))#1 / (1 + exp(-eta))
+        
+        # Avoid numerical issues
+        w <- p * (1 - p)
+        w <- pmax(w, 1e-5)
+        
+        z <- eta + (y - p) / w
+        z <- pmin(pmax(z, -1e5), 1e5)
+        
+        
+        # Precompute weighted norms
+        col_norms <- t(X^2) %*% w /n#colSums(w * X^2) / n
+        col_norms[col_norms < 1e-8] <- 1e-8
+        
+        
+        # Residual for weighted LS
+        r <- z - X %*% b
+        
+        # ---- Coordinate Descent ----
+        for (inner in 1:max_inner) {
+          b_old <- b
+          
+          for (j in 1:p_dim) {
+            
+            # Add back contribution
+            r <- r + X[, j] * b[j]
+            
+            # Weighted rho
+            rho <- sum(w * X[, j] * r) / n
+            
+            if (j == 1) {
+              # Intercept (no penalty)
+              b[j] <- rho / col_norms[j]
+            } else {
+              b[j] <- sign(rho) * max(abs(rho) - lambda, 0) / col_norms[j]
+            }
+            
+            # Remove updated contribution
+            r <- r - X[, j] * b[j]
+          }
+          
+          if (max(abs(b - b_old)) < tol) break
+        }
+        
+        # Check outer convergence
+        if (max(abs(X %*% b - eta)) < tol) break
+      }
+      
+      # Save coefficients
+      W[i, ] <- b
+      
+      # ---- Predictions (FULL data) ----
+      eta_full <- cbind(1, cm) %*% b
+      p_full <- 1 / (1 + exp(-eta_full))
+      p_list[[i]] <- p_full
+      
+      # ---- Loss + logLik ----
+      eta_train <- X %*% b
+      
+      log_loss <- mean(log1pexp(eta_train) - y * eta_train)
+      l1_penalty <- lambda * sum(abs(b[-1]))
+      total_loss[i] <- log_loss + l1_penalty
+      
+      logLik <- logLik + sum(y * eta_train - log1pexp(eta_train))
+      if(is.infinite(logLik)){
+        print("stop")
+      }
+    }
+    
+    Wret <- W
+    
+    # ---- Impute missing ----
+    if (sum(missVals) > 0) {
+      for (i in 1:ncol(BC)) {
+        idx <- which(missVals[, i])
+        BCret[idx, i] <- ifelse(p_list[[i]][idx] > 0.5, 1, 0)
+      }
+    }
+  }
+  
+  return(list(Wret, BCret, logLik, total_loss))
+}
 
+log1pexp <- function(x) {
+  ifelse(x > 0,
+         x + log1p(exp(-x)),
+         log1p(exp(x)))
+}
 ## Continuous covariates parameter updates
 SigmaSqCalc <- function(Z, beta, Ftot, Htot, missVals,dir) {
   sigmaSq <- rep(0, dim(beta)[1])
@@ -881,7 +1013,7 @@ updateLinearRegParam_glmnet <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,
   return( list( betaret, Zret, sigmaSq, logLik) )
 }
 
-updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, 
+updateLinearRegParam_ProximalGradient <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, 
                                         impType, alphaLin, penalty,seed){
   if(printFlg == TRUE){
     print("In update linear param")
@@ -893,7 +1025,7 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
   }else{
     cm <- Wtm1
   }
-  
+  alpha <- alpha /4 ## learning rate for linear regression needs to be smaller compared to learning rate for binary covariates.
   betaret <- beta
   Zret <-  Z
   nc <- ncol(Wtm1)
@@ -919,20 +1051,21 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
       # Add intercept
       X_design <- cbind(1, X)
       
-      # Initialize
-      if(all(beta[i,] == 0)){
-        beta[i,] <- rep(0, ncol(X_design))
-      }
-      
       # Proximal gradient steps
       for(k in 1:prox_steps){
-        beta[i,] <- prox_linear_update(X_design, y, beta[i,], lambda, alpha)
-      }
+        # Residual
+        r <- X_design %*% beta[i,] - y
+        # Gradient of squared loss
+        grad <- t(X_design) %*% r / nrow(X_design)
+        # Gradient step
+        beta_temp <- beta[i,] - alpha * grad
+        beta[i,] <- beta_temp
+        beta[i,-1] <- sign(beta_temp[-1]) * pmax(abs(beta_temp[-1]) - alpha * lambda, 0)
+        }
       
       # Predictions (FULL data)
       X_full <- cbind(1, cm)
       predictions[[i]] <- X_full %*% beta[i,]
-      
       # Log-likelihood (TRAINING ONLY)
       resid <- y - (X_design %*% beta[i,])
       sigma2 <- mean(resid^2)
@@ -953,23 +1086,116 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
   return( list( betaret, Zret, sigmaSq, logLik) )
 }
 
-prox_linear_update <- function(X, y, beta, lambda, step_size) {
-  n <- nrow(X)
+## Using coordinate descent so we don't have to worry about alpha.
+updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir, 
+                                    impType, alphaLin, penalty,seed) {
   
-  # Residual
-  r <- X %*% beta - y
+  if (printFlg == TRUE) {
+    print("In update linear param (Coordinate Descent)")
+  }
   
-  # Gradient of squared loss
-  grad <- t(X) %*% r / n
+  # Build covariate matrix
+  if (dir == "directed") {
+    cm <- cbind(Wtm1, Wtm2)
+  } else {
+    cm <- Wtm1
+  }
   
-  # Gradient step
-  beta_temp <- beta - step_size * grad
+  betaret <- beta
+  Zret <- Z
+  logLik <- 0
+  predictions <- list()
   
-  # Proximal step (L1, exclude intercept)
-  beta_new <- beta_temp
-  beta_new[-1] <- sign(beta_temp[-1]) * pmax(abs(beta_temp[-1]) - step_size * lambda, 0)
+  max_iter <- 50   # number of coordinate descent sweeps
+  tol <- 1e-6      # convergence tolerance
   
-  return(beta_new)
+  if (length(beta) > 0) {
+    
+    for (i in 1:ncol(Z)) {
+      
+      # ---- Handle missing ----
+      if (sum(missVals[, i]) > 0) {
+        mIdx <- missVals[, i]
+        X <- cm[!mIdx, , drop = FALSE]
+        y <- Z[!mIdx, i]
+      } else {
+        mIdx <- rep(FALSE, nrow(Z))
+        X <- cm
+        y <- Z[, i]
+      }
+      
+      # ---- Design matrix ----
+      X_design <- cbind(1, X)
+      n <- nrow(X_design)
+      p <- ncol(X_design)
+      
+      # ---- Initialize beta ----
+      b <- beta[i, ]
+      
+      # ---- Precompute column norms ----
+      col_norms <- colSums(X_design^2) / n
+      
+      # ---- Initialize residual ----
+      r <- y - X_design %*% b
+      
+      # ---- Coordinate Descent ----
+      for (iter in 1:max_iter) {
+        b_old <- b
+        
+        for (j in 1:p) {
+          
+          # Add back current feature contribution
+          r <- r + X_design[, j] * b[j]
+          
+          # Compute rho
+          rho <- sum(X_design[, j] * r) / n
+          
+          # Update coefficient
+          if (j == 1) {
+            # Intercept (no penalty)
+            b[j] <- rho
+          } else {
+            b[j] <- sign(rho) * max(abs(rho) - lambda, 0) / col_norms[j]
+          }
+          
+          # Remove updated contribution
+          r <- r - X_design[, j] * b[j]
+        }
+        
+        # ---- Convergence check ----
+        if (max(abs(b - b_old)) < tol) break
+      }
+      
+      # Save updated beta
+      beta[i, ] <- b
+      
+      # ---- Predictions (FULL data) ----
+      X_full <- cbind(1, cm)
+      predictions[[i]] <- X_full %*% b
+      
+      # ---- Log-likelihood (training only) ----
+      resid <- y - (X_design %*% b)
+      sigma2 <- mean(resid^2)
+      
+      logLik <- logLik + sum(
+        -0.5 * log(2 * pi * sigma2) - (resid^2) / (2 * sigma2)
+      )
+    }
+    
+    betaret <- beta
+    
+    sigmaSq <- SigmaSqCalc(Z, betaret, Wtm1, Wtm2, missVals, dir)
+    
+    # ---- Impute missing ----
+    if (sum(missVals) > 0) {
+      for (i in 1:ncol(Z)) {
+        idx <- which(missVals[, i])
+        Zret[idx, i] <- predictions[[i]][idx]
+      }
+    }
+  }
+  
+  return(list(betaret, Zret, sigmaSq, logLik))
 }
 
 sdErr <- function(Z_i, beta, Fm, N, p, k){
@@ -1369,7 +1595,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
         mseMD <- rbind(mseMD, MSEtmp[[1]])
         mse <- rbind(mse, MSEtmp[[2]])
         
-        accutmp <- accuOP(k_in, k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
+        accutmp <- AccuracyCalc(k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
         accuracyMD <- rbind(accuracyMD, accutmp[[1]])
         accuracy <- rbind(accuracy, accutmp[[2]])
         bin_loss <- total_loss
@@ -1394,9 +1620,9 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
         mseMD <- rbind(mseMD, MSEtmp[[1]])
         mse <- rbind(mse, MSEtmp[[2]])
         
-        accutmp <- accuOP(k_in, k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
-        accuracyMD <- rbind(accuracyMD, accutmp[[1]])
-        accuracy <- rbind(accuracy, accutmp[[2]])
+        accutmp <- AccuracyCalc(k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
+        accuracyMD <- rbind(accuracyMD, accutmp[[2]])
+        accuracy <- rbind(accuracy, accutmp[[1]])
         bin_loss <- total_loss
         
       }
@@ -1406,7 +1632,9 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
                    " Final LogLik ", round(LLnew,3),
                    " Final OI ",round(OmegaIdx(G, C, N, nc, nc_sim),3), 
                    " MSE ", paste0(round(tail(mse,1),3), collapse = ", "),
-                   " MSE MD ", paste0(round(tail(mseMD,1),3), collapse = ", ")))
+                   " MSE MD ", paste0(round(tail(mseMD,1),3), collapse = ", "),
+                   " Acc ", paste0(round(tail(accuracy,1),3), collapse = ", "),
+                   " Acc MD ", paste0(round(tail(accuracyMD,1),3), collapse = ", ")))
       break
     }
     
@@ -1414,6 +1642,9 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
     lllst <- rbind(lllst, LLvec)
     iter <- iter + 1
     
+    # if(iter >= 1000 ){
+    #   print("Stop check")
+    # }
     ## Randomize the community weights update
     s <- randomizeIdx(N, randomize)
     
@@ -1428,7 +1659,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
     ## Updating logistic paramters
     b2 <- updateLogisticParam(W = Wout, BC = X_out , Wtm1 = Ftot, Wtm2 = Htot, 
                               missVals = missValsout_bin, lambda = lambda_bin, 
-                              alphaLR = alpha, dir = dir, impType, seed)
+                              alpha = alpha, dir = dir, impType, seed)
     Wout <- b2[[1]]
     X_out <- b2[[2]]
     BinLL <- b2[[3]]
@@ -1466,7 +1697,7 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
       #               " delta*3 ",round(OmegaIdx(G, Ftot, Htot, N, delta*3,nc, nc_sim),4),
       #               " delta*4 ",round(OmegaIdx(G, Ftot, Htot, N, delta*4,nc, nc_sim),4)))
       #print(paste0(" delta ",round(OIn,4), " MSE ",paste0(round(MSEtmp[[2]],3),collapse = ",") ))
-      accutmp <- accuOP(k_in, k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
+      accutmp <- AccuracyCalc(k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
       accuracyMD <- rbind(accuracyMD, accutmp[[1]])
       accuracy <- rbind(accuracy, accutmp[[2]])
       
