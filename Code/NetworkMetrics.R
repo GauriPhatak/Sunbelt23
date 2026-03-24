@@ -21,7 +21,6 @@ make_letter_names <- function(n) {
   sapply(1:n, to_letters)
 }
 
-
 ## Part of log likelihood contributed by the penalty term
 penLL <- function(penalty, beta){
   if(penalty =="Ridge"){
@@ -126,10 +125,44 @@ accuCalc <- function(k,W,Wtm1,Wtm2,X, dir){
                                     factor(X[, i], levels = c(0, 1)))
       acc[i] <- round(cm$overall[1], 2)
     }
-    accuracy <- rbind(accuracy,acc)
+    accuracy <- c(accuracy,acc)
   }
   
   return(accuracy)
+}
+
+AccuracyCalc <- function(k, W, Ftot,Htot,BC_true,dir,missVals){
+  if(dir == "directed"){
+    cm <- cbind( Ftot , Htot)
+  }else{
+    cm <- Ftot
+  }
+  
+  acc_full_vec <- c()
+  acc_missing_vec <- c()
+  p <- list()
+  if(k >0){
+    for(i in 1:k){
+      eta_full <- cbind(1,cm) %*% W[i,]
+      
+      p[[i]] <- 1 / (1 + exp(-eta_full))
+      
+      pred_full <- ifelse(p[[i]] > 0.5, 1, 0)
+      
+      # FULL DATA accuracy
+      acc_full <- mean(pred_full == BC_true[, i])
+      acc_full_vec <- c(acc_full_vec, acc_full)
+      
+      # MISSING DATA accuracy (only on imputed entries)
+      if(sum(missVals[, i]) > 0){
+        idx <- missVals[, i]
+        acc_missing <- mean(pred_full[idx] == BC_true[idx, i])
+        acc_missing_vec <- c(acc_missing_vec, acc_missing)
+      }
+    }
+  }
+
+ list(c(acc_full_vec), c(acc_missing_vec))
 }
 
 accuOP <- function(k_in, k_out,Wout,Ftot, Htot,covOrig,dir,missValsout){
