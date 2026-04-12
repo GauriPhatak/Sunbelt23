@@ -798,7 +798,9 @@ updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alpha,dir,impType
   Wret <- W
   BCret <- BC
   logLik <- 0
-  total_loss <- rep(0, ncol(BC))
+  if(!is.null(ncol(BC))){
+    total_loss <- rep(0, ncol(BC))
+  }else {total_loss  <- 0}
   p_list <- list()
   
   max_outer <- 25   # IRLS iterations
@@ -1104,6 +1106,7 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
   betaret <- beta
   Zret <- Z
   logLik <- 0
+  sigmaSq <- NULL
   predictions <- list()
   
   max_iter <- 50   # number of coordinate descent sweeps
@@ -1384,8 +1387,12 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
   }else{ncoef = nc}
   
   ## Setting the original covariates
-  covOrig_bin <- covOrig[[1]]
-  covOrig_cont <- covOrig[[2]]
+  if(!is.null(covOrig[[1]])){
+    covOrig_bin <- covOrig[[1]]
+  }
+  if(!is.null(covOrig[[2]])){
+    covOrig_cont <- covOrig[[2]]
+  }
   
   ## Community weights outgoing connections
   Ftot <- initWtmat(G,"out",N,nc, seed, specOP,epsilon)
@@ -1516,8 +1523,11 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
   
   
   ## scaling the continuous covariats
-  Z_out <- scale(Z_out)
-  covOrig_cont <- scale(covOrig_cont)
+  if(o_out > 0 ){
+    Z_out <- scale(Z_out)
+    covOrig_cont <- scale(covOrig_cont)  
+  }
+  
   
   ############ Initialize the coef matrix for covariates ##############
   
@@ -1615,16 +1625,18 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
         
         arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
         OmegaVal <- c(OmegaVal, OmegaIdx(G, C, N, nc, nc_sim))
+        if(o_out > 0 ){
+          MSEtmp <- MSEop(Ftot, Htot, covOrig_cont, betaout,N, dir, o_in,o_out, missValsout_cont)
+          mseMD <- rbind(mseMD, MSEtmp[[1]])
+          mse <- rbind(mse, MSEtmp[[2]])  
+        }
         
-        MSEtmp <- MSEop(Ftot, Htot, covOrig_cont, betaout,N, dir, o_in,o_out, missValsout_cont)
-        mseMD <- rbind(mseMD, MSEtmp[[1]])
-        mse <- rbind(mse, MSEtmp[[2]])
-        
-        accutmp <- AccuracyCalc(k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
-        accuracyMD <- rbind(accuracyMD, accutmp[[2]])
-        accuracy <- rbind(accuracy, accutmp[[1]])
-        bin_loss <- total_loss
-        
+        if(k_out > 0 ){
+          accutmp <- AccuracyCalc(k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
+          accuracyMD <- rbind(accuracyMD, accutmp[[2]])
+          accuracy <- rbind(accuracy, accutmp[[1]])
+          bin_loss <- total_loss  
+        }
       }
       FAILURE <- FALSE
       print(paste0("The final percent change ", round(pctInc,6), 
@@ -1642,9 +1654,6 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
     lllst <- rbind(lllst, LLvec)
     iter <- iter + 1
     
-    # if(iter >= 1000 ){
-    #   print("Stop check")
-    # }
     ## Randomize the community weights update
     s <- randomizeIdx(N, randomize)
     
@@ -1673,17 +1682,10 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
     sigmaSqout <- c1[[3]]
     LinLL <- c1[[4]]
     Z_in <- 0
-    # 
-    # if(all(betaout == 0)){
-    #   print("all betaout 0")
-    # }
-    # if(all(Wout == 0)){
-    #   print("all wout 0")
-    # }
+   
     
     if(test == TRUE){
       
-      #arilst <- c(arilst, ARIop(Ftot,Htot,orig,nc,N))
       C <- as.matrix(memOverlapCalc(Ftot,Htot,delta, N, nc),ncol = nc )
       OIn <- OmegaIdx(G, C, N, nc, nc_sim)
       
@@ -1691,12 +1693,6 @@ CoDA <- function(G,nc, k = c(0, 0) ,o = c(0, 0) , N,  alpha, lambda_lin, lambda_
       MSEtmp <- MSEop(Ftot, Htot, covOrig_cont, betaout,N, dir, o_in,o_out, missValsout_cont)
       mseMD <- rbind(mseMD, MSEtmp[[1]])
       mse <- rbind(mse, MSEtmp[[2]])
-      # print(paste0(" delta ",round(OIn,4),
-      #               " delta*1.5 ",round(OmegaIdx(G, Ftot, Htot, N, delta*1.5,nc, nc_sim),4),
-      #               " delta*2 ",round(OmegaIdx(G, Ftot, Htot, N, delta*2,nc, nc_sim),4),
-      #               " delta*3 ",round(OmegaIdx(G, Ftot, Htot, N, delta*3,nc, nc_sim),4),
-      #               " delta*4 ",round(OmegaIdx(G, Ftot, Htot, N, delta*4,nc, nc_sim),4)))
-      #print(paste0(" delta ",round(OIn,4), " MSE ",paste0(round(MSEtmp[[2]],3),collapse = ",") ))
       accutmp <- AccuracyCalc(k_out,Wout,Ftot, Htot,covOrig_bin,dir,missValsout_bin)
       accuracyMD <- rbind(accuracyMD, accutmp[[1]])
       accuracy <- rbind(accuracy, accutmp[[2]])
