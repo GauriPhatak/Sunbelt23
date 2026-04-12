@@ -15,7 +15,7 @@ library(png)
 
 source(paste0(getwd(),"/Code/HelperFuncs.R"))
 
-aggr <- readRDS(paste0(getwd(),"/Code/MapNetworks/aggr_10_7.rds"))
+aggr <- readRDS(paste0(getwd(),"/Code/MapNetworks/aggr_04-10.rds"))
 
 ##Loading city limits data 
 hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
@@ -65,10 +65,20 @@ id <- unique(hwd$st_hwy_idx)
 
 ct_hull <- st_convex_hull(ct)
 ct_hull_buff <- list()
-dist <- c(10,15,20,25,30,35,40,45,50)
+dist <- seq(5,100,by = 5)#c(10,15,20,25,30,35,40,45,50)
+type = "Full"
 for(i in 1:length(dist)){
   ct_hull_buff[[i]] <- st_buffer(ct_hull, dist  = dist[i]*1000)
 }
+
+## Creating basic plots for dissertation
+## creating plot of highways and cities
+Hwy_cities <- ggplot()+
+  geom_sf(data = ct, aes(geometry = shape), color = "red", size =1)+
+  geom_sf(data = hwd, aes(geometry = shape), color = "black")
+
+ggsave(paste0(getwd(),"/Code/MapNetworks/Cities_Highways.pdf"))
+
 
 #Using the find edges function to find the edges between the different convex hulls
 edges_hull<- list()
@@ -81,7 +91,7 @@ for (i in 1:length(dist)) {
   hwy_grph <- graph_from_data_frame(d = edgesfull ,vertices = ct$city_name, directed = FALSE)
   
   mults <- simplify_and_colorize(hwy_grph)
-  pdf(file= paste0(getwd(),"/Code/MapNetworks/HighWayGraphHull",dist[i],"km_WS_SR_RC.pdf"))
+  pdf(file= paste0(getwd(),"/Code/MapNetworks/HighWayGraph",type,dist[i],"km_WS_SR_RC.pdf"))
   par(mar=c(0,0.2,0,0.2)+.55)
   plot.igraph(mults, vertex.label = NA, vertex.size = 1, 
               edge.width = 1, layout = city_cntr)
@@ -118,7 +128,7 @@ for (i in 1:length(dist)) {
   V(DirectGrph)$included <- ifelse(incl == TRUE, "orangered3", "grey37")
   DirectGrph <- simplify(DirectGrph)
   ## Save the graph for use
-  saveRDS(DirectGrph, paste0(getwd(), "/Code/MapNetworks/ShortestPathGrph",dist[i],"Km_WS_SR_RC.rds"))
+  saveRDS(DirectGrph, paste0(getwd(), "/Code/MapNetworks/ShortestPathGrph",type,dist[i],"Km_WS_SR_RC.rds"))
   
   G_FullGrph <- delete_vertices(DirectGrph, V(DirectGrph)[included == "grey37"])
   O_attr <- as.data.frame(cbind(as.data.frame(vertex_attr(DirectGrph)), city_cntr))
@@ -129,9 +139,9 @@ for (i in 1:length(dist)) {
   
   G_FullGrph <- set_vertex_attr(G_FullGrph, name = "X", value = as.matrix(fg_attr$X ))
   G_FullGrph <- set_vertex_attr(G_FullGrph, name = "Y", value = as.matrix(fg_attr$Y ))
-  saveRDS(G_FullGrph, paste0(getwd(),"/Code/MapNetworks/G_HullGrph",dist[i],"Km_WS_SR_RC.rds"))
+  saveRDS(G_FullGrph, paste0(getwd(),"/Code/MapNetworks/G_",type,"Grph",dist[i],"Km_WS_SR_RC.rds"))
   
-  pdf(file= paste0(getwd(),"/Code/MapNetworks/G_HullGraph",dist[i],"km_WS_SR_RC.pdf"))
+  pdf(file= paste0(getwd(),"/Code/MapNetworks/G_",type,"Graph",dist[i],"km_WS_SR_RC.pdf"))
   par(mar=c(0,0.2,0,0.2)+.55)
   plot.igraph(G_FullGrph, vertex.label = NA, vertex.size = 1,
               vertex.color = V(G_FullGrph)$included, 
@@ -144,3 +154,24 @@ for (i in 1:length(dist)) {
 
 saveRDS(O_attr,paste0(getwd(),"/Code/MapNetworks/O_attr_WS_SR_RC.rds"))
 
+
+allhulls <- ggplot()+
+  geom_sf(data = hwd, aes(geometry = shape), color = "gray36")+
+  geom_sf(data = ct_hull_buff[[5]], aes(geometry = shape), color = "pink4") +
+  geom_sf(data = ct_hull_buff[[4]], aes(geometry = shape), color = "yellow3") +
+  geom_sf(data = ct_hull_buff[[3]], aes(geometry = shape), color = "green") +
+  geom_sf(data = ct_hull_buff[[2]], aes(geometry = shape), color = "blue") +
+  geom_sf(data = ct_hull_buff[[1]], aes(geometry = shape), color = "red") +
+  geom_sf(data = ct, aes(geometry = shape), color = "purple")
+  geom_sf(data = hwd, aes(geometry = shape), color = "gray56")
+  
+ggsave(paste0(getwd(),"/Code/MapNetworks/allhulls.pdf"))
+  
+hull35 <- ggplot()+
+  geom_sf(data = hwd, aes(geometry = shape), color = "gray36")+
+  geom_sf(data = ct_hull_buff[[4]], aes(geometry = shape), color = "darkgreen")+
+  geom_sf(data = ct, aes(geometry = shape), color = "purple")
+
+ggsave(paste0(getwd(),"/Code/MapNetworks/hull35.pdf"))
+
+  
