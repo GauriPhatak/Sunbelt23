@@ -36,7 +36,6 @@ library(png)
 ```{r, warning=FALSE}
 ##Loading city limits data 
 hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/OSDLDataExtract/data.gdb"
-#rgdal::ogrListLayers(hwpath)
 ct <- st_read(hwpath, layer = "City_Limits__2016_")
 ct <- st_transform(ct, 2994)
 
@@ -64,13 +63,12 @@ WarmSprings <- rename(WarmSprings, shape = geometry)
 WarmSprings <- st_cast(WarmSprings, "MULTIPOLYGON")
 
 ct <- bind_rows(ct, sunriver,Rockcreek, WarmSprings)
-## reading the 2024 city limits using terra library
-#citylim_path <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/City_Limits_2022/City_Limits.shp"
-#ct <- sf::st_read(citylim_path)
 
 ## Loading covid levels data
-getwd()
-WD <- paste0(getwd(),"/Combined_aggregated_OHA_normalized_2025-10-07.xlsx")
+```
+
+```{r}
+WD <- paste0(getwd(),"/Combined_aggregated_OHA_normalized_2026-04-10.xlsx")
 #"/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/7.11.25/Combined_all_data_2025-07-11.xlsx")
 
 dat <- readxl::read_excel(WD,sheet = "COVID", guess_max = 10000)
@@ -82,11 +80,7 @@ df <- dat %>% filter(!(Location %in%c("KF S Suburban", "Portland Tryon Creek", "
 ct_sbst <- ct$city_name[ct$city_name %in% unique(df$Location)]
 
 unique_loc <- unique(df$Location)
-
-## Can include data in sample type "Influent" , "Sewerage" , "Pump Station" , "Stormwater"
-#df <- df[df$SampleType %in% c("Influent" , "Sewerage" , "Pump Station" , "Stormwater"),]
-#df_OHA <- df_OHA[df_OHA$QualCall == "Negative",]
-
+unique_week <- table(df$week)
 df <- df[!(is.na(df$Location)),]
 
 gbg <- data.frame(table(df$Location, df$County))
@@ -95,7 +89,6 @@ gbg <- gbg[gbg$Freq > 0,]
 ## Removing gilliam county
 df <- df[!(df$County == "Gilliam County"),]
 
-#gbg <- df_OHA[df_OHA$Location == "Corvallis",]
 ## remove columns that we wont use
 df <- df %>%
   dplyr::mutate(Date = lubridate::ymd(Sample_Date )) %>%
@@ -127,7 +120,7 @@ aggr <- df %>%
                    across(everything() ,first)) %>% 
   dplyr::select(-c(LogCopiesPerL))
 
-saveRDS(aggr, "aggr_10_7.rds")
+saveRDS(aggr, "aggr_04-10.rds")
 
 ## Loading highway data
 hwpath = "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/RScripts/HighwayDat/data.gdb"
@@ -209,19 +202,6 @@ ct_unCntd <- ct[prsnt,]
 ct_unCntd$hwy_id <- nearest$nearest
 
 ## Creating a bipartite network using the data
-# names <- c(ct_unCntd$city_name, unique(ct_unCntd$hwy_id))
-# types <- c(rep(0, length(ct_unCntd$city_name)), rep(1, length(unique(ct_unCntd$hwy_id))))
-# names(types) <- names
-# biEdges <- pivot_longer(data.frame(cbind(ct_unCntd$city_name, 
-#                                          ct_unCntd$hwy_id)), 
-#                         cols = everything())
-# g <- make_bipartite_graph(types, c(biEdges$value))
-# 
-# LO = layout_as_bipartite(g)
-# LO = LO[,c(2,1)]
-# 
-# g %>%
-#   plot(vertex.size = 1,layout = LO)
 #create data frame with 0 rows and 5 columns
 df <- data.frame(matrix(ncol = 3, nrow = 0))
 
@@ -256,31 +236,10 @@ finalGrph <- finalGrph %>%
 
 finalGrph <- st_coordinates(st_centroid(finalGrph))
 
-# 
-# ## find the nearest points between the cities and the highways
-# nearestPts <- st_nearest_points(ct_unCntd, df, pairwise = TRUE)
-# 
-# nearestPts <- st_as_sf(nearestPts)
-# st_crs(nearestPts) <- st_crs(fin)
-# nearestLine <- nearestPts
-# 
-# nearestPts <- st_cast(nearestPts,"POINT")
-# 
-# nearestPts <- nearestPts[seq(2,104, 2),]
-# 
-# nearestPts$city <- df$nearest.city_names.i.
-# nearestPts$hwy <- df$hwy_id
-# ggplot()+
-#   geom_sf(data = fin, aes(geometry = geometry) )+
-#   geom_sf(data = ct, aes(geometry = shape), color = "green") +
-#   geom_sf(data = nearestPts, aes(geometry = x), color = "purple", size = 1.5)+
-#   geom_sf(data=nearestLine, aes(geometry = x), color = "red")
-
 ## Get coordinates for the centroid of the cities.
 city_cntr <- st_coordinates(st_centroid(ct))
 
 hwy_grph <- graph_from_data_frame(d = edges,vertices = ct$city_name, directed = FALSE)
-#coords <- layout_(hwy_grph, city_cntr)
 plot.igraph(hwy_grph, vertex.size = 1, edge.color = edges$hwy_id, edge.width = 3, layout = city_cntr)
 
 ```
@@ -290,13 +249,9 @@ Adding the points to the network of cities.
 
 
 ```{r}
-
-
 ## Get coordinates for the centroid of the cities.
 city_cntr <- st_coordinates(st_centroid(ct))
-
 hwy_grph <- graph_from_data_frame(d = edges,vertices = ct$city_name, directed = FALSE)
-#coords <- layout_(hwy_grph, city_cntr)
 plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 3, edge.color = edges$V3, edge.width = 3, layout = city_cntr)
 
 ```
@@ -314,13 +269,11 @@ The depth value for the clustering tree d set to 16000 gives the best possible c
 int <- st_intersection(fin)
 
 mulpt <- st_collection_extract(int, "POINT")
-#cent_pt <- st_centroid(mulpt)
 pt <- st_cast(mulpt, "POINT")
 st_crs(mulpt) <- st_crs(fin)
 
 crsVal <- st_crs(fin)
 ## FIND THE CENTROID OF EACH ENTRY IN MULPT
-#cent <- st_centroid(mulpt)
 ## Use the clustering function on points where there are multiple intersections in the same highways
 gbg <- pt %>% group_by(origins) %>% 
   dplyr::summarise(cnt = n()) %>% 
@@ -354,45 +307,33 @@ for (i in 1:length(gbg$origins)) {
       st_cast("POINT")
     st_crs(pt_coords) <- st_crs(hwd)
     pt_coords$clust <- cutree(hc, h=d)
-    #print(paste0(tmp$origins, "  ", max(pt_coords$clust)))
     for (j in 1:max(pt_coords$clust)) {
       val <- pt_coords[pt_coords$clust == j , ]
-      #val <- st_as_sf(val, coords = c("X","Y"), crs = 4326)
       val <- st_combine(val)
       val <- st_centroid(val)
       cent <- rbind(cent, cbind(i,val))
     }
   }
   else {
-      #val <- st_as_sf(pt_coords, coords = c("X","Y"), crs = 4326)
-      #val <- st_combine(val)
-      #val <- st_centroid(val)
-      #cent <- rbind(cent, cbind(i,val))
     val <- tmp %>%
       st_cast("POINT") %>%
       st_combine() %>%
       st_centroid()
-    #st_crs(tmp) <- st_crs(cent)
     cent <- rbind(cent, cbind(i, val))
-   # print(paste0(tmp$origins, "  ", "< 11"))
-
   }
 }
 
 cent <- as.data.frame(cent[-1,])
 colnames(cent) <- c("id","geometry")
 cent <- st_as_sf(cent, crs = crsVal)
-#cent %>% st_set_crs(4326)
-#fin %>% st_set_crs(4326)
-#st_crs(fin) <- st_set_crs(hwd)
+
 
 ggplot()+
-#  geom_sf(data = mulpt, aes(geometry = geometry), color = "blue", size =3)+
-  geom_sf(data = cent, aes(geometry = geometry), color = "red", size =1)+
-  #geom_sf(data = centOld, aes(geometry = geometry), color = "green", size =1)+
+  geom_sf(data = ct, aes(geometry = shape), color = "red", size =1)+
   geom_sf(data = hwd, aes(geometry = shape), color = "black")
+
+
 ggsave("HighwayOrig_WS_SR_RC.pdf")
-#centOld <- cent
 ```
 
 Need to figure out what that lone red point is in the corner. 
@@ -414,14 +355,6 @@ ct_cent <- st_centroid(ct)
 ct_buf10 <- st_buffer(ct_cent, dist = 10000)
 ct_buf20 <- st_buffer(ct_cent, dist = 20000)
 ct_buf30 <- st_buffer(ct_cent, dist = 30000)
-
-
-
-## find which highways intersect with the buffers
-#int10 <- st_intersects(ct_buf10, fin)
-#int20 <- st_intersects(ct_buf20, fin)
-#int30 <- st_intersects(ct_buf30, fin)
-
 ```
 
 ```{r}
@@ -453,18 +386,14 @@ findEdges <- function(geom, hwd, id, type){
       dplyr::summarise(m = median(beg_mp_no)) %>%
       arrange(m)
     #Subset of cities in the data
-    #ct$city_name[ct$city_name %in% unique(int$city_name)]
     sortedV$city_nameConn <- c(sortedV$city_name[-1], 0)
     
-    sortedCT <- as.matrix(cbind(sortedV$city_name, sortedV$city_nameConn), ncol =2 )#[1: length(sortedV$city_name)-1,]
-    #print(hwy_id)
-    #print(sortedCT)
-    
+    sortedCT <- as.matrix(cbind(sortedV$city_name, sortedV$city_nameConn), ncol =2 )
+
     for (i in 1:dim(sortedV)[1]-1) {
       dist <- c(dist, distMat[sortedCT[i,1], sortedCT[i,2]])
     }
     ##Cannot use the milepost numbers as distance metric... it's different for different highways
-    #dist <- c(sortedV$m[-1],0) - sortedV$m
     edges <- rbind(edges,cbind(sortedV$city_name, sortedV$city_nameConn,
                                rep(hwy_id,length(sortedV$city_name)),
                                dist)[1:length(sortedV$city_name)-1,])
@@ -491,19 +420,16 @@ ggplot()+
 
 ## Highway graph for circle around data of 10 kms
 hwy_grph <- graph_from_data_frame(d = edges10,vertices = ct$city_name, directed = FALSE)
-#coords <- layout_(hwy_grph, city_cntr)
 plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.color  = NULL,edge.color = edges10$hwy_id, edge.width = 1, layout = city_cntr)
 
 
 ## Highway graph for circle around data of 20 kms
 hwy_grph <- graph_from_data_frame(d = edges20,vertices = ct$city_name, directed = FALSE)
-#coords <- layout_(hwy_grph, city_cntr)
 plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,vertex.frame.color  = NULL, edge.color = edges20$hwy_id, edge.width = 1, layout = city_cntr)
 
 
 ## Highway graph for circle around data of 30 kms
 hwy_grph <- graph_from_data_frame(d = edges30,vertices = ct$city_name, directed = FALSE)
-#coords <- layout_(hwy_grph, city_cntr)
 plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.color  = NULL,edge.color = edges30$hwy_id, edge.width = 1, layout = city_cntr)
 
 
@@ -522,11 +448,6 @@ ct_hull_buff30 <- st_buffer(ct_hull, dist  = 30000)
 ct_hull_buff40 <- st_buffer(ct_hull, dist  = 40000)
 ct_hull_buff50 <- st_buffer(ct_hull, dist  = 50000)
 
-
-## find which highways intersect with the convex hull buffers
-#int_hull10 <- st_intersects(ct_hull_buff10, fin)
-#int_hull20 <- st_intersects(ct_hull_buff20, fin)
-#int_hull30 <- st_intersects(ct_hull_buff30, fin)
 ```
 
 ```{r, warning=FALSE}
@@ -550,34 +471,29 @@ ggplot()+
   geom_sf(data = ct_hull_buff30, aes(geometry = shape), color = "green") +
   geom_sf(data = ct_hull_buff20, aes(geometry = shape), color = "blue") +
   geom_sf(data = ct_hull_buff10, aes(geometry = shape), color = "red") +
-    geom_sf(data = ct_hull, aes(geometry = shape), color = "purple")
+  geom_sf(data = ct_hull, aes(geometry = shape), color = "purple")
 
 
 ## Highway graph for circle around data of 10 kms
 hwy_grph <- graph_from_data_frame(d = edges_hull10,vertices = ct$city_name, directed = FALSE)
-#coords <- layout_(hwy_grph, city_cntr)
 plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.width  = 0, vertex.color = "black",edge.color = edges_hull10$hwy_id, edge.width = 1, layout = city_cntr)
 
 
 ## Highway graph for circle around data of 20 kms
 hwy_grph <- graph_from_data_frame(d = edges_hull20,vertices = ct$city_name, directed = FALSE)
-#coords <- layout_(hwy_grph, city_cntr)
 plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.width  = 0, vertex.color = "black",edge.color = edges_hull20$hwy_id, edge.width = 1, layout = city_cntr)
 
 
 ## Highway graph for circle around data of 30 kms
 hwy_grph <- graph_from_data_frame(d = edges_hull30,vertices = ct$city_name, directed = FALSE)
-#coords <- layout_(hwy_grph, city_cntr)
 plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.width  = 0, vertex.color = "black",edge.color = edges_hull30$hwy_id, edge.width = 1, layout = city_cntr)
 
 ## Highway graph for circle around data of 40 kms
 hwy_grph <- graph_from_data_frame(d = edges_hull40,vertices = ct$city_name, directed = FALSE)
-#coords <- layout_(hwy_grph, city_cntr)
 plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.width  = 0, vertex.color = "black",edge.color = edges_hull40$hwy_id, edge.width = 1, layout = city_cntr)
 
 ## Highway graph for circle around data of 50 kms
 hwy_grph <- graph_from_data_frame(d = edges_hull50,vertices = ct$city_name, directed = FALSE)
-#coords <- layout_(hwy_grph, city_cntr)
 plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, vertex.frame.width  = 0, vertex.color = "black",edge.color = edges_hull50$hwy_id, edge.width = 1, layout = city_cntr)
 ```
 
@@ -628,13 +544,13 @@ plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1, edge.width = 1, vertex
 ```
 
 
-# Combining the 5 networks and color code them.
+# Combining the n networks and color code them.
 
 
 ```{r, fig.width=8, fig.height=8}
 
 options(dplyr.summarise.inform = FALSE)
-edgesfull <- rbind(edges_hull10, edges_hull20, edges_hull30, edges_hull40, edges_hull50)
+edgesfull <- rbind(edges_hull10, edges_hull20, edges_hull30)
 hwy_grph <- graph_from_data_frame(d = edgesfull ,vertices = ct$city_name, directed = FALSE)
 
 plot.igraph(hwy_grph,vertex.label = NA, vertex.size = 1, edge.color = factor(edgesfull$type),
@@ -649,10 +565,9 @@ hwy_grph <- graph_from_data_frame(d = common5 ,vertices = ct$city_name, directed
 
 plot.igraph(hwy_grph,vertex.label = NA, vertex.size = 1, edge.color = ecols,
             edge.width = 1, layout = city_cntr)
-mults <- simplify_and_colorize(hwy_grph)#which_multiple(hwy_grph)
+mults <- simplify_and_colorize(hwy_grph)
 plot.igraph(mults, vertex.label = NA, vertex.size = 1, 
             edge.width = 1, layout = city_cntr)
-#legend("bottomright", legend = levels(common3$n),pch =16, col = ecols)
 
 ```
 
@@ -661,8 +576,8 @@ plot.igraph(mults, vertex.label = NA, vertex.size = 1,
 
 hwy_grph <- graph_from_data_frame(d = edgesfull ,vertices = ct$city_name, directed = FALSE)
 
-mults <- simplify_and_colorize(hwy_grph)#which_multiple(hwy_grph)
-pdf(file= "HighWayGraph5_WS_SR_RC.pdf")
+mults <- simplify_and_colorize(hwy_grph)
+pdf(file= "HighWayGraph_30km_WS_SR_RC.pdf")
 par(mar=c(0,0.2,0,0.2)+.55)
 plot.igraph(mults, vertex.label = NA, vertex.size = 1, 
             edge.width = 1, layout = city_cntr)
@@ -677,12 +592,8 @@ dev.off()
 ```{r}
 
 #WD <- paste0(fs::path_home(), "/Box/Preliminary Results Coronavirus Sewer Surveillance/ddPCR results/Covid/R output data/7.11.25/Combined_all_data_2025-07-11.xlsx")
-  #"C:\\Users\\gauph\\Box\\Preliminary Results Coronavirus Sewer Surveillance\\Data files\\covid data files\\TestingSandbox\\RScripts"
 dat <- readRDS("aggr_10_7.rds")
-#readxl::read_excel(WD,sheet = "COVID", guess_max = 10000)
-#dat <- readRDS(paste(WD, "\\..\\COVID_Data_ROutput\\ProcessedCOVIDDataInfo.rds", sep= ""))
-#df <- do.call(rbind.data.frame, sapply(dat, '[', 3))
-#df$Date <- as.Date(as.integer(df$Date), origin = "1970-01-01")
+
 ## cities present in ct and wastewater data
 ct_sbst <- ct$city_name[ct$city_name %in% unique(dat$Location)]
 
@@ -692,24 +603,21 @@ df_sbst <- dat[dat$Location %in% ct_sbst, ]
 
 
 ## Using the subset data for descriptive analysis
-
 ```{r, fig.width=7, fig.height =7}
 #Coloring based on the cities considered for measurement. 
 ## Using the 50 km hull - roadway intersection network to create the visualizations.
 
 ## Highway graph for circle around data of 50 kms
-hwy_grph <- graph_from_data_frame(d = edges_hull50,vertices = ct$city_name, directed = FALSE)
-#coords <- layout_(hwy_grph, city_cntr)
-#plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,vertex.color = "black", edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
+hwy_grph <- graph_from_data_frame(d = edges_hull30,vertices = ct$city_name, directed = FALSE)
 
 incl <- V(hwy_grph)$name %in% ct_sbst
 V(hwy_grph)$included <- ifelse(incl == TRUE, "orangered3", "grey37")
-E(hwy_grph)$weight <- edges_hull50$distance
-#hwy_grph<- simplify(hwy_grph)
+E(hwy_grph)$weight <- edges_hull30$distance
 
 plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,vertex.color = V(hwy_grph)$included, vertex.frame.color = V(hwy_grph)$included, edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
 
 ```
+
 original city from the 
 start at some arbitrary city. find all the paths to red cities.
 
@@ -723,18 +631,11 @@ for each path check if the path goes through a red city.
 ## Using the 30 km hull - roadway intersection network to create the visualizations.
 
 ## Highway graph for circle around data of 30 kms
-#common5 <- edgesfull %>% group_by(to,from, hwy_id) %>% dplyr::summarise( n = n(), .group = "keep") %>% ungroup()
-#common5$n <- as.factor(common5$n)
-#ecols <- c("red", "blue","green","yellow","pink4")[common5$n]
-#common5$ecols <- ecols
 hwy_grph <- graph_from_data_frame(d = edgesfull ,vertices = ct$city_name, directed = FALSE)
-#coords <- layout_(hwy_grph, city_cntr)
-#plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,vertex.color = "black", edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
 
 incl <- V(hwy_grph)$name %in% ct_sbst
 V(hwy_grph)$included <- ifelse(incl == TRUE, "orangered3", "grey37")
 E(hwy_grph)$weight <- edgesfull$distance
-#hwy_grph<- simplify(hwy_grph)
 
 plot.igraph(hwy_grph, vertex.label = NA, vertex.size = 1,vertex.color = V(hwy_grph)$included, vertex.frame.color = V(hwy_grph)$included, edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
 
@@ -777,7 +678,7 @@ plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
             vertex.frame.color = V(DirectGrph)$included,
             edge.color = "darkgrey", edge.width = 1, layout = city_cntr)
 ## Save the graph for use
-saveRDS(DirectGrph, "ShortestPathGrph5_WS_SR_RC.rds")
+saveRDS(DirectGrph, "ShortestPathGrph30Km_WS_SR_RC.rds")
 ```
 
 ```{r}
@@ -788,37 +689,27 @@ city_cntr <- ct %>%
   st_transform(4326) %>% 
   st_coordinates()
 
-O_attr <- as.data.frame(cbind(as.data.frame(vertex_attr(directGrph)), city_cntr))
+O_attr <- as.data.frame(cbind(as.data.frame(vertex_attr(DirectGrph)), city_cntr))
 saveRDS(O_attr,"O_attr_WS_SR_RC.rds")
 
-plot.igraph(directGrph, vertex.label = NA, vertex.size = 1,
-            vertex.color = V(directGrph)$included, 
-            vertex.frame.color = V(directGrph)$included, 
+plot.igraph(DirectGrph, vertex.label = NA, vertex.size = 1,
+            vertex.color = V(DirectGrph)$included, 
+            vertex.frame.color = V(DirectGrph)$included, 
             edge.color = "darkgrey", edge.width = 1, 
             layout = city_cntr)
 
-
-attr <- O_attr[O_attr$name %in% aggr_102$Location,]
-attr <- left_join(attr, aggr_102 %>% dplyr::select(Location, meanLogCopiesPerL), by=join_by(name == Location))
-
-G_subGrph <- induced_subgraph(directGrph, vids = attr$name)
-plot.igraph(G_subGrph, vertex.label = NA, vertex.size = 1,
-            vertex.color = V(G_subGrph)$included, 
-            vertex.frame.color = V(G_subGrph)$included, 
-            edge.color = "darkgrey", edge.width = 1, 
-            layout = as.matrix(attr[,3:4]))
 ```
 
 
 ```{r}
-G_FullGrph <- delete_vertices(directGrph, V(directGrph)[included == "grey37"])
+G_FullGrph <- delete_vertices(DirectGrph, V(DirectGrph)[included == "grey37"])
 fg_attr <- O_attr[O_attr$included == "orangered3",]
 fg_attr <- fg_attr[fg_attr$name %in% unique(aggr$Location), ]
 plot.igraph(G_FullGrph, vertex.label = NA, vertex.size = 1,
             vertex.color = V(G_FullGrph)$included, 
             vertex.frame.color = V(G_FullGrph)$included, 
             edge.color = "darkgrey", edge.width = 1, 
-            layout = city_cntr[V(directGrph)[included != "grey37"], ])
+            layout = city_cntr[V(DirectGrph)[included != "grey37"], ])
 G_FullGrph <- induced_subgraph(G_FullGrph,vids = fg_attr$name)
 plot.igraph(G_FullGrph, vertex.label = NA, vertex.size = 1,
             vertex.color = V(G_FullGrph)$included, 
@@ -833,271 +724,16 @@ plot.igraph(G_FullGrph, vertex.label = NA, vertex.size = 1,
 df <- as.data.frame(vertex_attr(G_FullGrph))
 
 ## joining the data and creating na's for where there is no data
-fg_attr <- left_join(fg_attr,aggr_102 %>% 
-                       dplyr::select(meanLogCopiesPerL, Location), 
-                     by = join_by(name == Location))
+# fg_attr <- left_join(fg_attr,aggr_102 %>% 
+#                        dplyr::select(meanLogCopiesPerL, Location), 
+#                      by = join_by(name == Location))
 
-G_FullGrph <- set_vertex_attr(G_FullGrph,name = "meanLogCopiesPerL", value = fg_attr$meanLogCopiesPerL )
+#G_FullGrph <- set_vertex_attr(G_FullGrph,name = "meanLogCopiesPerL", value = fg_attr$meanLogCopiesPerL )
 G_FullGrph <- set_vertex_attr(G_FullGrph, name = "X", value = as.matrix(fg_attr$X ))
 G_FullGrph <- set_vertex_attr(G_FullGrph, name = "Y", value = as.matrix(fg_attr$Y ))
-#G <- readRDS("G_FullGrph.rds")
-saveRDS(G_FullGrph, "G_FullGrph5_WS_SR_RC.rds")
+saveRDS(G_FullGrph, "G_FullGrph30Km_WS_SR_RC.rds")
 
 ```
-
-## Creating a geographical database of different variables for the cities under consideration
-
-```{r}
-
-## Locations under consideration
-ct_names <- unique(dat$Location)
-ct_names <- ct_names[!is.na(ct_names)]
-
-### Add code to remove other Locations that are not of interest.
-####****************#######
-####*
-geo_df <- data.frame(matrix(0, nrow = 0, ncol = length(ct_names)))
-colnames(geo_df) <- ct_names
-
-## Setting the variables of interest as the row names 
-## Variables of interest added here. Tracking two lists. One of full name and 2nd of variable name for easier coding.
-## Named list
-
-names <- c("Rural/Urban/Suburban", "Number of primary schools",
-           "Number of 2ndry schools","Number of highschools", 
-           "Number of Colleges/Universities","Number of tourists per year",
-           "Geographical distinctions","One of 9 different regions",
-           "Prone to a particular natural disaster","Number of rivers ",
-           "Coastal region?")
-
-## Variables name
-geo_df_rowNames <- c() 
-
-```
-
-From Spatial dataset website:
-
-Levee data:
-https://spatialdata.oregonexplorer.info/geoportal/details;id=c448ffe2e1dc4ca78506e64d83285a76
-
-Tsunami protection data:
-https://spatialdata.oregonexplorer.info/geoportal/details;id=67ed182d110d4100adbbdd99bf4b2e92
-
-Pacific Northwest Quantitative Wildfire Risk Assessment (Oregon Data) - 2018
-https://spatialdata.oregonexplorer.info/geoportal/details;id=d437b41e36254af4a97ceda3a0392632
-
-Communities at Risk: Hazard Rating
-https://spatialdata.oregonexplorer.info/geoportal/details;id=8f9280aaa51844408e79dfe471dcbce8
-
-Communities at Risk: Hazard: Elevation
-https://spatialdata.oregonexplorer.info/geoportal/details;id=450e30809aef4c1aad3f6e74d2ecbd43
-
-Oregon Conservation Strategy Ecoregions - 2016
-https://spatialdata.oregonexplorer.info/geoportal/details;id=3c7862c4ae664993ad1531907b1e413e
-
-Water rights:
-https://geohub.oregon.gov/maps/21ac9a9431a14be4804badbec0cdf529/about
-
-state park boundaries:
-https://geohub.oregon.gov/maps/c1d937bae66e41068721f4474a8811a6
-
-Exterprise Zones:
-https://geohub.oregon.gov/datasets/oregon-geo::enterprise-zones-2024/about
-
-Structural fire districts
-https://geohub.oregon.gov/datasets/6e98f7ca2bb4424d9c6372f74cd47ecf_68/explore?location=44.034180%2C-120.785050%2C7.41
-
-Watershed council boundaries:
-https://geohub.oregon.gov/datasets/83f9e6d8966c45cc969a236f6baa2a0a_0/explore?location=44.054641%2C-120.574533%2C7.45
-
-Landslide Information database:
-https://geohub.oregon.gov/maps/2052a56a76c54c1ab261edb04a5d05bb/about
-
-Soil and water conservatin zone:
-https://geohub.oregon.gov/datasets/cfbd557debe54ce0956646fde6b68705_0/explore?location=44.054663%2C-120.515050%2C7.45
-
-Hazardous material storage sites:
-https://geohub.oregon.gov/datasets/f9d7eb16f6374e5f934a07acb1adaebf_0/explore?location=44.044037%2C-120.612500%2C6.47
-
-Oregon wetland database:
-https://geohub.oregon.gov/maps/c2f5f74b4e6a4d4f86b4e2bd9f6fe872/about
-
-Electric transmission lines:
-https://geohub.oregon.gov/datasets/765796b44c0d4bff8356a5e752cb68cf_0/explore?location=43.973849%2C-120.542187%2C7.27
-
-National forest boundaries:
-https://geohub.oregon.gov/datasets/b479e4bd7d70439a87e0230c99bddce5_0/explore?location=34.117737%2C-107.853800%2C4.02
-
-Acute care hospitals in Oregon:
-https://geohub.oregon.gov/datasets/3f55dc8837fd438a991c0e1e6ba98731_0/explore?location=44.372219%2C-120.305121%2C7.28
-
-Law enforcement facilities:
-https://geohub.oregon.gov/datasets/f6c921f7183e4f32b39a45f8c7c5610c_0/explore?location=44.029996%2C-120.773600%2C7.44
-
-Oregon Ecoregions:
-https://geohub.oregon.gov/datasets/c03cb0885c8c41219f9810c8a45b38e1_0/explore?location=44.053681%2C-120.514713%2C7.45
-
-Building footprints:
-https://geohub.oregon.gov/datasets/d8f8d8317615462698a1d811caa3a43a_0/explore?location=44.519547%2C-123.295485%2C11.07
-
-Rail tracks:
-https://geohub.oregon.gov/datasets/49ab3092bff64bbfab7b048c8608bb55_143/explore?location=43.978286%2C-120.584850%2C7.38
-
-Census tracts:
-https://geohub.oregon.gov/datasets/d589210147204f0286289d1636aa86ed_0/explore?location=44.083694%2C-120.583402%2C7.43
-
-Dam facilities:
-https://geohub.oregon.gov/datasets/bc0fa0f7c58a46fba44648f914f6b5b6_0/explore?location=44.362451%2C-120.605794%2C7.23
-
-Urban boundaries:
-https://geohub.oregon.gov/datasets/a020f978338647b59b9bb19590c82497_0/explore?location=44.053832%2C-120.728027%2C7.47
-
-
-
-```{r}
-## Inspecting leevee data
-getwd()
-df <- st_read("../Data/EstuarineLeveeProtectedLandsOCMP2011/EstuarineLeveeProtectedLandsOCMP2011.shp")
-
-ggplot() + 
-  geom_sf(data = df, size = 1.5, color = "black", fill = "cyan1") + 
-  ggtitle("Leevee data") + 
-  coord_sf()
-
-```
-
-
-
-```{r, fig.height=10, fig.width=14}
-library(lubridate)
-library(RColorBrewer)
-library(ggiraph)
-library(plotly)
-
-df_OHA <- df[df$Study == "OHA",]
-#df_OHA <- df_OHA[df_OHA$QualCall == "Negative",]
-
-df_OHA <- df_OHA[!(is.na(df_OHA$Location)),]
-
-df_OHA <- df_OHA[df_OHA$Location %in% ct_sbst,]
-
-df_OHA <- df_OHA[df_OHA$CopiesPerul > 0 , ]
-
-df_OHA <- df_OHA[!is.na(df_OHA$SampleType),]
-
-df_OHA <- df_OHA[!(is.na(df_OHA$County)),]
-
-gbg <- data.frame(table(df_OHA$Location, df_OHA$County))
-gbg <- gbg[gbg$Freq > 0,]
-
-## Removing gilliam county
-
-df_OHA <- df_OHA[!(df_OHA$County == "Gilliam County"),]
-
-#gbg <- df_OHA[df_OHA$Location == "Corvallis",]
-
-# df_OHA <- df_OHA %>%
-#   dplyr::mutate(year = lubridate::year(Date), 
-#                 month = lubridate::month(Date), 
-#                 day = lubridate::day(Date))
-
-df_OHA <- df_OHA %>%
-  dplyr::mutate(Month_Yr = format(as.Date(Date),"%Y-%m")) %>% 
-  mutate(weekno = as.numeric(Date - min(Date, na.rm = TRUE)),
-         weekno = (weekno %/% 7) +1) %>%
-  group_by(weekno) %>% 
-  arrange(desc(CopiesPerul)) %>%
-    mutate(
-        maxByVal = if_else(row_number() == 1, "1", "0")
-    ) %>%
-  arrange(weekno)%>%
-  ungroup()
-
-# aggr <- df_OHA %>% 
-#   group_by(weekno, Location) %>%
-#   arrange(weekno, desc(CopiesPerul)) %>%
-#   summarise_at(vars("CopiesPerul"), max) %>%
-#   mutate(maxByVal = if_else(CopiesPerul == max(CopiesPerul), Location, "0")) %>%
-#   ungroup() 
-
-aggr <- df_OHA %>%
-  group_by(weekno, Location) %>%
-  filter(CopiesPerul == max(CopiesPerul, na.rm = TRUE))
-
-
-colors <-  c("cornflowerblue", "coral2","chocolate3", "chartreuse4","brown4",
-                             "blue4","darkorchid", "orangered","gold1","cyan2",
-                             "slateblue3","salmon4","darkolivegreen1", "aquamarine",
-                             "firebrick2", "maroon2","dodgerblue","sienna3")
-
-# p<- ggplot()+
-#   geom_point(data =subset(aggr, CopiesPerul < 300) , aes(x = Date, y= CopiesPerul, group = Location), alpha =0.5)+
-#   theme_minimal() +
-#   theme(axis.line = element_line(colour = "black"),
-#     panel.grid.major = element_blank(),
-#     panel.grid.minor = element_blank(),
-#     panel.border = element_blank(),
-#     panel.background = element_blank(),
-#     legend.position = "none") +
-#   geom_point(data = subset(aggr, maxByVal == "1" & CopiesPerul < 300), aes(x = Date, y = CopiesPerul,color = County))+
-#   scale_color_manual(values = colors)
-# 
-# ggplotly(p)
-
-p<- ggplot()+
-  geom_point(data =subset(aggr, CopiesPerul < 300) , aes(x = weekno, y= CopiesPerul, group = Location), color = "grey37",alpha =0.2)+
-  theme_minimal() +
-  theme(axis.line = element_line(colour = "black"),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    panel.border = element_blank(),
-    panel.background = element_blank(),
-    legend.position = "none") + labs(x = "Week number stating from September 2nd 2020", y = "SARS-COV2 concentration in Copies per uL")+
-  geom_point(data = subset(aggr, maxByVal == "1" & CopiesPerul < 300), aes(x = weekno, y = CopiesPerul,color = County))+
-  scale_color_manual(values = colors)
-
-ggplotly(p)
-
-#   p <- ggplot()+
-#   geom_point(data =aggr , aes(x = Date, y= CopiesPerul, color = factor(maxByVal), group = Location), alpha =0.5)+
-#   theme_minimal() +
-#   theme(axis.line = element_line(colour = "black"),
-#     panel.grid.major = element_blank(),
-#     panel.grid.minor = element_blank(),
-#     panel.border = element_blank(),
-#     panel.background = element_blank(),
-#     legend.position = "none") +
-#   geom_point_interactive(data = subset(aggr, maxByVal == "1"), aes(x = Date, y = CopiesPerul,color = County,  tooltip = Location))+
-#   scale_color_manual(values = c("0"="orange",
-#                                 "1"="steelblue"))
-#   
-#   
-# print(girafe(ggobj = p))
-#   
-# 
-# aggr %>% ungroup() %>%#subset(Location == "Albany")%>%
-#   ggplot()+
-#   geom_point(aes(x = Month_Yr, y = CopiesPerul))+
-#     geom_line(aes(x = Month_Yr, y = CopiesPerul, group = Location))+
-#   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(),strip.text = element_text(size=4, margin = margin()))+# element_text(angle = 90, vjust = 0.5, hjust=1))+
-#   facet_wrap(~Location, scales = "free_y")
-
-```
-
-Creating visualization for counties/cities that never has the highest concentration or had highest concentration only a few times. Exploring correlation between demographic information and policy enactment with the observed concentration levels. Observing decline in cases or wastewater concentrations after a wave or post vaccination drives. 
-
-
-Creating the visualization 
-```{r}
-
-
-
-```
-
-Need to find the shortest paths between the must visit nodes using Dijkstras or Floyd or Bellman-Ford. Using the distances between the two cities as edge weights. 
-
-Possibly:: https://stackoverflow.com/questions/74003506/good-algorithm-for-finding-shortest-path-for-specific-vertices
-https://stackoverflow.com/questions/222413/find-the-shortest-path-in-a-graph-which-visits-certain-nodes
 
 ## Statistical questions to ask using this data.
 
