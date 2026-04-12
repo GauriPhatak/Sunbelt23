@@ -10,11 +10,12 @@ library(nsga2R)
 source("C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/CoDACov.R")
 
 ## Reading combination of parameters
-filePath <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/4clustersims_comb_MultipleStarts.rds"
+filePath <- "C:/Users/gauph/Box/FinalTestingParamComboFiles/4clustersims_CoordDesc.rds"
 S <- readRDS(filePath)
 S$penalty <- as.character(S$penalty)
+
 ## Reading names of files
-dataFolder <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/ResultsFolder/MultiInitializationScaledFullOP/"
+dataFolder <- "C:/Users/gauph/Box/FinalTestingParamComboFiles/ResultsFolder/CoordDesc/"
 files <- list.files(dataFolder)
 N <- S$N[1]
 nsimV <- S$Nsim[1]
@@ -28,14 +29,18 @@ conduct <- matrix(0, nrow = 0, ncol = 8)
 
 ## setting up output for covariate simulations
 cn <- c("MinMeanConductanceW","MaxMeanConductanceW","SdMeanConductanceW", "MeanConductanceW","MeanConductanceWo","WeightedMeanConductanceW","WeightedMeanConductanceWo","ConductanceWDensityPen",
-        "tprW","tprWo","tprWW","tprWoW",
+        #"tprW","tprWo","tprWW","tprWoW",
         "AvgVarianceW","DispersionScoreW","AvgVarianceWo","DispersionScoreWo","WeightedAvgVarianceW","WeightedDispersionScoreW",
-        "AvgIntraClusterSimilarityW","AvgIntraClusterSimilarityWo","WeightedAvgIntraClusterSimilarityW","WeightedAvgIntraClusterSimilarityWo",
-        "CommInternalDensityW","CommInternalDensityWo","TotalInternalDensity","WeightedInternalDensityW","WeightedInternalDensityWo",
-        "SilhouetteLin","SilhouetteBin","OI","AvgBinarySpreadW","BinaryDispersionScoreW","WeightedAvgBinarySpreadW",
+        #"AvgIntraClusterSimilarityW","AvgIntraClusterSimilarityWo","WeightedAvgIntraClusterSimilarityW","WeightedAvgIntraClusterSimilarityWo",
+        #"CommInternalDensityW","CommInternalDensityWo","TotalInternalDensity","WeightedInternalDensityW","WeightedInternalDensityWo",
+        #"SilhouetteLin","SilhouetteBin",
+        "OI", "OldOI","AvgBinarySpreadW","BinaryDispersionScoreW","WeightedAvgBinarySpreadW",
         "WeightedBinaryDispersionScoreW","Trace","WeightedTrace","TotalTrace", "R2","sIdx","bigN","nsim","i","effective_nc",
-        "MSE1","MSE2","MSE3","Acc1","Acc2","Acc3","NumIters", "unassigned","degree0","degree1","BIC","ICL","LL","nc2","Nnodes","Nedges",
-        "dir","groupSize", "Failure","Filename")
+        "MSE1","MSE2","MSE3","Acc1","Acc2","Acc3",
+        paste0("Precision",1:3),paste0("PrecisionMD",1:3),
+        paste0("Recall",1:3),paste0("RecallMD",1:3),
+        paste0("F1",1:3),paste0("F1MD",1:3),
+        "NumIters", "unassigned","degree0","degree1","BIC","ICL","LL","nc2","Nnodes","Nedges","dir","groupSize", "Failure","Filename")
 metricsCov <- matrix(0, nrow =0,ncol = length(cn))
 cov_opCols <- c("Dir","effective_nc","bigN","nsim","BIC","ICL","LL","nc2","Nnodes","Nedges",
                 "OI","MSE1","MSE2","MSE3", "Acc1","Acc2","Acc3","NumIters", "sIdx", "newOI","unassigned","degree0","degree1", "i")
@@ -63,14 +68,14 @@ OL_combo$prop <- as.numeric(OL_combo$prop)
 S$sIdx <- 1:nrow(S)
 print(paste0("The number of files: ", length(files)))
 total <- length(files)
-range_size = 10
-seqID <- 1 #as.numeric(args[1])
+range_size = 50
+seqID <- 1#as.numeric(args[1])
 starts <- seq(1, total, by = range_size)
 ends <- pmin(starts + range_size - 1, total)
 print(paste0("Start: ",starts[seqID], " ends: ", ends[seqID]))
 itr <- 0
 
-for(fn in files[91:102]){#files[starts[seqID]:ends[seqID]]){
+for(fn in files[1:3]){#files[starts[seqID]:ends[seqID]]){
   itr <- itr+1
   print(paste0(fn, " seq #: ", itr))
   df_rds <- readRDS(paste0(dataFolder,fn))
@@ -88,8 +93,7 @@ for(fn in files[91:102]){#files[starts[seqID]:ends[seqID]]){
   
   for(bigN in 1:S$bigN[1]){
     G_orig <-  df_rds[[3]][[bigN]]
-    ## Original binary covariates
-    #Xout_cov <- as.data.frame(vertex_attr(G_orig))[,5:7]#df_rds[[7]][[bigN]][[1]]
+    
     for(nsim in 1:nsimV){
       for(dir in c("directed","undirected")){
         for(nc in S$test_nc[[1]]){
@@ -106,7 +110,7 @@ for(fn in files[91:102]){#files[starts[seqID]:ends[seqID]]){
           degree01 <- degree0 + degree1
           
           ## Pct missing data
-          if(length(df_rds[[1]]) > 0){
+          if(length(df_rds[[1]]) > 0 & (i < length(df_rds[[1]])) ){
             if(length(df_rds[[1]][[i]]) > 0){
               if(!is.null(df_rds[[1]][[i]])){
                 d <- df_rds[[1]][[i]]
@@ -119,8 +123,26 @@ for(fn in files[91:102]){#files[starts[seqID]:ends[seqID]]){
                   
                   ## find the number of nodes without assigned cluster
                   C <- memOverlapCalc(Fm,Hm,delta, N, nc)
-                  Z <- d$Zout_cov
-                  X <- d$Xout_cov
+                  
+                  ## Original values of binary and continuous covariates
+                  ## Original binary covariates
+                  X_orig <- df_rds[[7]][[bigN]][[1]] ##df_rds[[7]][[bigN]][[1]]
+                  missVals_bin <- is.na(as.data.frame(vertex_attr(G))[,(nc+1):(nc+dim(d$Xout_cov)[2])])
+                  ## Original continuous covariates
+                  Z_orig <- scale(df_rds[[7]][[bigN]][[2]])#scale(as.data.frame(vertex_attr(G))[,(nc+1+dim(d$Xout_cov)[2]):(nc+dim(d$Xout_cov)[2] +dim(d$Zout_cov)[2])])#df_rds[[7]][[bigN]][[1]]
+                  
+                  ## Need to use predicted values for calculating the dispersion and variance scores
+                  if(dir =="directed"){
+                    cm <- cbind(1,Fm,Hm)
+                  }else{
+                    cm <- cbind(1,Fm)
+                  }
+                  ##Predict binary
+                  eta <- t(d$Wout_fin %*% t(cm)) 
+                  p <- 1 / (1 + exp(-eta))
+                  X <- ifelse(p > 0.5, 1, 0) #d$Xout_cov
+                  ##predict continuous
+                  Z <- t(d$betaout %*% t(cm)) #d$Zout_cov
                   
                   
                   ## if a community consists of more than 80% of the nodes drop it
@@ -170,18 +192,21 @@ for(fn in files[91:102]){#files[starts[seqID]:ends[seqID]]){
                     
                     if(ncol(C) > 1){
                       ## Calculating the metrics
-                      Silhouette_lincov <- SilhouetteScore(C, Z,"Euclidean")
-                      Silhouette_bincov <- SilhouetteScore(C, X, "Jaccard")
+                      #Silhouette_lincov <- SilhouetteScore(C, Z_orig,"Euclidean")
+                      #Silhouette_bincov <- SilhouetteScore(C, X_orig, "Jaccard")
                       conduct <- EgoSplitConductance(G , C, dir, degree01, N, effective_nc, numNodesWoAssignment)
-                      TPR     <- Comm_TPR(G, C , N, effective_nc, dir)
-                      ADS     <- AverageDissimilarityScore(Z, C, degree01, numNodesWoAssignment)
-                      AS      <- AverageSimilarityScore(Z, C, degree01, numNodesWoAssignment)
-                      ID      <- InternalDensity(G, d, epsilon, dir)
+                      #TPR     <- Comm_TPR(G, C , N, effective_nc, dir)
+                      ADS     <- AverageDissimilarityScore(d$Zout_cov, C, degree01, numNodesWoAssignment)
+                      #AS      <- AverageSimilarityScore(d$Zout_cov, C, degree01, numNodesWoAssignment)
+                      #ID      <- InternalDensity(G, d, epsilon, dir)
                       
                       
                       #newOI <- newOI[1]
-                      BinaryDispersion <- BinaryDispersionScore(X, C, degree01, numNodesWoAssignment)
+                      BinaryDispersion <- BinaryDispersionScore(d$Xout_cov, C, degree01, numNodesWoAssignment)
                       traceVal <- WeightedTrace(d, epsilon)
+                      
+                      ## Calculate precision and recall 
+                      precision_recall <- Precision_Recall_Calculation(dim(X)[2], d$Wout_fin, Fm, Hm, X_orig, dir, missVals_bin)
                       
                       ##find the size of clusters
                       gs <- groupSize(C) 
@@ -192,14 +217,30 @@ for(fn in files[91:102]){#files[starts[seqID]:ends[seqID]]){
                       MinMeanConductanceW <- min(conduct_sbst)
                       MaxMeanConductanceW <- max(conduct_sbst)
                       SdMeanConductanceW <- sd(conduct_sbst)
+                      ## if no missing get ACC MD
+                      if(nrow(d$AccMD) ==0 ){
+                        AccMD <- rep(0, ncol(d$AccMD))
+                      }else{
+                        AccMD <- tail(d$AccMD,1)
+                        }
                       
-                      metricsCov <- rbind(metricsCov, c(MinMeanConductanceW,MaxMeanConductanceW,SdMeanConductanceW,
-                                                        tail(conduct,5),tail(TPR,4),ADS,AS,tail(ID,5), 
-                                                        Silhouette_lincov,Silhouette_bincov,newOI, 
+                      metricsCov <- rbind(metricsCov, c(MinMeanConductanceW,MaxMeanConductanceW,SdMeanConductanceW,tail(conduct,5),
+                                                        #tail(TPR,4),
+                                                        ADS,
+                                                        #AS,
+                                                        #tail(ID,5), 
+                                                        #Silhouette_lincov,Silhouette_bincov,
+                                                        newOI, tail(d$OmegaIndex,1),
                                                         BinaryDispersion,traceVal, sIdx, bigN, nsim, i, 
                                                         effective_nc,
-                                                        d$MSE,
-                                                        d$Acc,
+                                                        tail(d$MSEMD,1),
+                                                        AccMD,
+                                                        precision_recall[[1]], ## overall precision
+                                                        precision_recall[[2]], ## missing precision
+                                                        precision_recall[[3]], ## overall recall
+                                                        precision_recall[[4]], ## missing recall
+                                                        precision_recall[[5]], ## overall F1
+                                                        precision_recall[[6]], ## missing F1
                                                         numIter,
                                                         numNodesWoAssignment,
                                                         degree0,
@@ -207,9 +248,9 @@ for(fn in files[91:102]){#files[starts[seqID]:ends[seqID]]){
                       
                       cov_op <- rbind(cov_op, unlist(c(dir, effective_nc, bigN, nsim,
                                                        bicOP,
-                                                       d$OmegaIndex,
-                                                       d$MSE,
-                                                       d$Acc,
+                                                       tail(d$OmegaIndex,1),
+                                                       tail(d$MSE,1),
+                                                       tail(d$Acc,1),
                                                        numIter,
                                                        sIdx,
                                                        newOI,
@@ -296,7 +337,7 @@ for(fn in files[91:102]){#files[starts[seqID]:ends[seqID]]){
                   
                   metricsNoCov <- rbind(metricsNoCov, c(MinMeanConductanceW,MaxMeanConductanceW,SdMeanConductanceW,
                                                         tail(conduct,5),tail(TPR,4),tail(ID,5),newOI, sIdx, bigN, nsim,
-                                                         i,effective_nc, 
+                                                        i,effective_nc, 
                                                         numIter,
                                                         numNodesWoAssignment,
                                                         degree0,
@@ -328,8 +369,6 @@ params$sIdx <- as.numeric(params$sIdx)
 params <- left_join(params, OL_combo )
 params <- params %>% select(-prop)
 params <- params %>% arrange(sIdx)
-#params$penalty <- rep(c("LASSO","Ridge"), each = 72)
-#params <- as.data.frame(cbind(params, ifelse(params[,5] == 0,"NoOL","2GrpOL1")))[,c(1:4,6:10)]
 if(dim(cov_op)[1] > 0){
   
   cov_op <- as.data.frame(cov_op)
@@ -347,30 +386,16 @@ if(dim(cov_op)[1] > 0){
   metricsCov <- as.data.frame(metricsCov)
   colnames(metricsCov) <- cn
   
-  metricsCov[,1:59] <- as.data.frame(apply(metricsCov[,1:59],2,as.numeric))
+  metricsCov[,1:67] <- as.data.frame(apply(metricsCov[,1:67],2,as.numeric))
   metricsCov <- left_join(metricsCov, params)
   
-  #metricsCov$OL <- cov_op$OL
-  #metricsCov$alpha <- cov_op$alpha
-  #metricsCov$penalty <- cov_op$penalty
-  #metricsCov$MSEavg <- cov_op$MSEavg
-  #metricsCov$Accavg <- cov_op$Accavg
-  #metricsCov$lambda_bin <- cov_op$lambda_bin
-  #metricsCov$lambda_lin <- cov_op$lambda_lin
-  #metricsCov$degree0 <- cov_op$degree0
-  #metricsCov$degree1 <- cov_op$degree1
-  #metricsCov$degree01 <- metricsCov$degree0+metricsCov$degree1
-  #metricsCov$unassigned <- cov_op$unassigned
-  #metricsCov$pctMiss <- cov_op$PctMiss
-  #metricsCov$NumIters <- cov_op$NumIters
-  #metricsCov$LL <- cov_op$LL
   metricsCov <- metricsCov %>% arrange(sIdx)
   
   ## Saving the files
-  file <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/ResultsFolder/SubsetResults/"
+  file <- "/home/phatakg/novus/FullTest_Agg/"
   ## saving the data in files
-  saveRDS(cov_op, paste0(file,"MultInitializationScale_covOP",as.character(seqID),".rds"))
-  saveRDS(metricsCov, paste0(file,"MultInitializationScale_metricsCov",as.character(seqID),".rds"))
+  saveRDS(cov_op, paste0(file,"FullTest_coordCovOP_OrigCov",as.character(seqID+6),".rds"))
+  saveRDS(metricsCov, paste0(file,"FullTest_metricscoordCov_OrigCov",as.character(seqID+6),".rds"))
   
 }
 
@@ -391,22 +416,13 @@ if(dim(nocov_op)[1] > 0){
   metricsCov <- left_join(metricsCov, params)
   metricsCov$degree01 <- metricsCov$degree0+metricsCov$degree1
   
-  # metricsCov$OL <- cov_op$OL
-  # metricsCov$alpha <- cov_op$alpha
-  # metricsCov$penalty <- cov_op$penalty
-  # metricsCov$degree0 <- cov_op$degree0
-  # metricsCov$degree1 <- cov_op$degree1
-  # metricsCov$degree01 <- metricsCov$degree0+metricsCov$degree1
-  # metricsCov$unassigned <- cov_op$unassigned
-  # metricsCov$NumIters <- cov_op$NumIters
-  # metricsCov$LL <- cov_op$LL
   metricsCov <- metricsCov %>% arrange(sIdx)
   
   ## Saving the files
-  file <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/ResultsFolder/SubsetResults/"
+  file <- "/home/phatakg/novus/CoordDesc_Agg/"
   ## saving the data in files
-  saveRDS(cov_op, paste0(file,"MultInitializationScale_nocovOP",as.character(seqID),".rds"))
-  saveRDS(metricsCov, paste0(file,"MultInitializationScale_metricsnoCov",as.character(seqID),".rds"))
+  saveRDS(cov_op, paste0(file,"CoordDesc_coordNocovOP",as.character(seqID),".rds"))
+  saveRDS(metricsCov, paste0(file,"CoordDesc_metricscoordnoCov",as.character(seqID),".rds"))
   
 }
 
