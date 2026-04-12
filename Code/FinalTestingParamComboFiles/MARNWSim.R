@@ -2,7 +2,7 @@ library(tidyverse)
 library(dplyr)
 library(igraph)
 
-source(paste0(getwd(),"/../Code/CoDACovLargeNW.R"))
+source(paste0(getwd(),"/../Code/CoDACov.R"))
 ##This reads the command line arguments
 args=commandArgs(trailingOnly = TRUE)
 if (length(args)==0) {
@@ -10,19 +10,19 @@ if (length(args)==0) {
 }
 
 ## read the paramcombo to test
-InitParamFile <- "C:/Users/gauph/Documents/StatisticsMS_PhD/Wastewater-Surveillance-OSU/Sunbelt23/Code/FinalTestingParamComboFiles/4clustersims_MARNWSim.rds"#paste0(args[3],"/4clustersims_comb_MARNWSim.rds")
+InitParamFile <- "C:/Users/gauph/Box/FinalTestingParamComboFiles/4clustersims_MARNWSim.rds"#paste0(args[3],"/4clustersims_comb_MARNWSim.rds")
 S <- as.data.frame(readRDS(InitParamFile))
 sim <- data.frame(S[1,])#data.frame(S[args[2],])
 
 
 ## Read full graph
-df <- readRDS(paste0(getwd(),"/Code/FinalTestingParamComboFiles/LargeSimulatedData/NWexamples200_MAR1.rds"))#readRDS(paste0(args[3],"NWexamples200_MAR",args[1],".rds"))
+df <- readRDS("C:/Users/gauph/Box/FinalTestingParamComboFiles/LargeSimulatedData/NWexamples200_10OL_MAR1.rds")#readRDS(paste0(args[3],"NWexamples200_MAR",args[1],".rds"))
 k_out <- 3
 k_in <- 0
 k <- k_in+k_out
 
 ## Number of in and out continuous covariates
-o_out <- 3
+o_out <- 0
 o_in <- 0
 o <- o_in+o_out
 
