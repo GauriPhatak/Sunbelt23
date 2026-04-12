@@ -107,6 +107,7 @@ sigmoid <- function(W, Ftotn) {
   return(Q)
 }
 
+############## Old accuracy code ##################
 accuCalc <- function(k,W,Wtm1,Wtm2,X, dir){
   if(printFlg == TRUE){
     print("In accuCalc Func")
@@ -131,6 +132,27 @@ accuCalc <- function(k,W,Wtm1,Wtm2,X, dir){
   return(accuracy)
 }
 
+accuOP <- function(k_in, k_out,Wout,Ftot, Htot,covOrig,dir,missValsout){
+  
+  accuracy_out <- matrix(nrow = 0, ncol = k_in + k_out)
+  accuracy_outMD <- matrix(nrow = 0, ncol = k_in + k_out)
+  if((k_in + k_out) > 0){
+    #### Calculating the accuracy for the binary covariates
+    
+    ## Overall Accuracy
+    accuracy_out <- accuCalc(k_out,Wout,Ftot,Htot,covOrig,dir)
+    ## Missing data prediction accuracy
+    if(sum(missValsout) >0 ){
+      accuracy_outMD <- accuCalc(k_out,Wout,
+                                 Ftot[as.logical(rowSums(missValsout)),],
+                                 Htot[as.logical(rowSums(missValsout)),],
+                                 covOrig[as.logical(rowSums(missValsout)),],dir)
+    }
+  }
+  return(list(c(accuracy_outMD), c(accuracy_out)))
+}
+
+#### New accuracy code ##########
 AccuracyCalc <- function(k, W, Ftot,Htot,BC_true,dir,missVals){
   if(dir == "directed"){
     cm <- cbind( Ftot , Htot)
@@ -165,25 +187,68 @@ AccuracyCalc <- function(k, W, Ftot,Htot,BC_true,dir,missVals){
  list(c(acc_full_vec), c(acc_missing_vec))
 }
 
-accuOP <- function(k_in, k_out,Wout,Ftot, Htot,covOrig,dir,missValsout){
+## Precision and Recall and F1
+Precision_Recall_Calculation <- function(k,W,Wtm1,Wtm2,X, dir, missVals){
   
-  accuracy_out <- matrix(nrow = 0, ncol = k_in + k_out)
-  accuracy_outMD <- matrix(nrow = 0, ncol = k_in + k_out)
-  if((k_in + k_out) > 0){
-    #### Calculating the accuracy for the binary covariates
+  if(dir == "directed"){
+    Wtm <- cbind(Wtm1, Wtm2)
+  } else{
+    Wtm<- Wtm1
+  }
+  
+  ##Full precision and recall and F1
+  precision <- rep(0,  k)
+  recall <- rep(0,  k)
+  F1 <- rep(0,k)
+  
+  ## missing data precision and recall and F1
+  precision_missing <- rep(0, k)
+  recall_missing <- rep(0, k)
+  F1_missing <- rep(0, k)
+  
+  p <- list()
+  if (k > 0) {
     
-    ## Overall Accuracy
-    accuracy_out <- accuCalc(k_out,Wout,Ftot,Htot,covOrig,dir)
-    ## Missing data prediction accuracy
-    if(sum(missValsout) >0 ){
-      accuracy_outMD <- accuCalc(k_out,Wout,
-                                 Ftot[as.logical(rowSums(missValsout)),],
-                                 Htot[as.logical(rowSums(missValsout)),],
-                                 covOrig[as.logical(rowSums(missValsout)),],dir)
+    for (i in 1:k) {
+      eta_full <- cbind(1,Wtm) %*% matrix(W[i,],ncol = 1)
+      
+      p[[i]] <- 1 / (1 + exp(-eta_full))
+      
+      pred_full <- ifelse(p[[i]] > 0.5, 1, 0)
+      
+      cm <-  caret::confusionMatrix(factor(pred_full, levels = c(0, 1)), 
+                                    factor(X[, i], levels = c(0, 1)),positive = "1")
+      if(!is.na(cm$byClass['Precision'])){
+        precision[i] <-  cm$byClass['Precision']
+      }
+      if(!is.na(cm$byClass['Sensitivity'])){
+        recall[i] <- cm$byClass['Sensitivity']
+      }
+      if(!is.na(cm$byClass["F1"])){
+        F1[i] <- cm$byClass["F1"]
+      }
+      
+      # MISSING DATA accuracy (only on imputed entries)
+      if(sum(missVals[, i]) > 0){
+        idx <- missVals[, i]
+        cm_missing <-  caret::confusionMatrix(factor(pred_full[idx], levels = c(0, 1)), 
+                                      factor(X[idx, i], levels = c(0, 1)), positive = "1")
+        if(!is.na(cm_missing$byClass['Precision'])){
+          precision_missing[i] <-  cm_missing$byClass['Precision']
+        }
+        if(!is.na(cm_missing$byClass['Sensitivity'])){
+          recall_missing[i] <- cm_missing$byClass['Sensitivity']
+        }
+        if(!is.na(cm_missing$byClass["F1"])){
+          F1_missing[i] <- cm_missing$byClass["F1"]
+        }
+      }
+      
     }
   }
-  return(list(c(accuracy_outMD), c(accuracy_out)))
+  return(list(c(precision), c(precision_missing), c(recall), c(recall_missing), c(F1), c(F1_missing)))
 }
+
 
 getDelta <- function(N, epsilon =0 ){
   delta <- sqrt(-1*log(1-(1/N)))#sqrt(-1*log(1 - epsilon)) #
@@ -829,9 +894,11 @@ BinaryDispersionScore <- function(X, C, degree01, numNodesWoAssignment){
     }
   }
   
-  AvgBinarySpreadW <- sum((rowSums(pm)/n_cov) * (n), na.rm =  TRUE)/N
-  BinaryDispersionScoreW <- sum((rowSums(pmNorm)/n_cov) * (n), na.rm = TRUE)/N
+  #AvgBinarySpreadW <- sum((rowSums(pm)/n_cov) * (n), na.rm =  TRUE)/N
+  #BinaryDispersionScoreW <- sum((rowSums(pmNorm)/n_cov) * (n), na.rm = TRUE)/N
   
+  AvgBinarySpreadW <-  mean(rowMeans(pm))#sum((colSums(pm)/dim(C)[2]) * (n), na.rm =  TRUE)/N
+  BinaryDispersionScoreW <- mean(rowMeans(pmNorm))#sum((colSums(pmNorm)/dim(C)[2]) * (n), na.rm = TRUE)/N
   ## Average variance and dispersion score without taking the unassigned nodes into consideration
   if(ncol(pm) >1){
     AvgBinarySpreadWo <- sum((rowSums(pm[1:nc, ])/n_cov) * (n[1:nc]))/N
