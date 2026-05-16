@@ -188,13 +188,14 @@ AccuracyCalc <- function(k, W, Ftot,Htot,BC_true,dir,missVals){
 }
 
 ## Precision and Recall and F1
-Precision_Recall_Calculation <- function(k,W,Wtm1,Wtm2,X, dir, missVals){
+Precision_Recall_Calculation <- function(pred_full,X, dir, missVals){#(k,W,Wtm1,Wtm2,X, dir, missVals){
   
-  if(dir == "directed"){
-    Wtm <- cbind(Wtm1, Wtm2)
-  } else{
-    Wtm<- Wtm1
-  }
+  k <- dim(pred_full)[2]
+  # if(dir == "directed"){
+  #   Wtm <- cbind(Wtm1, Wtm2)
+  # } else{
+  #   Wtm<- Wtm1
+  # }
   
   ##Full precision and recall and F1
   precision <- rep(0,  k)
@@ -210,13 +211,13 @@ Precision_Recall_Calculation <- function(k,W,Wtm1,Wtm2,X, dir, missVals){
   if (k > 0) {
     
     for (i in 1:k) {
-      eta_full <- cbind(1,Wtm) %*% matrix(W[i,],ncol = 1)
+      #eta_full <- cbind(1,Wtm) %*% matrix(W[i,],ncol = 1)
       
-      p[[i]] <- 1 / (1 + exp(-eta_full))
+      #p[[i]] <- 1 / (1 + exp(-eta_full))
       
-      pred_full <- ifelse(p[[i]] > 0.5, 1, 0)
+      #pred_full <- ifelse(p[[i]] > 0.5, 1, 0)
       
-      cm <-  caret::confusionMatrix(factor(pred_full, levels = c(0, 1)), 
+      cm <-  caret::confusionMatrix(factor(pred_full[,i], levels = c(0, 1)), 
                                     factor(X[, i], levels = c(0, 1)),positive = "1")
       if(!is.na(cm$byClass['Precision'])){
         precision[i] <-  cm$byClass['Precision']
@@ -231,7 +232,7 @@ Precision_Recall_Calculation <- function(k,W,Wtm1,Wtm2,X, dir, missVals){
       # MISSING DATA accuracy (only on imputed entries)
       if(sum(missVals[, i]) > 0){
         idx <- missVals[, i]
-        cm_missing <-  caret::confusionMatrix(factor(pred_full[idx], levels = c(0, 1)), 
+        cm_missing <-  caret::confusionMatrix(factor(pred_full[idx,i], levels = c(0, 1)), 
                                       factor(X[idx, i], levels = c(0, 1)), positive = "1")
         if(!is.na(cm_missing$byClass['Precision'])){
           precision_missing[i] <-  cm_missing$byClass['Precision']
@@ -483,7 +484,7 @@ Comm_TPR <- function(G, C , N, nc, dir){
 
 ## Ego splitting the graph to calculate conductance
 EgoSplitConductance <- function(G , C, dir, degree01, N, nc, numNodesWoAssignment){
-  
+  ## set the names of vertices to the index number
   G <- set_vertex_attr(G, "name", value = 1:vcount(G))
   
   ## Get original graph edges
@@ -492,7 +493,7 @@ EgoSplitConductance <- function(G , C, dir, degree01, N, nc, numNodesWoAssignmen
   ## list of induced groups
   Gsub <- list()
   
-  ## List of intercluster links
+  ## List of intercluster links in the assigned communities
   dropped_edges <- matrix(0,nrow = 0,ncol =2)
   for(i in 1:vcount(G)){
     neigh <- neighbors(G, v = i, mode = "total")
@@ -508,35 +509,43 @@ EgoSplitConductance <- function(G , C, dir, degree01, N, nc, numNodesWoAssignmen
     
   }
   ## find the number of communities a node is part of. set vertex color based on that
+  # Blue is when node is part of two or more communities. yellow is part of one
   numCom <- rowSums(C)
   VertColor <- ifelse(numCom >1, "darkblue", "yellow4")
   G <- set_vertex_attr(G, "VertColor",value = VertColor)
   for(i in 1:dim(C)[2]){
     idx <- which(C[,i] == 1)
+    # For ith community get the subgraph of just the nodes in that community
     Gsub[[i]] <- induced_subgraph(G, vids = idx)
-    
+    # Set the original name of the vertices to the index numberset above
     Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "Origname", value = vertex_attr(Gsub[[i]],"name"))
+    # Set the group value for all the nodes in subgraph to i
     Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "Group", value = i)
+    # Set the vertex colors in the subgraph to the blue/yellow values set above
     Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "VertColor", value = vertex_attr(Gsub[[i]],"VertColor"))
+    # set the new name of the vertex to combine the index and the group name
     Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "name", value = paste0(vertex_attr(Gsub[[i]],"name"),"_",i))
   }
+  ## combine all the subgraphs while keeping their vertex sets strictly separate
   CombinedGraph <- disjoint_union(Gsub)
   
+  # For all the intercluster edges above
   if(nrow(dropped_edges) > 0 ){
     ## keep distinct edges
     dropped_edges <- dropped_edges %>% distinct()
-    
+    #set color of all vertices to grey 
     CombinedGraph <- set_edge_attr(CombinedGraph, name = "color", value = "grey28")
-    
+    ## add the intercluster edges from the assigned communities back to the graph
     CombinedGraph <- add_edges(CombinedGraph, as.vector(t(dropped_edges)), color = "darkred")
     
   }
-  
+  ## Get the vertex attributes of original name, assigned name and group assignment
   Vatt <- as.data.frame(vertex_attr(CombinedGraph)) %>% 
     select(c(Origname, name, Group)) %>%
     group_by(Origname) %>%
     filter(n() > 1) %>%
     tidyr::expand(item1 = name, item2 = name)
+  
   if(nrow(Vatt) > 0 ){
     if(dir == "directed"){
       Vatt <- Vatt %>% 
@@ -558,7 +567,9 @@ EgoSplitConductance <- function(G , C, dir, degree01, N, nc, numNodesWoAssignmen
   ConductanceVal <- rep(0,dim(C)[2])
   Internal_density <- rep(0, dim(C)[2])
   for (i in 1:dim(C)[2]) {
+    ## For community i find the nodes in group i 
     S <- V(CombinedGraph)$name[which(as.numeric(V(CombinedGraph)$Group) == i)]
+    ## find nodes not in group i
     Sc <- V(CombinedGraph)$name[which(as.numeric(V(CombinedGraph)$Group) != i)]
     
     # Calculate cut size between S and Sc
@@ -585,7 +596,7 @@ EgoSplitConductance <- function(G , C, dir, degree01, N, nc, numNodesWoAssignmen
     
   }
   
-  ## MEan conductance W the new background cluster
+  ## Mean conductance W the new background cluster
   MeanConductanceW <- mean(ConductanceVal,na.rm =T)
   
   ## Mean conductance without the new background cluster
@@ -603,26 +614,21 @@ EgoSplitConductance <- function(G , C, dir, degree01, N, nc, numNodesWoAssignmen
 }
 
 ##internal density of a cluster. Need to be maximized
-InternalDensity <- function(G, d, epsilon, dir){
+InternalDensity <- function(G, C, numNodesWoAssignment, dir){ #Z, C, degree01, numNodesWoAssignment
   
-  Fm <- d$Ffin
-  Hm <- d$Hfin
   
-  N <- dim(Fm)[1]
-  nc <- dim(Fm)[2]
+  N <- nrow(C)#dim(Fm)[1]
+  nc <- ncol(C)#dim(Fm)[2]
   
-  delta <- getDelta(N, epsilon)
   
-  C <- memOverlapCalc(Fm, Hm, delta, N, nc)
-  ##Create a new community of background nodes that as unassigned
-  NodesWoAssignment <- (rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0)
-  if(sum(NodesWoAssignment) > 0){
-    
-    C[,nc+1] <- as.numeric(NodesWoAssignment)
-  }
-  InternalDensityVal <- rep(0,dim(C)[2])
-  n <- rep(0,dim(C)[2])
-  for(i in 1:dim(C)[2]){
+  ## Set column names to communities
+  ColNames <- make_letter_names(dim(C)[2])
+  colnames(C) <- ColNames#letters[1:dim(C)[2]]
+  ## number of covariates
+  #n_cov <- dim(Z)[2]
+  InternalDensityVal <- rep(0,nc)
+  n <- rep(0,nc)
+  for(i in 1:nc){
     idx <- which(C[,i] == 1)
     n[i] <- length(idx)
     Gsub <- induced_subgraph(G, vids = idx)
@@ -634,11 +640,10 @@ InternalDensity <- function(G, d, epsilon, dir){
     InternalDensityVal[i] <- ecount(Gsub)/possEdges
   }
   ## considering the background custer
-  CommInternalDensityW <- sum(InternalDensityVal, na.rm = TRUE)
+  CommInternalDensityW <- mean(InternalDensityVal, na.rm = TRUE)
   
   ## without considering the background cluster
-  CommInternalDensityWo <- sum(InternalDensityVal[1:nc], na.rm = TRUE)
-  
+  CommInternalDensityWo <- mean(InternalDensityVal[1:nc], na.rm = TRUE)
   
   ## Calculating the total internal density
   if(dir == "directed"){
@@ -649,12 +654,12 @@ InternalDensity <- function(G, d, epsilon, dir){
   TotalInternalDensity <- ecount(G)/possEdges
   
   ##punish internal density if nodes have no assignment
-  numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
+  #numNodesWoAssignment <- sum( rowSums(memOverlapCalc(Fm,Hm,delta, N, nc)) == 0 )
   WeightedInternalDensityW <- CommInternalDensityW* (N-numNodesWoAssignment)/N
   WeightedInternalDensityWo <- CommInternalDensityWo* (N-numNodesWoAssignment)/N
   
   return(c(InternalDensityVal, 
-           CommInternalDensityW,CommInternalDensityWo,TotalInternalDensity,
+           CommInternalDensityW,#CommInternalDensityWo,#TotalInternalDensity,
            WeightedInternalDensityW,WeightedInternalDensityWo))
 }
 
@@ -817,55 +822,9 @@ WeightedTrace <- function(d, epsilon){
 ##Binary covariate dispersion score
 ##Understanding cohesiveness within and between clusters 
 BinaryDispersionScore <- function(X, C, degree01, numNodesWoAssignment){
-  # ##reading the covariates (cont.)
-  # Z <- as.data.frame(d$Xout_cov) 
-  # 
-  # ## reading the community weight matrices
-  # Fm <- d$Ffin
-  # Hm <- d$Hfin
-  
   ## Number of nodes and communities
   N <- dim(C)[1]
   nc <- dim(C)[2]
-  
-  ##Decide the community affiliations
-  #delta <- getDelta(N, epsilon)
-  #C <- memOverlapCalc(Fm, Hm, delta, N, nc)
-  
-  ## drop the really small communities
-  ## drop communities smaller than total number of unattached nodes.
-  #degree01 <- sum(igraph::degree(G) %in% c(0,1) )
-  # drop_cols <- which(colSums(C) <= degree01)
-  # 
-  # ## Change the effective nc to the reduced number of clusters
-  # #if(length(drop_cols) > 0 ){
-  # #  C <- C[, -drop_cols]
-  # #  nc <- ncol(C)
-  # #}
-  # ## drop tiny communities
-  # drop_cols <- DropTinyCommunities(degree01, C)
-  # if(length(drop_cols)  == 2){
-  #   C <- drop_cols[[1]]
-  #   nc <- drop_cols[[2]]
-  # }
-  # 
-  # ## drop highly overlapping or contained clusters
-  # maxOL <- 0.60
-  # drop_cols <- Percent_overlap(C, maxOL) #DropTinyCommunities(degree01, C)
-  # if(length(drop_cols)  == 2){
-  #   C <- drop_cols[[1]]
-  #   nc <- drop_cols[[2]]
-  # }
-  # 
-  # ##Create a new community of background nodes that as unassigned
-  # NodesWoAssignment <- (rowSums(C) == 0)
-  # ##punish internal density if nodes have no assignment
-  # numNodesWoAssignment <- sum(NodesWoAssignment)
-  # 
-  # if(sum(NodesWoAssignment) > 0){
-  #   C <- cbind(C, new_col = as.numeric(NodesWoAssignment))
-  #   nc <- nc+1
-  # }
   
   ## Set column names to communities
   colnames(C) <- make_letter_names(dim(C)[2]) #letters[1:dim(C)[2]]
@@ -894,11 +853,11 @@ BinaryDispersionScore <- function(X, C, degree01, numNodesWoAssignment){
     }
   }
   
-  #AvgBinarySpreadW <- sum((rowSums(pm)/n_cov) * (n), na.rm =  TRUE)/N
-  #BinaryDispersionScoreW <- sum((rowSums(pmNorm)/n_cov) * (n), na.rm = TRUE)/N
+  AvgBinarySpreadW <- sum((rowSums(pm)/n_cov) * (n), na.rm =  TRUE)/N
+  BinaryDispersionScoreW <- sum((rowSums(pmNorm)/n_cov) * (n), na.rm = TRUE)/N
   
-  AvgBinarySpreadW <-  mean(rowMeans(pm))#sum((colSums(pm)/dim(C)[2]) * (n), na.rm =  TRUE)/N
-  BinaryDispersionScoreW <- mean(rowMeans(pmNorm))#sum((colSums(pmNorm)/dim(C)[2]) * (n), na.rm = TRUE)/N
+  #AvgBinarySpreadW <-  mean(rowMeans(pm))#sum((colSums(pm)/dim(C)[2]) * (n), na.rm =  TRUE)/N
+  #BinaryDispersionScoreW <- mean(rowMeans(pmNorm))#sum((colSums(pmNorm)/dim(C)[2]) * (n), na.rm = TRUE)/N
   ## Average variance and dispersion score without taking the unassigned nodes into consideration
   if(ncol(pm) >1){
     AvgBinarySpreadWo <- sum((rowSums(pm[1:nc, ])/n_cov) * (n[1:nc]))/N
@@ -1118,10 +1077,13 @@ HyperParameterSelection <- function(metricsCov, cols_to_select, cols_to_filter,c
   for(i in 1:length(df_list)){
     if(covariates == TRUE ){
       X <-  df_list[[i]] %>%
-        dplyr::select(!!!rlang::syms(cols_to_select)) %>% #WeightedMeanConductanceW, WeightedDispersionScoreW, WeightedBinaryDispersionScoreW) %>% 
-        t()
+        dplyr::select(!!!rlang::syms(cols_to_select))
+      #WeightedMeanConductanceW, WeightedDispersionScoreW, WeightedBinaryDispersionScoreW) %>% 
+        
+      ## normalizing the metrics
+      X <- t(X)#t(scale(X))
       if(any(is.na(X))){
-        print("Stop here")
+        print("NA in metrics data! ")
       }else if(nrow(X) ==1){
         fronts <- rank(X, ties.method = "first") #ecr::doNondominatedSorting(X)
         df_list[[i]]$front <-  fronts
@@ -1132,11 +1094,25 @@ HyperParameterSelection <- function(metricsCov, cols_to_select, cols_to_filter,c
       }
     }else{
       X <-  df_list[[i]] %>%
-        dplyr::select(!!rlang::sym(cols_to_select)) %>% #WeightedMeanConductanceW, WeightedDispersionScoreW, WeightedBinaryDispersionScoreW) %>% 
-        t() 
-      fronts <- rank(X, ties.method = "first") #ecr::doNondominatedSorting(X)
-      df_list[[i]]$front <-  fronts
+        dplyr::select(!!!rlang::syms(cols_to_select))
+      #WeightedMeanConductanceW, WeightedDispersionScoreW, WeightedBinaryDispersionScoreW) %>% 
       
+      ## normalizing the metrics
+      X <- t(X)#t(scale(X))
+      if(any(is.na(X))){
+        print("NA in metrics data! ")
+      }else if(nrow(X) ==1){
+        fronts <- rank(X, ties.method = "first") #ecr::doNondominatedSorting(X)
+        df_list[[i]]$front <-  fronts
+      #X <-  df_list[[i]] %>%
+      #  dplyr::select(!!rlang::sym(cols_to_select)) %>% #WeightedMeanConductanceW, WeightedDispersionScoreW, WeightedBinaryDispersionScoreW) %>% 
+      #  t() 
+      #fronts <- rank(X, ties.method = "first") #ecr::doNondominatedSorting(X)
+      #df_list[[i]]$front <-  fronts
+      }else{
+        fronts <- ecr::doNondominatedSorting(X)
+        df_list[[i]]$front <-  fronts$ranks
+      }
     }
     
   }
