@@ -7,7 +7,6 @@ library(RColorBrewer)
 source(paste0(getwd(),"/Code/NetworkMetrics.R"))
 source(paste0(getwd(),"/Code/HelperFuncs.R"))
 
-
 getNWcov <- function(G,CovNamesLinin, CovNamesLinout,CovNamesLPin,CovNamesLPout,
                      k_in, k_out, o_in, o_out ){
   covtmp <-  as.data.frame(vertex_attr(G)) %>%
@@ -871,7 +870,9 @@ updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alpha,dir,impType
             # Remove updated contribution
             r <- r - X[, j] * b[j]
           }
-          
+          if(any(is.na(max(abs(b - b_old))))){
+            print("stop here")
+          }
           if (max(abs(b - b_old)) < tol) break
         }
         
@@ -901,7 +902,9 @@ updateLogisticParam <- function(W,BC,Wtm1,Wtm2,missVals,lambda,alpha,dir,impType
     }
     
     Wret <- W
-    
+    if(any(is.na(Wret))){
+      print("stop here")
+    }
     # ---- Impute missing ----
     if (sum(missVals) > 0) {
       for (i in 1:ncol(BC)) {
@@ -1004,7 +1007,9 @@ updateLinearRegParam_glmnet <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,
     
     betaret <- beta
     sigmaSq <-  SigmaSqCalc(Z, betaret, Wtm1,Wtm2, missVals,dir)
-    
+    if(is.na(any(betaret))){
+      print("stop here")
+    }
     if (sum(missVals) > 0) {
       for(i in 1:dim(Z)[2]){
         idx <- which(missVals[, i])
@@ -1111,7 +1116,7 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
   
   max_iter <- 50   # number of coordinate descent sweeps
   tol <- 1e-6      # convergence tolerance
-  
+  Xdesign_tol <- 1e-9
   if (length(beta) > 0) {
     
     for (i in 1:ncol(Z)) {
@@ -1136,7 +1141,7 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
       b <- beta[i, ]
       
       # ---- Precompute column norms ----
-      col_norms <- colSums(X_design^2) / n
+      col_norms <- (colSums(X_design^2) / n )
       
       # ---- Initialize residual ----
       r <- y - X_design %*% b
@@ -1158,14 +1163,19 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
             # Intercept (no penalty)
             b[j] <- rho
           } else {
-            b[j] <- sign(rho) * max(abs(rho) - lambda, 0) / col_norms[j]
+            b[j] <- sign(rho) * max(abs(rho) - lambda, 0) / max(col_norms[j], Xdesign_tol)
           }
-          
+          if(is.na(b[j])){
+            print("stop here")
+          }
           # Remove updated contribution
           r <- r - X_design[, j] * b[j]
         }
         
         # ---- Convergence check ----
+        if(any(is.na(max(abs(b - b_old))))){
+          print("stop here")
+        }
         if (max(abs(b - b_old)) < tol) break
       }
       
@@ -1188,7 +1198,9 @@ updateLinearRegParam <- function(beta,missVals,Z,Wtm1,Wtm2, alpha,lambda,N,dir,
     betaret <- beta
     
     sigmaSq <- SigmaSqCalc(Z, betaret, Wtm1, Wtm2, missVals, dir)
-    
+    if(any(is.na(betaret))){
+      print("stop here")
+    }
     # ---- Impute missing ----
     if (sum(missVals) > 0) {
       for (i in 1:ncol(Z)) {
