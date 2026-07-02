@@ -482,137 +482,265 @@ Comm_TPR <- function(G, C , N, nc, dir){
   
 }
 
-## Ego splitting the graph to calculate conductance
-EgoSplitConductance <- function(G , C, dir, degree01, N, nc, numNodesWoAssignment){
-  ## set the names of vertices to the index number
-  G <- set_vertex_attr(G, "name", value = 1:vcount(G))
+EgoSplitConductance <- function(G, C, dir = "undirected",
+                                degree01 = NULL,
+                                N = nrow(C),
+                                nc = ncol(C),
+                                numNodesWoAssignment = 0,
+                                count_identity_edges = TRUE) {
   
-  ## Get original graph edges
-  edge_orig <- as_edgelist(G)
-  colnames(edge_orig) <- c("from","to")
-  ## list of induced groups
-  Gsub <- list()
+  ## -----------------------------
+  ## Basic checks
+  ## -----------------------------
+  if (!dir %in% c("directed", "undirected")) {
+    stop("dir must be either 'directed' or 'undirected'")
+  }
   
-  ## List of intercluster links in the assigned communities
-  dropped_edges <- matrix(0,nrow = 0,ncol =2)
-  for(i in 1:vcount(G)){
-    neigh <- neighbors(G, v = i, mode = "total")
+  if (nrow(C) != vcount(G)) {
+    stop("Number of rows in C must match number of vertices in G")
+  }
+  
+  K <- ncol(C)
+  
+  ## Original node names
+  V(G)$orig_id <- as.character(seq_len(vcount(G)))
+  V(G)$name <- V(G)$orig_id
+  
+  ## -----------------------------
+  ## Mark overlapping nodes
+  ## -----------------------------
+  numCom <- rowSums(C)
+  V(G)$VertColor <- ifelse(numCom > 1, "darkblue", "yellow4")
+  
+  ## -----------------------------
+  ## Create ego-split community subgraphs
+  ## -----------------------------
+  Gsub <- vector("list", K)
+  
+  for (k in seq_len(K)) {
+    idx <- which(C[, k] == 1)
     
-    if(length(neigh) > 0 ){
-      target_nodes <- neigh[which((matrix(C[neigh, ], nrow = length(neigh)) %*% as.matrix(C[i,])) == 0)]
-      if(length(target_nodes) > 0){
-        dropped_edges <- rbind(dropped_edges, 
-                               as.data.frame(edge_orig) %>%
-                                 filter(from == i & to %in% target_nodes))
-      }      
+    if (length(idx) == 0) {
+      Gsub[[k]] <- make_empty_graph(n = 0, directed = is_directed(G))
+      next
     }
     
+    Gsub[[k]] <- induced_subgraph(G, vids = idx)
+    
+    V(Gsub[[k]])$Origname <- V(Gsub[[k]])$orig_id
+    V(Gsub[[k]])$Group <- k
+    V(Gsub[[k]])$VertColor <- V(Gsub[[k]])$VertColor
+    
+    ## Split-node name: originalNode_community
+    V(Gsub[[k]])$name <- paste0(V(Gsub[[k]])$Origname, "_", k)
   }
-  ## find the number of communities a node is part of. set vertex color based on that
-  # Blue is when node is part of two or more communities. yellow is part of one
-  numCom <- rowSums(C)
-  VertColor <- ifelse(numCom >1, "darkblue", "yellow4")
-  G <- set_vertex_attr(G, "VertColor",value = VertColor)
-  for(i in 1:dim(C)[2]){
-    idx <- which(C[,i] == 1)
-    # For ith community get the subgraph of just the nodes in that community
-    Gsub[[i]] <- induced_subgraph(G, vids = idx)
-    # Set the original name of the vertices to the index numberset above
-    Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "Origname", value = vertex_attr(Gsub[[i]],"name"))
-    # Set the group value for all the nodes in subgraph to i
-    Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "Group", value = i)
-    # Set the vertex colors in the subgraph to the blue/yellow values set above
-    Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "VertColor", value = vertex_attr(Gsub[[i]],"VertColor"))
-    # set the new name of the vertex to combine the index and the group name
-    Gsub[[i]] <- set_vertex_attr(Gsub[[i]], "name", value = paste0(vertex_attr(Gsub[[i]],"name"),"_",i))
-  }
-  ## combine all the subgraphs while keeping their vertex sets strictly separate
+  
   CombinedGraph <- disjoint_union(Gsub)
   
-  # For all the intercluster edges above
-  if(nrow(dropped_edges) > 0 ){
-    ## keep distinct edges
-    dropped_edges <- dropped_edges %>% distinct()
-    #set color of all vertices to grey 
-    CombinedGraph <- set_edge_attr(CombinedGraph, name = "color", value = "grey28")
-    ## add the intercluster edges from the assigned communities back to the graph
-    CombinedGraph <- add_edges(CombinedGraph, as.vector(t(dropped_edges)), color = "darkred")
+  ## -----------------------------
+  ## Add edges between split copies of the same original node
+  ## -----------------------------
+  if (vcount(CombinedGraph) > 0) {
+    Vdf <- data.frame(
+      Origname = V(CombinedGraph)$Origname,
+      name = V(CombinedGraph)$name,
+      Group = V(CombinedGraph)$Group,
+      stringsAsFactors = FALSE
+    )
     
-  }
-  ## Get the vertex attributes of original name, assigned name and group assignment
-  Vatt <- as.data.frame(vertex_attr(CombinedGraph)) %>% 
-    select(c(Origname, name, Group)) %>%
-    group_by(Origname) %>%
-    filter(n() > 1) %>%
-    tidyr::expand(item1 = name, item2 = name)
-  
-  if(nrow(Vatt) > 0 ){
-    if(dir == "directed"){
-      Vatt <- Vatt %>% 
-        filter(item1 != item2) %>%  # Avoid duplicates and self-pairs
-        ungroup() 
-    }else{
-      Vatt <- Vatt %>% 
-        filter(item1 < item2) %>%  # Avoid duplicates and self-pairs
-        ungroup()  
-    }
+    split_edges <- c()
     
-    CombinedGraph <- add_edges(CombinedGraph, as.vector(t(Vatt[,2:3])), color = "darkred")
-    
-  }
-  
-  
-  CombinedGraph <- igraph::simplify(CombinedGraph,remove.multiple = TRUE,remove.loops = TRUE)
-  
-  ConductanceVal <- rep(0,dim(C)[2])
-  Internal_density <- rep(0, dim(C)[2])
-  for (i in 1:dim(C)[2]) {
-    ## For community i find the nodes in group i 
-    S <- V(CombinedGraph)$name[which(as.numeric(V(CombinedGraph)$Group) == i)]
-    ## find nodes not in group i
-    Sc <- V(CombinedGraph)$name[which(as.numeric(V(CombinedGraph)$Group) != i)]
-    
-    # Calculate cut size between S and Sc
-    cut_edges <- 0
-    for (edge in E(CombinedGraph)) {
-      ends <- ends(CombinedGraph, edge)
-      if ((ends[1] %in% S && ends[2] %in% Sc) || 
-          (ends[1] %in% Sc && ends[2] %in% S)) {
-        cut_edges <- cut_edges + 1
+    for (node_id in unique(Vdf$Origname)) {
+      copies <- Vdf$name[Vdf$Origname == node_id]
+      
+      if (length(copies) > 1) {
+        if (dir == "directed") {
+          pairs <- expand.grid(copies, copies, stringsAsFactors = FALSE)
+          pairs <- pairs[pairs[, 1] != pairs[, 2], ]
+        } else {
+          pairs <- t(combn(copies, 2))
+        }
+        
+        split_edges <- c(split_edges, as.vector(t(as.matrix(pairs))))
       }
     }
-    # Calculate volume of S
-    vol_S <- sum(igraph::degree(CombinedGraph)[which(as.numeric(V(CombinedGraph)$Group) == i)])
-    vol_Sc <- sum(igraph::degree(CombinedGraph)[which(as.numeric(V(CombinedGraph)$Group) != i)])
-    if(min(vol_S, vol_Sc) > 0){
-      ConductanceVal[i] <- cut_edges / min(vol_S, vol_Sc)
+    
+    if (length(split_edges) > 0 && count_identity_edges) {
+      CombinedGraph <- add_edges(
+        CombinedGraph,
+        split_edges,
+        color = "darkred",
+        edge_type = "identity"
+      )
     }
-    
-    ## calculate the internal density for each of the clusters
-    idx <- which(as.numeric(V(CombinedGraph)$Group) == i)
-    nNode <- length(idx)
-    subG <- induced_subgraph(CombinedGraph, vids = idx)
-    Internal_density[i] <- ecount(subG)*2/(nNode*(nNode-1))
-    
   }
   
-  ## Mean conductance W the new background cluster
-  MeanConductanceW <- mean(ConductanceVal,na.rm =T)
+  ## -----------------------------
+  ## Add between-community edges from original graph
+  ## Correctly mapped to split-node names
+  ## -----------------------------
+  edge_orig <- as_edgelist(G, names = FALSE)
   
-  ## Mean conductance without the new background cluster
-  MeanConductanceWo <- mean(ConductanceVal[1:nc],na.rm =T )
+  between_edges <- c()
   
-  ## Punish based on unassigned nodes
-  WeightedMeanConductanceW <- MeanConductanceW*(N/(N - numNodesWoAssignment ))
-  WeightedMeanConductanceWo <- MeanConductanceWo*(N/(N - numNodesWoAssignment ))
+  if (nrow(edge_orig) > 0) {
+    for (e in seq_len(nrow(edge_orig))) {
+      u <- edge_orig[e, 1]
+      v <- edge_orig[e, 2]
+      
+      shared_comms <- which(C[u, ] == 1 & C[v, ] == 1)
+      
+      ## If they share no community, this is a between-community edge
+      if (length(shared_comms) == 0) {
+        u_comms <- which(C[u, ] == 1)
+        v_comms <- which(C[v, ] == 1)
+        
+        if (length(u_comms) > 0 && length(v_comms) > 0) {
+          for (ku in u_comms) {
+            for (kv in v_comms) {
+              from_name <- paste0(u, "_", ku)
+              to_name <- paste0(v, "_", kv)
+              
+              if (from_name %in% V(CombinedGraph)$name &&
+                  to_name %in% V(CombinedGraph)$name) {
+                between_edges <- c(between_edges, from_name, to_name)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
   
-  ## Weighting with density
-  alpha <- median(ConductanceVal[1:nc])/median(Internal_density[1:nc])
-  ConductanceWDensityPen <- MeanConductanceWo + alpha * sum(1 - Internal_density[1:nc])/nc
+  if (length(between_edges) > 0) {
+    CombinedGraph <- add_edges(
+      CombinedGraph,
+      between_edges,
+      color = "darkred",
+      edge_type = "between_community"
+    )
+  }
   
-  return(c(ConductanceVal, MeanConductanceW, MeanConductanceWo,WeightedMeanConductanceW, WeightedMeanConductanceWo, ConductanceWDensityPen))
+  ## Remove duplicates and loops
+  CombinedGraph <- simplify(
+    CombinedGraph,
+    remove.multiple = TRUE,
+    remove.loops = TRUE,
+    edge.attr.comb = "first"
+  )
+  
+  ## -----------------------------
+  ## Conductance and internal density
+  ## -----------------------------
+  ConductanceVal <- rep(NA_real_, K)
+  Internal_density <- rep(NA_real_, K)
+  
+  for (k in seq_len(K)) {
+    S_idx <- which(as.numeric(V(CombinedGraph)$Group) == k)
+    Sc_idx <- which(as.numeric(V(CombinedGraph)$Group) != k)
+    
+    if (length(S_idx) == 0 || length(Sc_idx) == 0) {
+      next
+    }
+    
+    S_names <- V(CombinedGraph)$name[S_idx]
+    Sc_names <- V(CombinedGraph)$name[Sc_idx]
+    
+    cut_edges <- 0
+    
+    for (edge in E(CombinedGraph)) {
+      endpoints <- ends(CombinedGraph, edge)
+      
+      if (dir == "directed") {
+        ## Directed cut: edges leaving S
+        if (endpoints[1] %in% S_names && endpoints[2] %in% Sc_names) {
+          cut_edges <- cut_edges + 1
+        }
+      } else {
+        ## Undirected cut
+        if ((endpoints[1] %in% S_names && endpoints[2] %in% Sc_names) ||
+            (endpoints[1] %in% Sc_names && endpoints[2] %in% S_names)) {
+          cut_edges <- cut_edges + 1
+        }
+      }
+    }
+    
+    if (dir == "directed") {
+      vol_S <- sum(degree(CombinedGraph, v = S_idx, mode = "out"))
+      vol_Sc <- sum(degree(CombinedGraph, v = Sc_idx, mode = "out"))
+    } else {
+      vol_S <- sum(degree(CombinedGraph, v = S_idx, mode = "all"))
+      vol_Sc <- sum(degree(CombinedGraph, v = Sc_idx, mode = "all"))
+    }
+    
+    denom <- min(vol_S, vol_Sc)
+    
+    if (!is.na(denom) && denom > 0) {
+      ConductanceVal[k] <- cut_edges / denom
+    }
+    
+    ## Internal density
+    nNode <- length(S_idx)
+    
+    if (nNode > 1) {
+      subG <- induced_subgraph(CombinedGraph, vids = S_idx)
+      
+      if (dir == "directed") {
+        possEdges <- nNode * (nNode - 1)
+      } else {
+        possEdges <- nNode * (nNode - 1) / 2
+      }
+      
+      if (possEdges > 0) {
+        Internal_density[k] <- ecount(subG) / possEdges
+      }
+    }
+  }
+  
+  ## -----------------------------
+  ## Summary scores
+  ## -----------------------------
+  MeanConductanceW <- mean(ConductanceVal, na.rm = TRUE)
+  MeanConductanceWo <- mean(ConductanceVal[seq_len(min(nc, K))], na.rm = TRUE)
+  
+  penalty_factor <- ifelse(
+    N - numNodesWoAssignment > 0,
+    N / (N - numNodesWoAssignment),
+    NA_real_
+  )
+  
+  WeightedMeanConductanceW <- MeanConductanceW * penalty_factor
+  WeightedMeanConductanceWo <- MeanConductanceWo * penalty_factor
+  
+  ## -----------------------------
+  ## Conductance with internal-density penalty
+  ## -----------------------------
+  valid_density <- Internal_density[seq_len(min(nc, K))]
+  valid_cond <- ConductanceVal[seq_len(min(nc, K))]
+  
+  med_density <- median(valid_density, na.rm = TRUE)
+  med_cond <- median(valid_cond, na.rm = TRUE)
+  
+  if (!is.na(med_density) && med_density > 0 &&
+      !is.na(med_cond)) {
+    alpha <- med_cond / med_density
+    
+    ConductanceWDensityPen <-
+      MeanConductanceWo +
+      alpha * mean(1 - valid_density, na.rm = TRUE)
+  } else {
+    ConductanceWDensityPen <- NA_real_
+  }
+  
+  return(c(
+    ConductanceVal,
+    MeanConductanceW,
+    MeanConductanceWo,
+    WeightedMeanConductanceW,
+    WeightedMeanConductanceWo,
+    ConductanceWDensityPen
+  ))
 }
-
 ##internal density of a cluster. Need to be maximized
 InternalDensity <- function(G, C, numNodesWoAssignment, dir){ #Z, C, degree01, numNodesWoAssignment
   
@@ -668,55 +796,11 @@ InternalDensity <- function(G, C, numNodesWoAssignment, dir){ #Z, C, degree01, n
 ## also includes non normalized variance. Does not take scales of the attributes into consideration
 AverageDissimilarityScore <- function(Z, C, degree01, numNodesWoAssignment){
   ##reading the covariates (cont.)
-  #Z <- as.data.frame(d$Zout_cov)#as.data.frame(scale(d$Zout_cov)) 
-  
-  ## reading the community weight matrices
-  #Fm <- d$Ffin
-  #Hm <- d$Hfin
   
   ## Number of nodes and communities
   N <- dim(C)[1]
   nc <- dim(C)[2]
-  
-  ##Decide the community affiliations
-  #delta <- getDelta(N, epsilon)
-  #C <- memOverlapCalc(Fm, Hm, delta, N, nc)
-  
-  ## drop the really small communities
-  ## drop communities smaller than total number of unattached nodes.
-  #degree01 <- sum(igraph::degree(G) %in% c(0,1) )
-  #drop_cols <- which(colSums(C) <= degree01)
-  
-  ## Change the effective nc to the reduced number of clusters
-  # if(length(drop_cols) > 0 ){
-  #   C <- C[, -drop_cols]
-  #   nc <- ncol(C)
-  # }
-  # ## drop tiny communities
-  # drop_cols <- DropTinyCommunities(degree01, C)
-  # if(length(drop_cols)  == 2){
-  #   C <- drop_cols[[1]]
-  #   nc <- drop_cols[[2]]
-  # }
-  # 
-  # ## drop highly overlapping or contained clusters
-  # maxOL <- 0.60
-  # drop_cols <- Percent_overlap(C, maxOL) #DropTinyCommunities(degree01, C)
-  # if(length(drop_cols)  == 2){
-  #   C <- drop_cols[[1]]
-  #   nc <- drop_cols[[2]]
-  # }
-  # 
-  # ##Create a new community of background nodes that as unassigned
-  # NodesWoAssignment <- (rowSums(C) == 0)
-  # ##punish internal density if nodes have no assignment
-  # numNodesWoAssignment <- sum(NodesWoAssignment)
-  # 
-  # if(sum(NodesWoAssignment) > 0){
-  #   C <- cbind(C, new_col = as.numeric(NodesWoAssignment))
-  #   nc <- nc+1
-  # }
-  # 
+
   ## Set column names to communities
   ColNames <- make_letter_names(dim(C)[2])
   colnames(C) <- ColNames#letters[1:dim(C)[2]]
@@ -827,7 +911,7 @@ BinaryDispersionScore <- function(X, C, degree01, numNodesWoAssignment){
   nc <- dim(C)[2]
   
   ## Set column names to communities
-  colnames(C) <- make_letter_names(dim(C)[2]) #letters[1:dim(C)[2]]
+  colnames(C) <- make_letter_names(dim(C)[2])
   ## number of covariates
   n_cov <- dim(X)[2]
   
@@ -843,12 +927,12 @@ BinaryDispersionScore <- function(X, C, degree01, numNodesWoAssignment){
   for(i in 1:n_cov){
     ##Whole covariate variance
     p <- sum(X[,i])/N
-    gm[1,i] <- p*(1-p)   #sum((Z[,i] - mean(Z[,i]))^2) / N
+    gm[1,i] <- p*(1-p)
     for(j in 1:dim(C)[2]){
       ## for each attribute a find the variance in cluster C
       idx <- which(C[,j] == 1)
       p_cov <- sum(X[idx,i])/length(idx)
-      pm[j, i] <- p_cov*(1-p_cov) #sum((Z[idx, i] - mean(Z[idx,i]))^2) / length(idx)
+      pm[j, i] <- p_cov*(1-p_cov) 
       pmNorm[j,i] <- pm[j,i]/gm[1,i] ##Normalized variance per covariate per cluster. Gives dispersion score
     }
   }
@@ -856,8 +940,6 @@ BinaryDispersionScore <- function(X, C, degree01, numNodesWoAssignment){
   AvgBinarySpreadW <- sum((rowSums(pm)/n_cov) * (n), na.rm =  TRUE)/N
   BinaryDispersionScoreW <- sum((rowSums(pmNorm)/n_cov) * (n), na.rm = TRUE)/N
   
-  #AvgBinarySpreadW <-  mean(rowMeans(pm))#sum((colSums(pm)/dim(C)[2]) * (n), na.rm =  TRUE)/N
-  #BinaryDispersionScoreW <- mean(rowMeans(pmNorm))#sum((colSums(pmNorm)/dim(C)[2]) * (n), na.rm = TRUE)/N
   ## Average variance and dispersion score without taking the unassigned nodes into consideration
   if(ncol(pm) >1){
     AvgBinarySpreadWo <- sum((rowSums(pm[1:nc, ])/n_cov) * (n[1:nc]))/N
@@ -871,31 +953,6 @@ BinaryDispersionScore <- function(X, C, degree01, numNodesWoAssignment){
   ## Punish the value of variance and dispersion if there are nodes that have not been assigned
   WeightedAvgBinarySpreadW <- AvgBinarySpreadW * (N/(N - numNodesWoAssignment ))
   WeightedBinaryDispersionScoreW <- BinaryDispersionScoreW * (N/(N - numNodesWoAssignment ))
-  
-  # ## Calculating the Within cluster dispersion for each feature for each cluster
-  # ##For pure feature the dispersion value will be low.
-  # disp_within <- matrix(0, ncol = n_cov, nrow = ncol(C))
-  # for(i in 1:ncol(C)){
-  #   idx <- which(C[,i] == 1)
-  #   for(j in 1:n_cov){
-  #     p_ji <-  sum(X[idx,j])/sum(X[,j])
-  #     disp_within[i, j] <- p_ji*(1-p_ji)
-  #   }
-  # }
-  # 
-  # ##Average over the number of values percluster and then over the number of clusters
-  # AvgDispersionWithinCluster <- mean(rowSums(disp_within)/num_perClust, na.rm = TRUE)
-  # 
-  # ##Weighted by the number of unassigned nodes
-  # WeightedAvgDispersionWithinClusterW <- AvgDispersionWithinCluster * (N/(N - numNodesWoAssignment ))
-  # 
-  # ##Calculating the between cluster dispersion
-  # ##Have not included this yet in assessment
-  # p_k <- colSums(C)/N
-  # disp_bet <- rep(0, n_cov)
-  # for(i in 1:n_cov){
-  #   disp_bet[i] <- sum(num_perClust * (disp_within[,i] - p_k)^2)
-  # }
   
   return(c(AvgBinarySpreadW,BinaryDispersionScoreW,WeightedAvgBinarySpreadW, WeightedBinaryDispersionScoreW))
 }
