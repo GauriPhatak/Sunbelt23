@@ -13,16 +13,16 @@ getwd()
 source(paste0(getwd(),"/Code/CoDACov.R"))
 
 ## Read full graph
-df <- readRDS(paste0(getwd(),"/Code/FinalTestingParamComboFiles/LargeSimulatedData/NWexamples200_MAR1.rds"))
+df <- readRDS("C:/Users/gauph/Box/FinalTestingParamComboFiles/LargeSimulatedData/NWexamples600_NoLambda.rds")
 
 ## Read full graph
 #df <- readRDS(paste0(args[2],"NWexamples200_MAR",args[1],".rds"))
-k_out <- 3
+k_out <- 6
 k_in <- 0
 k <- k_in+k_out
 
 ## Number of in and out continuous covariates
-o_out <- 3
+o_out <- 6
 o_in <- 0
 o <- o_in+o_out
 
@@ -49,12 +49,12 @@ if(o_in > 0 ){
 if(o_out > 0 ){
   CovNamesLinout <- paste0("cvout", 1:o_out)
 }
-test_nc <- c(4)
-#c(4,6,8,10,13,15)
+test_ncV <- c(4,6,8,10,13,15)#c(10, 15, 25, 35 ,45, 55)#c(10, 15, 25, 35 ,45, 55)#c(4,6,8,10,13,15)#c(25,35,45,55,65,75)
+test_nc <- test_ncV[6]#test_ncV[as.numeric(args[1])]
 thresh  <- 0.00005
 epsilon <- 0.000001
 nitermax <- 30000
-alphaV <- c(0.00001, 0.00005,0.0001, 0.0005,0.001,0.005,0.01)
+alphaV <- c(1e-04)#, 5e-05, 1e-04, 5e-04, 0.001, 0.005, 0.01)#c(0.00001, 0.00005,0.0001, 0.0005,0.001,0.005,0.01)
 test = FALSE
 randomize = TRUE
 missingV <- list(c(15,0,0,0,0,0),
@@ -63,12 +63,12 @@ missingV <- list(c(15,0,0,0,0,0),
                  c(15,0,0,0,0,0),
                  c(15,15,0,0,0,0),
                  c(25,0,0,0,0,0))
-missing <- missingV[[as.numeric(1)]]
+missing <- NULL#missingV[[as.numeric(args[1])]]
 alphaLin <- 1#0.001
 penaltyV <- c("LASSO")
 seed <- sample(1:100000, 1)
-lambda_linV  <- c(0.00001 ,0.0001, 0.001, 0.01)#,0.0001, 0.001, 0.01)
-lambda_binV  <- c(0.00001 ,0.0001, 0.001, 0.01)#c(0.00001,0.0001, 0.001,0.01)
+lambda_linV  <- c(0.0001)# ,0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05)#,0.0001, 0.001, 0.01)
+lambda_binV  <- c(0.0001)# ,0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05)#c(0.00001,0.0001, 0.001,0.01)
 lambda_grphV <- c(0.0001)#, 0.0001)#,0.0001, 0.001,0.01, 0.1)
 covInitOpt <- c("Nmean")
 printFlg <- FALSE
@@ -104,12 +104,12 @@ opf_noCov <- list()
 
 covInit<- "Nmedian"
 #nc_sim <- params$nc[1][[1]]
-N <- 200
+N <- 600
 lvl <- 1
-#IDs <- as.numeric(args[[1]])
-NumNWs <- 1:15
+IDs <- 6#as.numeric(args[[1]])
+#NumNWs <- 1:15
 
-for(ID in NumNWs){#:length(test_nc)){
+for(ID in IDs){#:length(test_nc)){
   print(paste0("The network ID number: ", ID))
   NWlst <- df[[ID]]
   G_orig <- NWlst[[1]]
@@ -124,7 +124,7 @@ for(ID in NumNWs){#:length(test_nc)){
   F_u <- NWlst[[3]]
   H_u <- NWlst[[4]]
   
-  for(dir in c("directed","undirected")){
+  for(dir in c("directed")){#,"undirected")){
     for(lambda_bin in lambda_binV){
       for(lambda_lin in lambda_linV){
         for(alpha in alphaV){
@@ -196,7 +196,9 @@ for(ID in NumNWs){#:length(test_nc)){
               
               if(reg == TRUE){
                 print(paste0("in the ", dir,
-                             " alpha ",alpha," initial impute type ", covInit, 
+                             " alpha ",alpha, " lambda bin ", lambda_bin,
+                             " lambda lin ", lambda_lin, 
+                             " initial impute type ", covInit, 
                              " Penalty, ", penalty, " nc ", nc))
                 tryCatch({
                   ## Algorithm with covariates + possible missing data
@@ -204,7 +206,7 @@ for(ID in NumNWs){#:length(test_nc)){
                   opf_Regcov[[lvl]] <- CoDA(G, nc, k = c(k_in, k_out), o = c(o_in, o_out), N, alpha,
                                             lambda_lin, lambda_bin, thresh, nitermax, orig, randomize,
                                             CovNamesLinin, CovNamesLinout, CovNamesLPin, CovNamesLPout, dir,
-                                            alphaLL, test, missing, covOrig=orig_Cov,epsilon, 
+                                            alphaLL, test=FALSE, missing, covOrig=orig_Cov,epsilon, 
                                             impType = "Reg", alphaLin, penalty, seed, covInit, specOP,nc_sim,lambda_grph )
                   tme <- Sys.time() - start
                   print(paste0("Total time take algo with covariates and simple regression ", round(tme, 3)))
@@ -241,4 +243,4 @@ for(ID in NumNWs){#:length(test_nc)){
     }
   }
 }
-saveRDS(opf_Regcov, paste0("/home/phatakg/novus/Output_rds/MARSimulation_",args[1],".rds"))  
+#saveRDS(opf_Regcov, paste0("/home/phatakg/novus/Output_rds/MARSimulation_",args[1],".rds"))  

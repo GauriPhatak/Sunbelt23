@@ -501,7 +501,7 @@ seg_colors <- c(
 )
 
 op_bp  <- list()   # raw breakpoints objects per location
-bp_nat <- data.frame(matrix(ncol = 3, nrow = 0))  # tidy breakpoint table
+bp_nat <- data.frame(matrix(ncol = 4, nrow = 0))  # tidy breakpoint table
 col    <- data.frame(loc = colnames(ww_ip))
 col    <- left_join(col, df_county, by = c("loc" = "loc"))
 
@@ -509,8 +509,8 @@ for (i in seq_len(N_LOC)) {
   # Prepare regression data for breakpoints: y ~ t (simple linear trend model)
   bp_data <- data.frame(
     y = ww_ip[, i],
-    t = seq_len(nrow(ww_ip)),
-    y_1 = lag(ww_ip[, i], 1)
+    t = seq_len(nrow(ww_ip))
+   # y_1 = lag(ww_ip[, i], 1)
   )
 
   # First call: determine optimal breakpoint structure via RSS
@@ -524,16 +524,28 @@ for (i in seq_len(N_LOC)) {
     bp_nat,
     cbind(
       col[i, 1], col[i, 2],
-      c(1, op_bp[[i]]$breakpoints, nrow(ww_ip))
+      c(1, op_bp[[i]]$breakpoints, nrow(ww_ip)),
+      as.character(df$week_date[as.numeric(c(1, op_bp[[i]]$breakpoints, nrow(ww_ip)))])
     )
   )
 }
 
-colnames(bp_nat) <- c("Location", "County", "Breakpoint")
+colnames(bp_nat) <- c("Location", "County", "Breakpoint","Date")
 bp_nat$Breakpoint <- as.numeric(bp_nat$Breakpoint)
 bp_nat$brkpt      <- rep(0:(N_BRK + 1), times = N_LOC)
 bp_nat$Location   <- factor(bp_nat$Location,
                              levels = bp_nat$Location[bp_nat$brkpt == 2])
+
+bp_dt <- as.data.frame(bp_nat) %>% select(c(Date, brkpt, Breakpoint)) %>% mutate(Date = as.Date(Date))
+Date_result <- bp_dt %>%
+  group_by(brkpt) %>%
+  summarise(
+    first_date  = min(Date),
+    last_date   = max(Date),
+    mean_date   = mean(Date),
+    median_date = median(Date),
+    median_point  = Breakpoint[which(Date  == median(Date))]
+  )
 
 # Identify the earliest and latest change points per breakpoint index
 # (used as vertical reference lines in the change point plot)
@@ -600,15 +612,16 @@ ggsave(paste0(SAVE_DIR, "RSSBreakPoints.png"))
 # 7. Change point visualisation (Figure: brkPts.png)
 # ------------------------------------------------------------------------------
 bp_nat$Location <- as.character(bp_nat$Location)
+
 bp_nat %>%
   ggplot() +
   geom_point(aes(y = Location, x = Breakpoint, color = as.factor(brkpt))) +
   scale_color_manual(values = seg_colors)+
   geom_line(aes(y = Location,  x = Breakpoint)) +
-  geom_vline(data = highest_rows, aes(xintercept = Breakpoint),
-             color = "darkblue", linetype = 2) +
-  geom_vline(data = lowest_rows,  aes(xintercept = Breakpoint),
-             color = "darkred",  linetype = 2) +
+  #geom_vline(data = highest_rows, aes(xintercept = Breakpoint),
+  #           color = "darkblue", linetype = 2) +
+  #geom_vline(data = lowest_rows,  aes(xintercept = Breakpoint),
+  #           color = "darkred",  linetype = 2) +
   scale_x_continuous(guide = guide_axis(angle = 45),
                      limits = c(0, nrow(ww_samp)),
                      breaks = scales::breaks_pretty(n = 20)) +
@@ -618,6 +631,117 @@ bp_nat %>%
 
 ggsave(paste0(SAVE_DIR, "brkPts.png"))
 
+# --- week <-> date mapping (week 1 = 2020-08-31, weekly spacing) ---
+anchor <- as.Date("2020-08-31")
+week_to_date <- function(w) anchor + (w - 1) * 7          # numeric week -> Date
+date_to_week <- function(d) as.numeric(d - anchor) / 7 + 1 # Date -> numeric week
+
+wk_max <- nrow(ww_samp)   # 295
+
+# first-of-month dates that fall inside the plotted window, for the bottom axis
+month_dates  <- seq(from = as.Date(cut(week_to_date(1),  "month")),
+                    to   = week_to_date(wk_max),
+                    by   = "3 month")
+month_breaks <- date_to_week(month_dates)   # positions on the (week) x-scale
+
+bp_nat %>%
+  ggplot() +
+  geom_line(aes(y = Location, x = Breakpoint)) +
+  geom_point(aes(y = Location, x = Breakpoint, color = as.factor(brkpt))) +
+  scale_color_manual(values = seg_colors) +
+  scale_x_continuous(
+    # PRIMARY (bottom) axis = dates, one tick per first-of-month
+    name   = "Date",
+    limits = c(0, wk_max),
+    breaks = month_breaks,
+    labels = format(month_dates, "%b %Y"),
+    guide  = guide_axis(angle = 45),
+    # SECONDARY (top) axis = week index, as before
+    sec.axis = sec_axis(
+      transform = ~ .,                       # identity: same underlying scale
+      name   = "Week index",
+      breaks = scales::breaks_pretty(n = 20)
+    )
+  ) + 
+  labs(title = "Change point distribution across locations", y = "Location", x = " ") +
+  guides(color = "none") +
+  theme_minimal() +
+  theme(axis.text.x.bottom = element_text(angle = 45, hjust = 1))
+
+ggsave(paste0(SAVE_DIR, "brkPtsNew.png"))
+
+## Plot the time series for each location and the breakpont for that time series
+#Color based on imputed vs not 
+cts <- c("Hermiston", "Corvallis", "Portland", "Salem" )
+
+for(loc in colnames(ww_samp)){
+  temp_df <- as.data.frame(cbind(t= 1:295, 
+                                 val = ww_ip %>% select(c(loc)), 
+                                 imp = as.numeric(is.na(as.data.frame(ww_samp) %>% select(c(loc))))
+                                 ))
+  colnames(temp_df) <- c("t", "val", "imp")
+  bp_tmp <- bp_nat %>% filter(Location == loc)
+  
+  print(temp_df %>% ggplot()+
+    geom_line(aes(x = t , y= val), alpha =0.5)+
+    geom_point(aes(x = t , y= val, color = as.factor(imp)))+
+    scale_color_manual(values = seg_colors)+
+    geom_vline(xintercept = bp_tmp$Breakpoint, color = "darkgreen")+
+    ggtitle(loc)+ 
+    theme(legend.position = "none",
+          panel.background = element_rect(fill = "white", color = NA), # Panel area
+          plot.background = element_rect(fill = "white", color = NA),  # Entire image area
+          panel.grid.major = element_blank(),                          # Remove major grids
+          panel.grid.minor = element_blank()))
+ # ggsave(paste0(SAVE_DIR,loc,"BP.png"))
+  
+}
+rowSums(!is.na(ww_samp))
+sort(colSums(!is.na(ww_samp)))
+
+##Combined plots
+library(patchwork)
+
+cts <- c("Hermiston", "Corvallis", "Portland", "Salem","Eugene") 
+# "Woodburn", "Stayton","McMinnville", "Astoria","Bend" 
+
+plot_list <- lapply(cts, function(loc) {
+  temp_df <- as.data.frame(cbind(
+    t   = 1:295,
+    val = ww_ip %>% select(all_of(loc)),
+    imp = as.numeric(is.na(as.data.frame(ww_samp) %>% select(all_of(loc))))
+  ))
+  colnames(temp_df) <- c("t", "val", "imp")
+  bp_tmp <- bp_nat %>% filter(Location == loc)
+  
+  ggplot(temp_df) +
+    geom_line(aes(x = t, y = val), alpha = 0.5) +
+    geom_point(aes(x = t, y = val, color = as.factor(imp))) +
+    scale_color_manual(values = seg_colors) +
+    geom_vline(xintercept = bp_tmp$Breakpoint, color = "darkgreen") +
+    scale_x_continuous(breaks = seq(0, 295, by = 30)) +
+    labs(y = "Mean log copies per L", x = "Week") +
+    ggtitle(loc) +
+    theme(
+      legend.position  = "none",
+      panel.background = element_rect(fill = "white", color = NA),
+      plot.background  = element_rect(fill = "white", color = NA),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank()
+    )
+})
+
+# remove x-axis title from all but the last plot
+plot_list[-length(plot_list)] <- lapply(
+  plot_list[-length(plot_list)],
+  function(p) p + theme(axis.title.x = element_blank())
+)
+
+combined <- wrap_plots(plot_list, ncol = 1) +
+  plot_layout(axis_titles = "collect_y")
+
+print(combined)
+ggsave(paste0(SAVE_DIR, "combined_BP1.png"), combined,width = 8, height = 10, dpi = 300)
 
 # ------------------------------------------------------------------------------
 # 8. Segment boundary table
@@ -634,7 +758,7 @@ for (i in seq_len(N_LOC)) {
 }
 colnames(bp) <- c("TS", "BkPtS", "Location")
 bp$BkPtS     <- as.numeric(bp$BkPtS)
-bp$Date      <- df$week_start[bp$BkPtS]
+bp$Date      <- df$week_date[bp$BkPtS]
 
 bp <- bp %>%
   group_by(TS) %>%
@@ -676,6 +800,51 @@ bp_plot <- bp %>%
     xRangeH = rep(c(unique(xRangeL)[-1], 5.5), each = N_BRK + 1)
   )
 
+# ggplot() +
+#   geom_rect(aes(
+#     xmin = as.numeric(bp_plot$BkPtS), xmax = as.numeric(bp_plot$BkPtE),
+#     ymin = bp_plot$xRangeL,           ymax = bp_plot$xRangeH,
+#     fill = as.factor(bp_plot$id)
+#   ), alpha = 1) +
+#   geom_line(aes(y = rowMeans(ww_ip, na.rm = TRUE),
+#                 x = seq_len(nrow(ww_ip)))) +
+#   geom_text(aes(x = -40, y = as.numeric(unique(bp_plot$xRangeL)),
+#             label = sort(unique(bp_plot$Location)) ),
+#             size = 3, vjust = 0, hjust = 0, color = "blue4") +
+#   scale_fill_manual(values = seg_colors) +
+#   scale_x_continuous(guide = guide_axis(angle = 45),
+#                      #limits = c(0, nrow(ww_samp)),
+#                      breaks = scales::breaks_pretty(n = 10)
+#                      ) +
+#   labs(x = "Sample week", y = "Mean log copies per L",
+#        title = "Change points per location against state average") +
+#   #scale_x_continuous(breaks = scales::breaks_pretty(n = 10)) +
+#   theme_minimal() +
+#   theme(legend.position = "none")
+        #axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+# one row per location, positioned at the middle of its band
+# vertical lanes currently in the plot, ordered top -> bottom
+lanes <- unique(bp_plot[c("xRangeL", "xRangeH")])
+lanes <- lanes[order(lanes$xRangeL, decreasing = FALSE), ]
+
+# locations A -> Z  (as.character guards against factor-level ordering)
+locs <- sort(unique(as.character(bp_plot$Location)))
+
+# pair alphabetical rank with lane position: first name -> top lane
+lane_map <- data.frame(Location = locs,
+                       xRangeL  = lanes$xRangeL,
+                       xRangeH  = lanes$xRangeH,
+                       stringsAsFactors = FALSE)
+
+# swap old lanes for the alphabetical ones
+bp_plot$xRangeL <- bp_plot$xRangeH <- NULL
+bp_plot <- merge(bp_plot, lane_map, by = "Location")
+
+loc_axis <- unique(bp_plot[c("Location", "xRangeL", "xRangeH")])
+loc_axis$ymid <- (loc_axis$xRangeL + loc_axis$xRangeH) / 2
+
+x_max <- max(as.numeric(bp_plot$BkPtE), nrow(ww_ip), na.rm = TRUE)
+
 ggplot() +
   geom_rect(aes(
     xmin = as.numeric(bp_plot$BkPtS), xmax = as.numeric(bp_plot$BkPtE),
@@ -684,18 +853,22 @@ ggplot() +
   ), alpha = 1) +
   geom_line(aes(y = rowMeans(ww_ip, na.rm = TRUE),
                 x = seq_len(nrow(ww_ip)))) +
-  geom_text(aes(x = -40, y = as.numeric(unique(bp_plot$xRangeL)),
-                label = unique(bp_plot$Location) ),
-            size = 3, vjust = 0, hjust = 0, color = "blue4") +
   scale_fill_manual(values = seg_colors) +
-  labs(x = "Sample week", y = "Mean log copies per L",
+  scale_x_continuous(breaks = seq(0, x_max, by = 20),
+                     guide  = guide_axis(angle = 45)) +
+  scale_y_continuous(
+    breaks   = loc_axis$ymid,
+    labels   = loc_axis$Location,
+    sec.axis = sec_axis(~ ., name   = "Mean log copies per L",
+                        breaks = scales::breaks_pretty(n = 6))
+  ) +
+  labs(x = "Sample week", y = NULL,
        title = "Change points per location against state average") +
-  #scale_x_continuous(breaks = scales::breaks_pretty(n = 10)) +
   theme_minimal() +
-  theme(legend.position = "none",
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+  theme(legend.position    = "none",
+        axis.text.y.left   = element_text(color = "blue4", size = 7))
 
-#ggsave(paste0(SAVE_DIR, "CPperCity.png"))
+ggsave(paste0(SAVE_DIR, "CPperCity.png"))
 
 bp_plot <- left_join(bp_plot, Regions, join_by(Location == City)) 
 bp_plot <- left_join(bp_plot, col, join_by( Location == loc))
@@ -895,7 +1068,7 @@ indegree_imp <- matrix(0, nrow = 0, ncol =4)
 outstrength_imp <- matrix(0, nrow = 0, ncol =4) 
 betweenness_imp <- matrix(0, nrow = 0, ncol =4)
 
-for(i in 1:10){
+for(i in 1:1000){
 print(paste0("The ", i, "th iteration"))
 var_output <- fit_lasso_var(
   df_ip   = stat_dat,
@@ -1063,10 +1236,10 @@ betweenness_sum <- as.data.frame(betweenness_imp) %>%
 ################## reading the data from ######################
 fp <- "C:/Users/gauph/Box/ChangepointOP2/"
 nodeImpOP <- readRDS(paste0(fp, "nodeImpOP_imp1.rds"))
-indegree_sum <- nodeImpOP[[1]]
-outdegree_sum <- nodeImpOP[[2]]
-outstrength_sum <- nodeImpOP[[3]]
-betweenness_sum <- nodeImpOP[[4]]
+indegree_sum <- cbind(nodeImpOP[[1]],1)
+outdegree_sum <- cbind(nodeImpOP[[2]],1)
+outstrength_sum <- cbind(nodeImpOP[[3]],1)
+betweenness_sum <- cbind(nodeImpOP[[4]],1)
 
 G_edges <- matrix(0,nrow=0, ncol =6)#replicate(8, matrix(0,nrow=0, ncol =6))
 
@@ -1166,11 +1339,11 @@ layout_base <- rbind(layout_base, extra_locs)
 
 # Plot networks for out-strength (primary node importance measure)
 # Additional measures can be added to the 'plot_vars' vector
-plot_vars <- c("Outdegree","Indegree","Betweenness",
-                "Strength_out", "Strength_in","NeighConnect_in",
-                "NeighConnect_out","H_Index_in", "H_Index_out",
-                "Coll_Inf_in", "Coll_Inf_out" ,"IVI_in", 
-                "IVI_out", "IVI_all","Closeness","Eigenvector")#
+plot_vars <- c("Closeness") #c("Outdegree","Indegree","Betweenness",
+              #  "Strength_out", "Strength_in","NeighConnect_in",
+               # "NeighConnect_out","H_Index_in", "H_Index_out",
+              #  "Coll_Inf_in", "Coll_Inf_out" ,"IVI_in", 
+               # "IVI_out", "IVI_all","Closeness","Eigenvector")#
 #c("Strength_out","Outdegree","Indegree", "Betweenness")
 Ranked_top <- matrix(0, nrow= 0 , ncol = 10)
 
@@ -1235,6 +1408,11 @@ for (v in plot_vars) {
   }
 }
 
+Date_Range <- c("2020-08-31 : 2021-07-12", "2021-07-12 : 2022-04-18", 
+                "2022-04-18 : 2022-12-19", "2022-12-19 : 2023-09-18", 
+                "2023-09-18 : 2024-06-17", "2024-06-17 : 2025-02-17",
+                "2025-02-17 : 2025-09-29", "2025-09-29 : 2026-04-20")
+
 colnames(Ranked_top) <- c("Section","Value","City","max_rank","min_rank",
                           "label_top","label_bottom","color_top","color_bottom",
                           "metric" ) 
@@ -1252,9 +1430,9 @@ for (i in seq_len(N_BRK + 1)) {
   g_seg  <- igraph::simplify(G[[i]])
   edg_wt <- igraph::E(g_seg)$weight * 10
   
-  out_path <- paste0(SAVE_DIR, "none_segment_", i, ".png")
-  png(out_path, width = 800, height = 800)
-  par(mar = c(0.8, 0, 0.8, 0))
+  #out_path <- paste0(SAVE_DIR, "none_segment_", i, ".png")
+  #png(out_path, width = 800, height = 800)
+  #par(mar = c(0.8, 0, 0.8, 0))
   
   # NOTE: igraph layout expects (x, y) = (longitude, latitude)
   plot.igraph(
@@ -1271,10 +1449,10 @@ for (i in seq_len(N_BRK + 1)) {
     vertex.label.dist   = 1.5,
     vertex.frame.color  = NULL,
     vertex.label.font   = 3,
-    vertex.label.cex   = 1
-    #main                = sprintf("Segment %d — %s", i, v)
+    vertex.label.cex   = 1,
+    main                = Date_Range[i]
   )
   
-  dev.off()
-  message(sprintf("Saved: %s", out_path))
+  #dev.off()
+  #message(sprintf("Saved: %s", out_path))
 }

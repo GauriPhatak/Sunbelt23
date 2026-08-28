@@ -51,10 +51,10 @@ unique_count <- as.data.frame(table(aggr$weekno))
 ## geolocations of cities in oregon. Includes column for included or not included wastewater locations
 O_attr <- readRDS(paste0(getwd(),"/Code/MapNetworks/O_attr_WS_SR_RC.rds"))
 
-test_nc <- c(2)#,3,4,5,6)#c(2,3,4,5,6) ## Can change
+test_nc <- c(2,3)#,4,5,6)#c(2,3,4,5,6) ## Can change
 N <- vcount(G_FullGrph)
 thresh  <- 0.00005
-nitermax <- 30000
+nitermax <- 10000
 dir <- "undirected"
 alphaLL <- 0.001
 alphaOpt <- c(0.00001)#,0.0001, 0.001, 0.01, 0.1)#, 0.0001)
@@ -63,7 +63,7 @@ missing <- NULL
 alphaLin <- 0.001
 penaltyOpt <- c("LASSO")
 seed <- 5 #sample(1:100000, 1)
-lambdaOpt <- c(0.00001)#, 0.0001, 0.001, 0.01, 0.1)
+lambdaOpt <- c(0.00001, 0.0001, 0.001, 0.01)
 covInitOpt <- c("Nmean")
 printFlg <- FALSE
 delta <- getDelta(N)
@@ -113,7 +113,9 @@ getwd()
 ## set up list for final community assignments
 finMCov <- list()
 finMNoCov <- list()
-
+opList <-list()
+ggplotList <- list()
+lvl <- 1
 
 for(nc in test_nc){
   
@@ -201,14 +203,12 @@ for(nc in test_nc){
             ## Origignal covariate list first binary then covariate
             covOrigLst <- list(NULL, covOrig)
             if(covF == TRUE){
-              op_cov <- CoDA(G, nc, k = c(0, 0), o = c(0,1), N, alpha,lambda_lin, lambda_bin=0, thresh, nitermax, orig, randomize =TRUE ,
-                   CovNamesLinin= c(), CovNamesLinout= c("meanLogCopiesPerL"), CovNamesLPin= c(), CovNamesLPout= c(), 
-                   dir,alphaLL, test, missing =NULL, covOrigLst, epsilon =0, impType = "Reg", alphaLin, penalty, 
-                   seed, covInit, specOP,nc_sim=nc,lambda_grph=0 )
+              op_cov <- CoDA(G, nc, k = c(0, 0), o = c(0,1), N, alpha, lambda_lin, lambda_bin=0, thresh, nitermax, orig, 
+                                    randomize = TRUE ,CovNamesLinin = c(), CovNamesLinout = c("meanLogCopiesPerL"),
+                                    CovNamesLPin = c(), CovNamesLPout= c(), dir, alphaLL, test, missing = NULL, covOrigLst, 
+                                    epsilon = 0, impType = "Reg", alphaLin, penalty, seed, covInit, specOP, nc_sim = nc, lambda_grph = 0 )
+              opList[[lvl]] <- op_cov
             }
-            
-            if(nwmetricF == TRUE){  }
-            
             
             delta <- getDelta(N)
             Fin_mem <- op_cov$Ffin > delta
@@ -242,8 +242,10 @@ for(nc in test_nc){
               p[[j]] <- q
               
               j <- j + 1
+              
             }
-            
+            ggplotList[[lvl]] <- q
+            lvl <- lvl + 1
             
             ## filling the final output
             #MSE, MSEmd, lambda, week, number of available, penalty, initializing of covariate, alpha 
@@ -279,6 +281,7 @@ for(nc in test_nc){
           
         }
         if(plotF == TRUE){
+
           pt <- ggarrange(plotlist =  p,  ncol = 2, nrow = 2)
          # pt <- cowplot::plot_grid(p, ncol =2)
           fig <- annotate_figure(pt, top = text_grob(paste0("Week ", week, 
@@ -295,6 +298,7 @@ for(nc in test_nc){
     }
   }
 }
+
 if(plotF == TRUE){
   dev.off()
 }

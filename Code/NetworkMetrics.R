@@ -622,7 +622,7 @@ EgoSplitConductance <- function(G, C, dir = "undirected",
   }
   
   ## Remove duplicates and loops
-  CombinedGraph <- simplify(
+  CombinedGraph <- igraph::simplify(
     CombinedGraph,
     remove.multiple = TRUE,
     remove.loops = TRUE,
@@ -703,6 +703,10 @@ EgoSplitConductance <- function(G, C, dir = "undirected",
   MeanConductanceW <- mean(ConductanceVal, na.rm = TRUE)
   MeanConductanceWo <- mean(ConductanceVal[seq_len(min(nc, K))], na.rm = TRUE)
   
+  ##Harmonic mean
+  MeanConductanceW_HM <- 1/ mean(1/ConductanceVal, na.rm = TRUE)
+  MeanConductanceWo_HM <- 1/mean(1/ConductanceVal[seq_len(min(nc, K))], na.rm = TRUE)
+  
   penalty_factor <- ifelse(
     N - numNodesWoAssignment > 0,
     N / (N - numNodesWoAssignment),
@@ -711,6 +715,10 @@ EgoSplitConductance <- function(G, C, dir = "undirected",
   
   WeightedMeanConductanceW <- MeanConductanceW * penalty_factor
   WeightedMeanConductanceWo <- MeanConductanceWo * penalty_factor
+  
+  ## Harmonic mean
+  WeightedMeanConductanceW_HM <- MeanConductanceW_HM * penalty_factor
+  WeightedMeanConductanceWo_HM <- MeanConductanceWo_HM * penalty_factor
   
   ## -----------------------------
   ## Conductance with internal-density penalty
@@ -738,11 +746,17 @@ EgoSplitConductance <- function(G, C, dir = "undirected",
     MeanConductanceWo,
     WeightedMeanConductanceW,
     WeightedMeanConductanceWo,
-    ConductanceWDensityPen
+    ConductanceWDensityPen,
+    MeanConductanceW_HM,
+    MeanConductanceWo_HM,
+    WeightedMeanConductanceW_HM,
+    WeightedMeanConductanceWo_HM
   ))
 }
+
+
 ##internal density of a cluster. Need to be maximized
-InternalDensity <- function(G, C, numNodesWoAssignment, dir){ #Z, C, degree01, numNodesWoAssignment
+InternalDensity <- function(G, C, numNodesWoAssignment, dir, effective_nc){ #Z, C, degree01, numNodesWoAssignment
   
   
   N <- nrow(C)#dim(Fm)[1]
@@ -771,7 +785,15 @@ InternalDensity <- function(G, C, numNodesWoAssignment, dir){ #Z, C, degree01, n
   CommInternalDensityW <- mean(InternalDensityVal, na.rm = TRUE)
   
   ## without considering the background cluster
-  CommInternalDensityWo <- mean(InternalDensityVal[1:nc], na.rm = TRUE)
+  CommInternalDensityWo <- mean(InternalDensityVal[1:effective_nc], na.rm = TRUE)
+  
+  ##HARMONIC MEAN
+  ## considering the background custer
+  CommInternalDensityW_HM <- 1/mean(1/InternalDensityVal, na.rm = TRUE)
+  
+  ## without considering the background cluster
+  CommInternalDensityWo_HM <- 1/mean(1/InternalDensityVal[1:effective_nc], na.rm = TRUE)
+  
   
   ## Calculating the total internal density
   if(dir == "directed"){
@@ -786,9 +808,18 @@ InternalDensity <- function(G, C, numNodesWoAssignment, dir){ #Z, C, degree01, n
   WeightedInternalDensityW <- CommInternalDensityW* (N-numNodesWoAssignment)/N
   WeightedInternalDensityWo <- CommInternalDensityWo* (N-numNodesWoAssignment)/N
   
+  ##HARMONIC MEAN
+  WeightedInternalDensityW_HM <- CommInternalDensityW_HM* (N-numNodesWoAssignment)/N
+  WeightedInternalDensityWo_HM <- CommInternalDensityWo_HM* (N-numNodesWoAssignment)/N
+  
   return(c(InternalDensityVal, 
-           CommInternalDensityW,#CommInternalDensityWo,#TotalInternalDensity,
-           WeightedInternalDensityW,WeightedInternalDensityWo))
+           CommInternalDensityW,
+           WeightedInternalDensityW,
+           WeightedInternalDensityWo,
+           CommInternalDensityW_HM,
+           CommInternalDensityWo_HM,
+           WeightedInternalDensityW_HM,
+           WeightedInternalDensityWo_HM))
 }
 
 ##calculate attribute cohesion
@@ -823,8 +854,13 @@ AverageDissimilarityScore <- function(Z, C, degree01, numNodesWoAssignment){
     }
   }
   
+  #ARITHMETIC MEAN
   AvgVarianceW <- sum((rowSums(vm)/n_cov) * (n), na.rm =  TRUE)/N
   DispersionScoreW <- sum((rowSums(vmNorm)/n_cov) * (n), na.rm = TRUE)/N
+  
+  ##HARMONIC MEAN
+  AvgVarianceW_HM <- sum((1/rowMeans(1/vm)) * (n), na.rm = TRUE)/N
+  DispersionScoreW_HM <-  sum((1/rowMeans(1/vmNorm)) * (n), na.rm = TRUE)/N
   
   ## Average variance and dispersion score without taking the unassigned nodes into consideration
   if(ncol(vm) >1){
@@ -835,11 +871,26 @@ AverageDissimilarityScore <- function(Z, C, degree01, numNodesWoAssignment){
     DispersionScoreWo <- sum((vmNorm[1:nc, ]/n_cov) * (n[1:nc]), na.rm = TRUE)/N
   }
   
+  ## Fidning harmonic mean instead of arithmetic means of the dispersion scores.
+  if(ncol(vm) >1){
+    AvgVarianceWo_HM <- sum((1/rowMeans(1/vm[1:nc, ])) * (n[1:nc]), na.rm = TRUE)/N
+    DispersionScoreWo_HM <- sum((1/rowMeans(1/vmNorm[1:nc, ])) * (n[1:nc]), na.rm = TRUE)/N
+  }else{
+    AvgVarianceWo_HM <- sum((vm[1:nc, ]/n_cov) * (n[1:nc]), na.rm = TRUE)/N
+    DispersionScoreWo_HM <- sum((vmNorm[1:nc, ]/n_cov) * (n[1:nc]), na.rm = TRUE)/N
+  }
+  
+  
   ## Punish the value of variance and dispersion if there are nodes that have not been assigned
   WeightedAvgVarianceW <- AvgVarianceW * (N/(N - numNodesWoAssignment ))
   WeightedDispersionScoreW <- DispersionScoreW * (N/(N - numNodesWoAssignment ))
   
-  return(c(AvgVarianceW, DispersionScoreW,AvgVarianceWo, DispersionScoreWo,WeightedAvgVarianceW,WeightedDispersionScoreW))
+  ## Punish the value of variance and dispersion if there are nodes that have not been assigned- FOR HARMONIC MEAN
+  WeightedAvgVarianceW_HM <- AvgVarianceW_HM * (N/(N - numNodesWoAssignment ))
+  WeightedDispersionScoreW_HM <- DispersionScoreW_HM * (N/(N - numNodesWoAssignment ))
+  
+  return(c(AvgVarianceW, DispersionScoreW,AvgVarianceWo, DispersionScoreWo,WeightedAvgVarianceW,WeightedDispersionScoreW,
+           AvgVarianceW_HM, DispersionScoreW_HM,AvgVarianceWo_HM, DispersionScoreWo_HM,WeightedAvgVarianceW_HM,WeightedDispersionScoreW_HM))
 }
 
 ## Calculating trace to determine the within cluster variance
@@ -954,7 +1005,25 @@ BinaryDispersionScore <- function(X, C, degree01, numNodesWoAssignment){
   WeightedAvgBinarySpreadW <- AvgBinarySpreadW * (N/(N - numNodesWoAssignment ))
   WeightedBinaryDispersionScoreW <- BinaryDispersionScoreW * (N/(N - numNodesWoAssignment ))
   
-  return(c(AvgBinarySpreadW,BinaryDispersionScoreW,WeightedAvgBinarySpreadW, WeightedBinaryDispersionScoreW))
+  ### HARMONIC MEAN DISPERSION SCORE
+  AvgBinarySpreadW_HM <- sum((1/rowMeans(1/pm)) * (n), na.rm =  TRUE)/N
+  BinaryDispersionScoreW_HM <- sum((1/rowMeans(1/pmNorm)) * (n), na.rm = TRUE)/N
+  
+  ## Average variance and dispersion score without taking the unassigned nodes into consideration
+  if(ncol(pm) >1){
+    AvgBinarySpreadWo_HM <- sum((1/rowMeans(1/pm[1:nc,])) * (n[1:nc]))/N
+    BinaryDispersionScoreWo_HM <- sum((1/rowMeans(1/pmNorm[1:nc,])) * (n[1:nc]))/N
+  }else{
+    AvgBinarySpreadWo_HM <- sum((pm[1:nc, ]/n_cov) * (n[1:nc]))/N
+    BinaryDispersionScoreWo_HM <- sum((pmNorm[1:nc, ]/n_cov) * (n[1:nc]))/N
+  }
+  
+  ## Punish the value of variance and dispersion if there are nodes that have not been assigned
+  WeightedAvgBinarySpreadW_HM <- AvgBinarySpreadW_HM * (N/(N - numNodesWoAssignment ))
+  WeightedBinaryDispersionScoreW_HM <- BinaryDispersionScoreW_HM * (N/(N - numNodesWoAssignment ))
+  
+  return(c(AvgBinarySpreadW,BinaryDispersionScoreW,WeightedAvgBinarySpreadW, WeightedBinaryDispersionScoreW,
+           AvgBinarySpreadW_HM,BinaryDispersionScoreW_HM,WeightedAvgBinarySpreadW_HM, WeightedBinaryDispersionScoreW_HM))
 }
 
 ## Function to drop tiny communities
