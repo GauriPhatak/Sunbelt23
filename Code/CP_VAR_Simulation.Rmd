@@ -95,10 +95,10 @@ plot(bp_str)
 ```{r}
 model = list(
   value ~ 1,          # intercept + slope
-  1 + (1|name) ~ x
+  ~ cp(1 + (1|name)) + x
   # joined slope, varying by id
 )
-#ex = mcp_example("varying")
+#ex = mcp_example("group_cp")
 fit = mcp(model, df)
 plot(fit, facet_by = "name")
 
